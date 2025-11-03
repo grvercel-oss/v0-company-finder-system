@@ -28,7 +28,7 @@ const providers: EmailProvider[] = [
     name: "Gmail",
     displayName: "Gmail",
     logo: "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Gmail_icon_%282020%29.svg-7fzrXzltYTUg2fR1s7lUQzJb6LZuJz.png",
-    connectUrl: "#",
+    connectUrl: "/api/gmail/oauth/initiate",
   },
   {
     id: "zoho",
@@ -72,10 +72,6 @@ export function EmailConnectionCard() {
   }
 
   const handleConnect = (provider: EmailProvider) => {
-    if (provider.connectUrl === "#") {
-      alert(`${provider.name} integration coming soon!`)
-      return
-    }
     window.location.href = provider.connectUrl
   }
 
@@ -88,7 +84,12 @@ export function EmailConnectionCard() {
     setError(null)
 
     try {
-      const endpoint = connectionStatus.provider === "zoho" ? "/api/zoho/config" : "/api/outlook/config"
+      const endpoint =
+        connectionStatus.provider === "zoho"
+          ? "/api/zoho/config"
+          : connectionStatus.provider === "gmail"
+            ? "/api/gmail/config"
+            : "/api/outlook/config"
 
       const response = await fetch(endpoint, { method: "DELETE" })
 

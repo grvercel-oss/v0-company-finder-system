@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { getEmailProvider } from "@/lib/email-provider"
-import type { ZohoSettings, OutlookSettings } from "@/lib/email-provider"
+import type { ZohoSettings, OutlookSettings, GmailSettings } from "@/lib/email-provider"
 
 export async function GET(request: Request) {
   try {
@@ -17,7 +17,14 @@ export async function GET(request: Request) {
       })
     }
 
-    if (providerConfig.provider === "zoho") {
+    if (providerConfig.provider === "gmail") {
+      const settings = providerConfig.settings as GmailSettings
+      return NextResponse.json({
+        connected: true,
+        provider: "gmail",
+        email: settings.email,
+      })
+    } else if (providerConfig.provider === "zoho") {
       const settings = providerConfig.settings as ZohoSettings
       return NextResponse.json({
         connected: true,

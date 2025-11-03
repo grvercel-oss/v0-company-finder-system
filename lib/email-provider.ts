@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db"
 
-export type EmailProvider = "outlook" | "zoho"
+export type EmailProvider = "outlook" | "zoho" | "gmail"
 
 export interface OutlookSettings {
   email: string
@@ -20,7 +20,14 @@ export interface ZohoSettings {
   is_active?: boolean
 }
 
-export type ProviderSettings = OutlookSettings | ZohoSettings
+export interface GmailSettings {
+  email: string
+  access_token: string
+  refresh_token: string
+  expires_at: number
+}
+
+export type ProviderSettings = OutlookSettings | ZohoSettings | GmailSettings
 
 export interface EmailProviderConfig {
   account_id: string

@@ -268,10 +268,16 @@ async function checkOutlookReplies(accountId: string, threadIds: number[]) {
 
 async function checkZohoReplies(accountId: string, threadIds: number[], settings: any) {
   try {
-    const { searchRecentMessages } = await import("@/lib/zoho-mail")
+    const { fetchInboxMessages } = await import("@/lib/zoho-mail")
 
-    const recentMessages = await searchRecentMessages(30, settings)
-    console.log(`[v0] [MAIL] Fetched ${recentMessages.length} recent Zoho messages`)
+    console.log("[v0] [MAIL] Provider settings:", JSON.stringify(settings, null, 2))
+
+    const recentMessages = await fetchInboxMessages(settings, {
+      daysBack: 30,
+      limit: 200,
+    })
+
+    console.log(`[v0] [MAIL] Fetched ${recentMessages.length} inbox messages from Zoho`)
 
     const sentContacts = await sql`
       SELECT 
@@ -293,44 +299,27 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
       contactMap.set(normalizedEmail, contact)
     }
 
+    console.log("[v0] [MAIL] Contact emails to match:", Array.from(contactMap.keys()).join(", "))
+
     const userEmails = new Set<string>()
     if (settings.email) {
       userEmails.add(settings.email.toLowerCase().trim())
     }
-    // Also add any other email addresses associated with this account
-    const accountEmails = await sql`
-      SELECT DISTINCT email FROM account_email_provider WHERE account_id = ${accountId}
-    `.catch(() => [])
-
-    for (const row of accountEmails) {
-      if (row.email) {
-        userEmails.add(row.email.toLowerCase().trim())
-      }
-    }
-
-    console.log(`[v0] [MAIL] User email addresses to filter: ${Array.from(userEmails).join(", ")}`)
 
     let repliesFound = 0
     const processedThreads = new Set()
 
     for (const message of recentMessages) {
       try {
-        let fromEmail =
-          message.fromAddress ||
-          message.from?.address ||
-          message.from?.emailAddress?.address ||
-          message.sender?.address ||
-          message.sender
+        const fromEmail = message.fromAddress
 
         if (!fromEmail) {
           console.log(`[v0] [MAIL] Skipping message ${message.messageId} - no from email`)
           continue
         }
 
-        fromEmail = fromEmail.toLowerCase().trim()
-
         if (userEmails.has(fromEmail)) {
-          console.log(`[v0] [MAIL] Skipping message ${message.messageId} - sent by user (${fromEmail})`)
+          console.log(`[v0] [MAIL] Skipping message ${message.messageId} - from user (${fromEmail})`)
           continue
         }
 
@@ -340,18 +329,19 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
           continue
         }
 
-        const timestamp = Number(message.sentDateInGMT || message.time)
-        const messageTime = new Date(timestamp)
+        console.log(`[v0] [MAIL] Found message from tracked contact: ${fromEmail}`)
 
-        if (isNaN(messageTime.getTime())) {
-          console.error(`[v0] [MAIL] Invalid Date for messageId ${message.messageId}`)
+        const messageTime = new Date(message.time)
+        const sentTime = new Date(contact.sent_at)
+
+        if (messageTime <= sentTime) {
+          console.log(`[v0] [MAIL] Skipping - message received before we sent (${messageTime} <= ${sentTime})`)
           continue
         }
 
-        const sentTime = new Date(contact.sent_at)
-
-        if (messageTime <= sentTime) continue
-        if (processedThreads.has(contact.id)) continue
+        if (processedThreads.has(contact.id)) {
+          continue
+        }
 
         const existingReply = await sql`
           SELECT id FROM replies
@@ -362,9 +352,12 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
           return []
         })
 
-        if (existingReply.length > 0) continue
+        if (existingReply.length > 0) {
+          console.log(`[v0] [MAIL] Reply already exists for message ${message.messageId}`)
+          continue
+        }
 
-        console.log(`[v0] [MAIL] Found NEW Zoho reply from ${fromEmail}`)
+        console.log(`[v0] [MAIL] ✨ Found NEW Zoho reply from ${fromEmail} for contact ${contact.id}`)
 
         let threadId = contact.existing_thread_id
 
@@ -392,6 +385,8 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
               SET thread_id = ${threadId}, status = 'replied', reply_received_at = ${messageTime.toISOString()}
               WHERE id = ${contact.id}
             `
+
+            console.log(`[v0] [MAIL] Created new thread ${threadId} for contact ${contact.id}`)
           } catch (err) {
             console.error(`[v0] [MAIL] Error creating thread for contact ${contact.id}:`, err)
             continue
@@ -416,6 +411,8 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
               SET status = 'replied', reply_received_at = ${messageTime.toISOString()}
               WHERE id = ${contact.id}
             `
+
+            console.log(`[v0] [MAIL] Updated existing thread ${threadId} for contact ${contact.id}`)
           } catch (err) {
             console.error(`[v0] [MAIL] Error updating thread ${threadId}:`, err)
             continue
@@ -443,7 +440,7 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
               ${message.messageId},
               ${message.subject},
               ${fromEmail},
-              ${fromEmail.split("@")[0]},
+              ${message.sender || fromEmail.split("@")[0]},
               ${messageTime.toISOString()},
               ${message.summary || message.content || ""},
               ${message.content || ""},
@@ -461,12 +458,12 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
             VALUES (
               ${accountId}, ${threadId}, 'received',
               ${fromEmail}, 
-              ${fromEmail.split("@")[0]}, 
-              ${contact.email}, 
+              ${message.sender || fromEmail.split("@")[0]}, 
+              ${message.toAddress || contact.email}, 
               ${message.subject},
               ${message.summary || message.content || ""}, 
               ${message.content || ""},
-              false, 
+              ${message.isRead || false}, 
               ${messageTime.toISOString()}, 
               ${message.messageId},
               ${message.messageId},
@@ -487,6 +484,8 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
         // Continue processing other messages
       }
     }
+
+    console.log(`[v0] [MAIL] Zoho reply check complete: ${repliesFound} new replies found`)
 
     return {
       checked: recentMessages.length,

@@ -3,16 +3,20 @@ import { getValidAccessToken, getZohoUrls } from "./zoho-oauth"
 export interface ZohoMessage {
   messageId: string
   fromAddress: string
-  toAddress: string
+  toAddress?: string
   ccAddress?: string
   subject: string
-  content: string
+  content?: string
   summary: string
   time: number
-  sentDateInGMT?: string // Unix timestamp in milliseconds as string
+  sentDateInGMT?: string | number
+  receivedTime?: number
   hasAttachment: boolean
-  isRead: boolean
+  isRead?: boolean
+  status?: string
   threadId?: string
+  folderId?: string
+  sender?: string // Display name of sender
 }
 
 export interface ZohoThread {
@@ -33,13 +37,23 @@ export interface ZohoFolder {
 }
 
 // Fetch inbox folder ID
-export async function getInboxFolderId(userAccountId?: string): Promise<string> {
-  const { token, config } = await getValidAccessToken(userAccountId)
-  const urls = getZohoUrls(config.data_center)
+export async function getInboxFolderId(settingsOrAccountId?: any): Promise<string> {
+  let token: string
+  let config: any
 
+  if (settingsOrAccountId && typeof settingsOrAccountId === "object" && settingsOrAccountId.access_token) {
+    config = settingsOrAccountId
+    token = config.access_token
+  } else {
+    const result = await getValidAccessToken(settingsOrAccountId)
+    token = result.token
+    config = result.config
+  }
+
+  const urls = getZohoUrls(config.data_center)
   const url = `${urls.mail}/api/accounts/${config.zoho_account_id}/folders`
 
-  console.log("[v0] Fetching folders from:", url)
+  console.log("[v0] [ZOHO] Fetching folders from:", url)
 
   const response = await fetch(url, {
     headers: {
@@ -49,62 +63,78 @@ export async function getInboxFolderId(userAccountId?: string): Promise<string> 
 
   if (!response.ok) {
     const error = await response.text()
-    console.error("[v0] Failed to fetch folders:", error)
-    // Fallback to default inbox folder ID
-    return "1"
+    console.error("[v0] [ZOHO] Failed to fetch folders:", error)
+    throw new Error(`Failed to fetch folders: ${response.status}`)
   }
 
   const data = await response.json()
-  console.log("[v0] Folders response:", JSON.stringify(data).substring(0, 500))
 
-  let folders: ZohoFolder[] = []
-
-  // Handle different response formats
+  let folders: any[] = []
   if (data.status?.code === 200 && data.data) {
     folders = Array.isArray(data.data) ? data.data : []
-  } else if (Array.isArray(data)) {
-    folders = data
-  } else if (data.data && Array.isArray(data.data)) {
-    folders = data.data
   }
 
-  console.log("[v0] Found folders:", folders.map((f) => `${f.folderName} (${f.folderId})`).join(", "))
+  console.log("[v0] [ZOHO] Available folders:", folders.map((f) => `${f.folderName} (${f.folderId})`).join(", "))
 
   // Find inbox folder (case-insensitive)
-  const inboxFolder = folders.find((f) => f.folderName.toLowerCase() === "inbox" || f.path?.toLowerCase() === "/inbox")
+  const inboxFolder = folders.find((f) => f.folderName?.toLowerCase() === "inbox")
 
-  if (inboxFolder) {
-    console.log("[v0] Found inbox folder:", inboxFolder.folderId, inboxFolder.folderName)
-    return inboxFolder.folderId
+  if (!inboxFolder) {
+    throw new Error("Inbox folder not found")
   }
 
-  // Fallback: return first folder or default "1"
-  console.warn("[v0] Inbox folder not found, using fallback")
-  return folders.length > 0 ? folders[0].folderId : "1"
+  console.log("[v0] [ZOHO] Using inbox folder ID:", inboxFolder.folderId)
+  return String(inboxFolder.folderId)
 }
 
 // Fetch messages from inbox
-export async function fetchInboxMessages(params?: {
-  limit?: number
-  start?: number
-  searchKey?: string
-  userAccountId?: string
-}): Promise<ZohoMessage[]> {
-  const { token, config } = await getValidAccessToken(params?.userAccountId)
+export async function fetchInboxMessages(
+  settingsOrAccountId?: any,
+  params?: {
+    limit?: number
+    start?: number
+    daysBack?: number
+  },
+): Promise<ZohoMessage[]> {
+  let token: string
+  let config: any
+
+  if (settingsOrAccountId && typeof settingsOrAccountId === "object" && settingsOrAccountId.access_token) {
+    config = settingsOrAccountId
+    token = config.access_token
+  } else {
+    const result = await getValidAccessToken(settingsOrAccountId)
+    token = result.token
+    config = result.config
+  }
+
   const urls = getZohoUrls(config.data_center)
 
+  // Get inbox folder ID
+  const inboxFolderId = await getInboxFolderId(config)
+
+  // Build query parameters
   const queryParams = new URLSearchParams({
-    limit: String(params?.limit || 50),
-    start: String(params?.start || 0),
+    folderId: inboxFolderId,
+    limit: String(params?.limit || 200),
+    start: String(params?.start || 1), // Zoho uses 1-based indexing
+    sortBy: "date",
+    sortorder: "false", // false = descending (newest first)
+    includesent: "false", // CRITICAL: Exclude sent messages
+    includeto: "true", // Include recipient details
   })
 
-  if (params?.searchKey) {
-    queryParams.append("searchKey", params.searchKey)
+  // If daysBack is specified, calculate receivedTime filter
+  if (params?.daysBack) {
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - params.daysBack)
+    // Zoho expects Unix timestamp in milliseconds
+    queryParams.append("receivedTime", String(cutoffDate.getTime()))
   }
 
   const url = `${urls.mail}/api/accounts/${config.zoho_account_id}/messages/view?${queryParams}`
 
-  console.log("[v0] Fetching inbox messages from:", url)
+  console.log("[v0] [ZOHO] Fetching inbox messages from:", url)
 
   const response = await fetch(url, {
     headers: {
@@ -114,26 +144,53 @@ export async function fetchInboxMessages(params?: {
 
   if (!response.ok) {
     const error = await response.text()
-    console.error("[v0] Zoho Mail API error:", error)
+    console.error("[v0] [ZOHO] API error:", error)
     throw new Error(`Failed to fetch inbox messages: ${response.status} ${error}`)
   }
 
   const data = await response.json()
-  console.log("[v0] Zoho Mail API response structure:", JSON.stringify(data).substring(0, 200))
 
-  // Handle different response formats
-  if (Array.isArray(data)) {
-    return data
-  }
-  if (data.data && Array.isArray(data.data)) {
-    return data.data
-  }
-  if (data[1] && Array.isArray(data[1])) {
-    return data[1]
+  let messages: any[] = []
+  if (data.status?.code === 200 && data.data) {
+    messages = Array.isArray(data.data) ? data.data : []
   }
 
-  console.warn("[v0] Unexpected response format:", data)
-  return []
+  console.log(`[v0] [ZOHO] Fetched ${messages.length} inbox messages`)
+
+  const normalizedMessages: ZohoMessage[] = messages.map((msg) => {
+    // Extract sender email - Zoho returns it as a plain string in fromAddress
+    const fromAddress = (msg.fromAddress || "").toLowerCase().trim()
+
+    // Extract recipient - may need to parse if it includes display name
+    let toAddress = msg.toAddress || ""
+    if (typeof toAddress === "string") {
+      // Remove angle brackets if present: "Name <email@example.com>" -> "email@example.com"
+      const emailMatch = toAddress.match(/<([^>]+)>/)
+      toAddress = emailMatch ? emailMatch[1] : toAddress
+    }
+    toAddress = toAddress.toLowerCase().trim()
+
+    return {
+      messageId: String(msg.messageId || ""),
+      fromAddress,
+      toAddress,
+      ccAddress: msg.ccAddress || "",
+      subject: msg.subject || "",
+      content: msg.content || "",
+      summary: msg.summary || "",
+      time: msg.receivedTime || msg.sentDateInGMT || Date.now(),
+      sentDateInGMT: msg.sentDateInGMT,
+      receivedTime: msg.receivedTime,
+      hasAttachment: Boolean(msg.hasAttachment),
+      isRead: msg.status === "read",
+      status: msg.status,
+      threadId: String(msg.threadId || ""),
+      folderId: String(msg.folderId || ""),
+      sender: msg.sender || "", // Display name
+    }
+  })
+
+  return normalizedMessages
 }
 
 // Fetch a specific message by ID
@@ -266,70 +323,6 @@ export async function searchMessages(query: string, userAccountId?: string): Pro
   console.log("[v0] Search response structure:", JSON.stringify(data).substring(0, 200))
 
   // Handle different response formats
-  if (Array.isArray(data)) {
-    return data
-  }
-  if (data.data && Array.isArray(data.data)) {
-    return data.data
-  }
-  if (data[1] && Array.isArray(data[1])) {
-    return data[1]
-  }
-
-  return []
-}
-
-// Search for recent messages
-export async function searchRecentMessages(daysBack = 30, settingsOrAccountId?: any): Promise<ZohoMessage[]> {
-  let token: string
-  let config: any
-
-  // Check if we received settings directly or need to fetch them
-  if (settingsOrAccountId && typeof settingsOrAccountId === "object" && settingsOrAccountId.access_token) {
-    // We received settings directly
-    config = settingsOrAccountId
-    token = config.access_token
-    console.log("[v0] Using provided Zoho settings directly")
-  } else {
-    // We received an account ID, fetch the settings
-    const result = await getValidAccessToken(settingsOrAccountId)
-    token = result.token
-    config = result.config
-    console.log("[v0] Fetched Zoho settings using account ID")
-  }
-
-  const urls = getZohoUrls(config.data_center)
-
-  // Calculate date for search (YYYY/MM/DD format)
-  const date = new Date()
-  date.setDate(date.getDate() - daysBack)
-  const dateStr = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`
-
-  // Search for messages received after the date (searches all folders by default)
-  const searchKey = `after:${dateStr}`
-
-  const url = `${urls.mail}/api/accounts/${config.zoho_account_id}/messages/search?searchKey=${encodeURIComponent(searchKey)}&limit=200`
-
-  console.log("[v0] Searching for recent messages with query:", searchKey)
-  console.log("[v0] Search URL:", url)
-  console.log("[v0] Using Zoho account ID:", config.zoho_account_id)
-
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
-    },
-  })
-
-  if (!response.ok) {
-    const error = await response.text()
-    console.error("[v0] Zoho Mail search error:", error)
-    throw new Error(`Failed to search messages: ${response.status} ${error}`)
-  }
-
-  const data = await response.json()
-  console.log("[v0] Search response structure:", JSON.stringify(data).substring(0, 500))
-
-  // Handle different response formats
   let messages: any[] = []
 
   if (data.status?.code === 200 && data.data) {
@@ -342,46 +335,12 @@ export async function searchRecentMessages(daysBack = 30, settingsOrAccountId?: 
     messages = data[1]
   }
 
-  const normalizedMessages: ZohoMessage[] = messages.map((msg) => {
-    // Extract sender email from various possible field formats
-    let fromAddress = msg.fromAddress || msg.from || msg.sender || ""
+  return messages
+}
 
-    // If it's an object with address property, extract it
-    if (typeof fromAddress === "object" && fromAddress.address) {
-      fromAddress = fromAddress.address
-    }
-
-    // Extract recipient email
-    let toAddress = msg.toAddress || msg.to || ""
-    if (typeof toAddress === "object" && toAddress.address) {
-      toAddress = toAddress.address
-    }
-
-    // Log first message structure for debugging
-    if (messages.indexOf(msg) === 0) {
-      console.log("[v0] First message structure sample:", JSON.stringify(msg).substring(0, 300))
-      console.log("[v0] Extracted fromAddress:", fromAddress)
-      console.log("[v0] Extracted toAddress:", toAddress)
-    }
-
-    return {
-      messageId: msg.messageId || msg.id || "",
-      fromAddress,
-      toAddress,
-      ccAddress: msg.ccAddress || msg.cc || "",
-      subject: msg.subject || "",
-      content: msg.content || msg.body || "",
-      summary: msg.summary || "",
-      time: msg.sentDateInGMT ? Number(msg.sentDateInGMT) : msg.time || Date.now(),
-      sentDateInGMT: msg.sentDateInGMT,
-      hasAttachment: msg.hasAttachment || false,
-      isRead: msg.isRead || false,
-      threadId: msg.threadId || msg.conversationId || "",
-    }
-  })
-
-  console.log(`[v0] Found ${normalizedMessages.length} messages from last ${daysBack} days`)
-  return normalizedMessages
+export async function searchRecentMessages(daysBack = 30, settingsOrAccountId?: any): Promise<ZohoMessage[]> {
+  console.warn("[v0] [ZOHO] searchRecentMessages is deprecated, use fetchInboxMessages instead")
+  return fetchInboxMessages(settingsOrAccountId, { daysBack, limit: 200 })
 }
 
 // Send a reply to a message

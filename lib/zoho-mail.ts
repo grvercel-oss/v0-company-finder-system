@@ -170,6 +170,19 @@ export async function fetchInboxMessages(
     }
     toAddress = toAddress.toLowerCase().trim()
 
+    let timestamp = Date.now()
+    if (msg.receivedTime) {
+      const parsed = typeof msg.receivedTime === "string" ? Number.parseInt(msg.receivedTime, 10) : msg.receivedTime
+      if (!isNaN(parsed) && parsed > 0) {
+        timestamp = parsed
+      }
+    } else if (msg.sentDateInGMT) {
+      const parsed = typeof msg.sentDateInGMT === "string" ? Number.parseInt(msg.sentDateInGMT, 10) : msg.sentDateInGMT
+      if (!isNaN(parsed) && parsed > 0) {
+        timestamp = parsed
+      }
+    }
+
     return {
       messageId: String(msg.messageId || ""),
       fromAddress,
@@ -178,7 +191,7 @@ export async function fetchInboxMessages(
       subject: msg.subject || "",
       content: msg.content || "",
       summary: msg.summary || "",
-      time: msg.receivedTime || msg.sentDateInGMT || Date.now(),
+      time: timestamp,
       sentDateInGMT: msg.sentDateInGMT,
       receivedTime: msg.receivedTime,
       hasAttachment: Boolean(msg.hasAttachment),

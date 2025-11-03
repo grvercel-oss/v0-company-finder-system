@@ -332,10 +332,21 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
         console.log(`[v0] [MAIL] Found message from tracked contact: ${fromEmail}`)
 
         const messageTime = new Date(message.time)
+        if (isNaN(messageTime.getTime())) {
+          console.error(`[v0] [MAIL] Invalid message time for ${message.messageId}: ${message.time}`)
+          continue
+        }
+
         const sentTime = new Date(contact.sent_at)
+        if (isNaN(sentTime.getTime())) {
+          console.error(`[v0] [MAIL] Invalid sent time for contact ${contact.id}: ${contact.sent_at}`)
+          continue
+        }
 
         if (messageTime <= sentTime) {
-          console.log(`[v0] [MAIL] Skipping - message received before we sent (${messageTime} <= ${sentTime})`)
+          console.log(
+            `[v0] [MAIL] Skipping - message received before we sent (${messageTime.toISOString()} <= ${sentTime.toISOString()})`,
+          )
           continue
         }
 
@@ -386,7 +397,7 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
               WHERE id = ${contact.id}
             `
 
-            console.log(`[v0] [MAIL] Created new thread ${threadId} for contact ${contact.id}`)
+            console.log(`[v0] [MAIL] ✅ Created new thread ${threadId} for contact ${contact.id}`)
           } catch (err) {
             console.error(`[v0] [MAIL] Error creating thread for contact ${contact.id}:`, err)
             continue
@@ -412,7 +423,7 @@ async function checkZohoReplies(accountId: string, threadIds: number[], settings
               WHERE id = ${contact.id}
             `
 
-            console.log(`[v0] [MAIL] Updated existing thread ${threadId} for contact ${contact.id}`)
+            console.log(`[v0] [MAIL] ✅ Updated existing thread ${threadId} for contact ${contact.id}`)
           } catch (err) {
             console.error(`[v0] [MAIL] Error updating thread ${threadId}:`, err)
             continue

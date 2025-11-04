@@ -52,7 +52,7 @@ export function Navigation() {
             {isLoaded && isSignedIn && (
               <div className="ml-2">
                 <UserButton
-                  afterSignOutUrl="/sign-in"
+                  afterSignOutUrl="/"
                   appearance={{
                     elements: {
                       avatarBox: "h-10 w-10",

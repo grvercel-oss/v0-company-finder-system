@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter } from "next/navigation"
 
 interface User {
   id: string
@@ -23,7 +23,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
-  const pathname = usePathname()
 
   useEffect(() => {
     checkAuth()
@@ -39,16 +38,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(data.account)
         } else {
           setUser(null)
-          // Redirect to login if not on auth pages
-          if (!pathname?.startsWith("/login") && !pathname?.startsWith("/signup")) {
-            router.push("/login")
-          }
         }
       } else {
         setUser(null)
-        if (!pathname?.startsWith("/login") && !pathname?.startsWith("/signup")) {
-          router.push("/login")
-        }
       }
     } catch (error) {
       console.error("[v0] Auth check failed:", error)

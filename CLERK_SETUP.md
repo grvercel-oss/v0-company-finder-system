@@ -62,3 +62,17 @@ If you're migrating from the custom authentication system:
 - ✅ Session management
 - ✅ Automatic user sync to database
 - ✅ Row Level Security integration
+
+## Sign Out Configuration
+
+When users sign out, Clerk will automatically redirect them to the home page (`/`). The landing page will show:
+- Sign In and Sign Up buttons for unauthenticated users
+- Dashboard access for authenticated users (auto-redirects to `/dashboard`)
+
+The middleware is configured to allow public access to:
+- `/` - Landing page
+- `/sign-in` - Clerk sign in page
+- `/sign-up` - Clerk sign up page
+- `/api/webhooks` - Webhook endpoints
+
+All other routes require authentication and will redirect to the sign-in page.

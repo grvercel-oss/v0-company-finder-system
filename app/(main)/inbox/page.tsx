@@ -52,13 +52,19 @@ export default function InboxPage() {
 
   const fetchThreads = async () => {
     try {
+      console.log("[v0] [INBOX] Fetching threads from API...")
       const response = await fetch("/api/emails/threads")
+      console.log("[v0] [INBOX] API response status:", response.status)
+
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] [INBOX] Received threads:", data.threads?.length || 0)
         setThreads(data.threads)
+      } else {
+        console.error("[v0] [INBOX] Failed to fetch threads:", response.status, response.statusText)
       }
     } catch (error) {
-      console.error("Failed to fetch threads:", error)
+      console.error("[v0] [INBOX] Failed to fetch threads:", error)
     } finally {
       setLoading(false)
     }

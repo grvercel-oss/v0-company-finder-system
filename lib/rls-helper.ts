@@ -52,7 +52,7 @@ export async function getAccountIdFromRequest(request: Request): Promise<string>
     }
 
     // 4. Fallback: Get from database (check if any config exists)
-    if (process.env.NEON_NEON_NEON_NEON_NEON_DATABASE_URL) {
+    if (process.env.NEON_NEON_DATABASE_URL) {
       try {
         const timeoutPromise = new Promise<null>((_, reject) =>
           setTimeout(() => reject(new Error("Database query timeout")), 3000),

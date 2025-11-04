@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { exchangeCodeForTokens, getUserProfile } from "@/lib/outlook-oauth"
 import { saveEmailProvider, type OutlookSettings } from "@/lib/email-provider"
-import { sql } from "@/lib/db"
-import { randomUUID } from "crypto"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 export async function GET(request: Request) {
   console.log("[v0] [OUTLOOK-CALLBACK] Outlook OAuth callback received")
@@ -44,6 +43,15 @@ export async function GET(request: Request) {
 
   console.log("[v0] [OUTLOOK-CALLBACK] State verified successfully")
 
+  const accountId = await getAccountIdFromRequest(request)
+
+  if (!accountId) {
+    console.error("[v0] [OUTLOOK-CALLBACK] No account_id in session - user must be logged in")
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=not_authenticated`)
+  }
+
+  console.log("[v0] [OUTLOOK-CALLBACK] Using account_id from session:", accountId)
+
   try {
     console.log("[v0] [OUTLOOK-CALLBACK] Exchanging code for tokens...")
     const tokens = await exchangeCodeForTokens(code)
@@ -60,34 +68,6 @@ export async function GET(request: Request) {
       displayName: profile.displayName,
     })
 
-    console.log("[v0] [OUTLOOK-CALLBACK] Looking for existing account with email:", profile.email)
-    const accountResult = await sql`
-      SELECT id FROM accounts WHERE email = ${profile.email} LIMIT 1
-    `
-
-    let accountId: string
-
-    if (accountResult.length === 0) {
-      accountId = randomUUID()
-      console.log("[v0] [OUTLOOK-CALLBACK] No existing account found, creating new account:", accountId)
-
-      await sql`
-        INSERT INTO accounts (id, email, full_name, created_at, updated_at)
-        VALUES (${accountId}, ${profile.email}, ${profile.displayName}, NOW(), NOW())
-      `
-      console.log("[v0] [OUTLOOK-CALLBACK] New account created successfully")
-    } else {
-      accountId = accountResult[0].id
-      console.log("[v0] [OUTLOOK-CALLBACK] Found existing account:", accountId)
-
-      // Update last login
-      await sql`
-        UPDATE accounts 
-        SET last_login_at = NOW(), updated_at = NOW()
-        WHERE id = ${accountId}
-      `
-    }
-
     const expiresAt = Date.now() + tokens.expires_in * 1000
     const settings: OutlookSettings = {
       email: profile.email,
@@ -101,13 +81,6 @@ export async function GET(request: Request) {
     console.log("[v0] [OUTLOOK-CALLBACK] Provider config saved successfully")
 
     const response = NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/settings?success=outlook_connected`)
-    response.cookies.set("account_id", accountId, {
-      path: "/",
-      maxAge: 31536000, // 1 year
-      httpOnly: false,
-      sameSite: "lax",
-    })
-
     response.cookies.delete("oauth_state")
 
     console.log("[v0] [OUTLOOK-CALLBACK] OAuth flow completed successfully")

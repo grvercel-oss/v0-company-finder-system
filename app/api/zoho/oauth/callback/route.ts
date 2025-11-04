@@ -2,8 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { getZohoUrls, getPlatformCredentials } from "@/lib/zoho-oauth"
 import { saveEmailProvider } from "@/lib/email-provider"
 import type { ZohoSettings } from "@/lib/email-provider"
-import { sql } from "@/lib/db"
-import { randomUUID } from "crypto"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -22,6 +21,15 @@ export async function GET(request: NextRequest) {
   if (!code) {
     return NextResponse.redirect(`${origin}/settings?error=no_code`)
   }
+
+  const accountId = await getAccountIdFromRequest(request)
+
+  if (!accountId) {
+    console.error("[v0] [ZOHO-CALLBACK] No account_id in session - user must be logged in")
+    return NextResponse.redirect(`${origin}/login?error=not_authenticated`)
+  }
+
+  console.log("[v0] [ZOHO-CALLBACK] Using account_id from session:", accountId)
 
   try {
     const { clientId, clientSecret } = getPlatformCredentials()
@@ -81,34 +89,6 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] Account info extracted:", { zohoAccountId, accountEmail, accountName })
 
-    console.log("[v0] [ZOHO-CALLBACK] Looking for existing account with email:", accountEmail)
-    const accountResult = await sql`
-      SELECT id FROM accounts WHERE email = ${accountEmail} LIMIT 1
-    `
-
-    let userAccountId: string
-
-    if (accountResult.length === 0) {
-      userAccountId = randomUUID()
-      console.log("[v0] [ZOHO-CALLBACK] No existing account found, creating new account:", userAccountId)
-
-      await sql`
-        INSERT INTO accounts (id, email, full_name, created_at, updated_at)
-        VALUES (${userAccountId}, ${accountEmail}, ${accountName}, NOW(), NOW())
-      `
-      console.log("[v0] [ZOHO-CALLBACK] New account created successfully")
-    } else {
-      userAccountId = accountResult[0].id
-      console.log("[v0] [ZOHO-CALLBACK] Found existing account:", userAccountId)
-
-      // Update last login
-      await sql`
-        UPDATE accounts 
-        SET last_login_at = NOW(), updated_at = NOW()
-        WHERE id = ${userAccountId}
-      `
-    }
-
     const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000)
 
     const zohoSettings: ZohoSettings = {
@@ -117,25 +97,17 @@ export async function GET(request: NextRequest) {
       refresh_token: tokenData.refresh_token,
       token_expires_at: expiresAt,
       data_center: dataCenter,
-      zoho_account_id: zohoAccountId, // Store the Zoho account ID
+      zoho_account_id: zohoAccountId,
       account_name: accountName || undefined,
       is_active: true,
     }
 
-    await saveEmailProvider(userAccountId, "zoho", zohoSettings)
+    await saveEmailProvider(accountId, "zoho", zohoSettings)
 
     console.log("[v0] Zoho configuration saved successfully to unified provider table")
 
-    console.log("[v0] [ZOHO-CALLBACK] Setting account_id cookie:", userAccountId)
+    console.log("[v0] [ZOHO-CALLBACK] Redirecting to settings with success message")
     const response = NextResponse.redirect(`${origin}/settings?success=zoho_connected`)
-    response.cookies.set("account_id", userAccountId, {
-      path: "/",
-      maxAge: 31536000,
-      httpOnly: false,
-      sameSite: "lax",
-    })
-
-    console.log("[v0] [ZOHO-CALLBACK] Redirecting to settings with success message and account_id cookie")
     return response
   } catch (error: any) {
     console.error("[v0] OAuth callback error:", error)

@@ -199,7 +199,7 @@ export async function initializeDatabase(): Promise<{ success: boolean; error?: 
         contact_name TEXT,
         email TEXT NOT NULL,
         company_info JSONB DEFAULT '{}',
-        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'email_generated', 'sent', 'replied', 'bounced', 'failed')), // Updated status check to include 'failed'
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'email_generated', 'sent', 'replied', 'bounced', 'failed')),
         email_subject TEXT,
         email_body TEXT,
         message_id TEXT,

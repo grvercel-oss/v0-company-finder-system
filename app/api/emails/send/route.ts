@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { sendEmail } from "@/lib/zoho-oauth"
 import { sendOutlookEmail } from "@/lib/outlook-mail"
+import { sendGmailEmail } from "@/lib/gmail-mail"
 import { getAccountId } from "@/lib/rls-helper"
 import { getEmailProvider } from "@/lib/email-provider"
 
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
         let emailResult: any
         let messageId: string
         let internetMessageId: string | null = null
+        let threadId: string | null = null
 
         if (provider === "zoho") {
           console.log("[v0] [SEND] Sending via Zoho...")
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
           })
           messageId = emailResult.data?.messageId || `sent-${Date.now()}-${contactId}`
           console.log("[v0] [SEND] Zoho send result:", { messageId })
-        } else {
+        } else if (provider === "outlook") {
           console.log("[v0] [SEND] Sending via Outlook...")
           console.log("[v0] [SEND] Email details:", {
             to: contact.email,
@@ -89,9 +91,36 @@ export async function POST(request: Request) {
             internetMessageId,
             conversationId: emailResult.conversationId,
           })
+        } else if (provider === "gmail") {
+          console.log("[v0] [SEND] Sending via Gmail...")
+          console.log("[v0] [SEND] Email details:", {
+            to: contact.email,
+            subject: contact.subject,
+            bodyLength: contact.body?.length,
+          })
+
+          emailResult = await sendGmailEmail({
+            accountId,
+            to: contact.email,
+            subject: contact.subject,
+            body: contact.body,
+            isHtml: true,
+          })
+          messageId = emailResult.messageId
+          threadId = emailResult.threadId
+          console.log("[v0] [SEND] Gmail send result:", {
+            messageId,
+            threadId,
+            labelIds: emailResult.labelIds,
+          })
+        } else {
+          throw new Error(`Unsupported provider: ${provider}`)
         }
 
         const now = new Date().toISOString()
+
+        const threadIdentifier =
+          provider === "gmail" ? threadId : provider === "outlook" ? internetMessageId || messageId : messageId
 
         const threadResult = await sql`
           INSERT INTO email_threads (
@@ -100,15 +129,15 @@ export async function POST(request: Request) {
           )
           VALUES (
             ${contactId}, ${contact.campaign_id}, 
-            ${provider === "zoho" ? messageId : internetMessageId || messageId}, 
+            ${threadIdentifier}, 
             ${contact.subject}, 'active',
             1, ${now}, ${accountId}
           )
           RETURNING id
         `
 
-        const threadId = threadResult[0].id
-        console.log("[v0] [SEND] Created email thread:", threadId)
+        const threadDbId = threadResult[0].id
+        console.log("[v0] [SEND] Created email thread:", threadDbId)
 
         if (provider === "zoho") {
           await sql`
@@ -118,7 +147,7 @@ export async function POST(request: Request) {
               sent_at, account_id, provider
             )
             VALUES (
-              ${threadId}, ${messageId}, ${messageId}, 'sent',
+              ${threadDbId}, ${messageId}, ${messageId}, 'sent',
               ${emailResult.data?.fromAddress || ""}, ${contact.email}, 
               ${contact.subject}, ${contact.body}, ${contact.body},
               ${now}, ${accountId}, 'zoho'
@@ -131,13 +160,13 @@ export async function POST(request: Request) {
               status = 'sent',
               sent_at = ${now},
               failed_reason = NULL,
-              thread_id = ${threadId},
+              thread_id = ${threadDbId},
               zoho_message_id = ${messageId},
               account_id = ${accountId},
               updated_at = ${now}
             WHERE id = ${contactId}
           `
-        } else {
+        } else if (provider === "outlook") {
           await sql`
             INSERT INTO email_messages (
               thread_id, message_id, outlook_message_id, direction,
@@ -145,7 +174,7 @@ export async function POST(request: Request) {
               sent_at, account_id, provider
             )
             VALUES (
-              ${threadId}, ${messageId}, ${internetMessageId}, 'sent',
+              ${threadDbId}, ${messageId}, ${internetMessageId}, 'sent',
               '', ${contact.email}, 
               ${contact.subject}, ${contact.body}, ${contact.body},
               ${now}, ${accountId}, 'outlook'
@@ -158,8 +187,36 @@ export async function POST(request: Request) {
               status = 'sent',
               sent_at = ${now},
               failed_reason = NULL,
-              thread_id = ${threadId},
+              thread_id = ${threadDbId},
               outlook_message_id = ${internetMessageId},
+              account_id = ${accountId},
+              updated_at = ${now}
+            WHERE id = ${contactId}
+          `
+        } else if (provider === "gmail") {
+          await sql`
+            INSERT INTO email_messages (
+              thread_id, message_id, gmail_message_id, direction,
+              from_email, to_email, subject, body, html_body,
+              sent_at, account_id, provider
+            )
+            VALUES (
+              ${threadDbId}, ${messageId}, ${messageId}, 'sent',
+              '', ${contact.email}, 
+              ${contact.subject}, ${contact.body}, ${contact.body},
+              ${now}, ${accountId}, 'gmail'
+            )
+          `
+
+          await sql`
+            UPDATE contacts
+            SET 
+              status = 'sent',
+              sent_at = ${now},
+              failed_reason = NULL,
+              thread_id = ${threadDbId},
+              gmail_message_id = ${messageId},
+              gmail_thread_id = ${threadId},
               account_id = ${accountId},
               updated_at = ${now}
             WHERE id = ${contactId}

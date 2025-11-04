@@ -1,37 +1,26 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 
-// Public routes that don't require authentication
-const publicRoutes = ["/login", "/signup"]
-const publicApiRoutes = ["/api/auth/login", "/api/auth/signup", "/api/auth/session"]
+const isClerkConfigured = !!(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY)
 
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+// Define public routes that don't require authentication
+const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)", "/api/webhooks(.*)"])
 
-  if (publicRoutes.includes(pathname) || publicApiRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.next()
+export default clerkMiddleware(async (auth, request) => {
+  if (!isClerkConfigured) {
+    return
   }
 
-  const sessionCookie = request.cookies.get("account_session")
-
-  if (!sessionCookie && !publicRoutes.includes(pathname)) {
-    const loginUrl = new URL("/login", request.url)
-    return NextResponse.redirect(loginUrl)
+  // Protect all routes except public ones
+  if (!isPublicRoute(request)) {
+    await auth.protect()
   }
+})
 
-  return NextResponse.next()
-}
-
-// Configure which routes to run middleware on
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public files (public folder)
-     */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Skip Next.js internals and all static files
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
   ],
 }

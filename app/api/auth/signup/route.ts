@@ -2,9 +2,8 @@ import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 import { hashPassword, validatePassword, validateEmail, generateAccountId } from "@/lib/auth"
 import { setSession } from "@/lib/session"
-import { generateVerificationToken, getVerificationTokenExpiry, sendVerificationEmail } from "@/lib/email-verification"
 
-const sql = neon(process.env.NEON_NEON_NEON_DATABASE_URL!)
+const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,23 +41,14 @@ export async function POST(request: NextRequest) {
     // Generate account ID
     const accountId = generateAccountId()
 
-    const verificationToken = generateVerificationToken()
-    const verificationTokenExpires = getVerificationTokenExpiry()
-
+    // Create account
     await sql`
-      INSERT INTO accounts (
-        id, email, password_hash, full_name, 
-        verification_token, verification_token_expires, email_verified,
-        created_at, updated_at, last_login_at
-      )
+      INSERT INTO accounts (id, email, password_hash, full_name, created_at, updated_at, last_login_at)
       VALUES (
         ${accountId},
         ${email.toLowerCase()},
         ${passwordHash},
         ${fullName},
-        ${verificationToken},
-        ${verificationTokenExpires},
-        false,
         NOW(),
         NOW(),
         NOW()
@@ -66,8 +56,6 @@ export async function POST(request: NextRequest) {
     `
 
     console.log("[v0] Account created:", accountId, email)
-
-    await sendVerificationEmail(email, verificationToken)
 
     // Set session
     await setSession({
@@ -83,9 +71,7 @@ export async function POST(request: NextRequest) {
           id: accountId,
           email: email.toLowerCase(),
           fullName,
-          emailVerified: false,
         },
-        message: "Account created! Please check your email (or console) to verify your account.",
       },
       { status: 201 },
     )

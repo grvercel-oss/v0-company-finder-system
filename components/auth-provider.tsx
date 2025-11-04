@@ -9,7 +9,6 @@ interface User {
   id: string
   email: string
   fullName: string
-  emailVerified: boolean
 }
 
 interface AuthContextType {
@@ -35,8 +34,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (response.ok) {
         const data = await response.json()
-        if (data.user) {
-          setUser(data.user)
+        if (data.authenticated) {
+          setUser(data.account)
         } else {
           setUser(null)
         }

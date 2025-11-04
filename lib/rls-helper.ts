@@ -1,90 +1,27 @@
 import { sql } from "@/lib/db"
-import { cookies } from "next/headers"
+import { auth } from "@clerk/nextjs/server"
 
 const DEFAULT_ACCOUNT_ID = "00000000-0000-0000-0000-000000000000"
 
 /**
- * Get the current account ID from the request
- * Returns DEFAULT_ACCOUNT_ID if no account is found (single-user mode)
+ * Get the current account ID from Clerk authentication
+ * Returns the Clerk user ID as the account_id
  */
-export async function getAccountIdFromRequest(request: Request): Promise<string> {
-  console.log("[v0] [RLS] Getting account ID from request...")
+export async function getAccountIdFromRequest(request?: Request): Promise<string> {
+  console.log("[v0] [RLS] Getting account ID from Clerk...")
 
   try {
-    try {
-      const cookieStore = await cookies()
-      const sessionCookie = cookieStore.get("account_session")?.value
+    const { userId } = await auth()
 
-      if (sessionCookie) {
-        const sessionData = JSON.parse(sessionCookie)
-        if (sessionData.accountId) {
-          console.log("[v0] [RLS] Using account_id from session:", sessionData.accountId)
-          return sessionData.accountId
-        }
-      }
-    } catch (error) {
-      console.error("[v0] [RLS] Error reading session cookie:", error)
+    if (userId) {
+      console.log("[v0] [RLS] Using Clerk user ID as account_id:", userId)
+      return userId
     }
 
-    // 2. Check for account_id in header (for API calls)
-    try {
-      const headerAccountId = request.headers.get("x-account-id")
-      console.log("[v0] [RLS] Header account_id:", headerAccountId ? "found" : "not found")
-      if (headerAccountId) {
-        console.log("[v0] [RLS] Using account_id from header:", headerAccountId)
-        return headerAccountId
-      }
-    } catch (error) {
-      console.error("[v0] [RLS] Error reading header:", error)
-    }
-
-    // 3. Check for old account_id cookie (backward compatibility)
-    try {
-      const cookieStore = await cookies()
-      const cookieAccountId = cookieStore.get("account_id")?.value
-      console.log("[v0] [RLS] Cookie account_id:", cookieAccountId ? "found" : "not found")
-      if (cookieAccountId) {
-        console.log("[v0] [RLS] Using account_id from cookie:", cookieAccountId)
-        return cookieAccountId
-      }
-    } catch (error) {
-      console.error("[v0] [RLS] Error reading cookie:", error)
-    }
-
-    // 4. Fallback: Get from database (check if any config exists)
-    if (process.env.NEON_NEON_DATABASE_URL) {
-      try {
-        const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error("Database query timeout")), 3000),
-        )
-
-        const queryPromise = sql`
-          SELECT account_id 
-          FROM account_email_provider 
-          WHERE account_id IS NOT NULL
-          LIMIT 1
-        `
-
-        const result = await Promise.race([queryPromise, timeoutPromise])
-        console.log(
-          "[v0] [RLS] Database query result:",
-          result ? `${Array.isArray(result) ? result.length : 0} rows` : "null",
-        )
-
-        if (result && Array.isArray(result) && result.length > 0 && result[0]?.account_id) {
-          console.log("[v0] [RLS] Found account_id in database:", result[0].account_id)
-          return result[0].account_id
-        }
-      } catch (error) {
-        // Ignore errors and fall through to default
-        console.error("[v0] [RLS] Error querying database:", error instanceof Error ? error.message : error)
-      }
-    }
-
-    console.log("[v0] [RLS] No account_id found from any source, using default:", DEFAULT_ACCOUNT_ID)
+    console.log("[v0] [RLS] No Clerk user found, using default:", DEFAULT_ACCOUNT_ID)
     return DEFAULT_ACCOUNT_ID
   } catch (error) {
-    console.error("[v0] [RLS] Error getting account ID from request:", error)
+    console.error("[v0] [RLS] Error getting account ID from Clerk:", error)
     console.log("[v0] [RLS] Returning default account ID due to error:", DEFAULT_ACCOUNT_ID)
     return DEFAULT_ACCOUNT_ID
   }

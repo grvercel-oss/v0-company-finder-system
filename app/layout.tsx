@@ -2,7 +2,8 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
-import { AuthProvider } from "@/components/auth-provider"
+import { ClerkProvider } from "@clerk/nextjs"
+import { ClerkSetupBanner } from "@/components/clerk-setup-banner"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,16 +21,28 @@ export const metadata: Metadata = {
   generator: "v0.app",
 }
 
+const isClerkConfigured = !!(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY)
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  if (!isClerkConfigured) {
+    return (
+      <html lang="en">
+        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+          <ClerkSetupBanner />
+        </body>
+      </html>
+    )
+  }
+
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AuthProvider>{children}</AuthProvider>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
+      </html>
+    </ClerkProvider>
   )
 }

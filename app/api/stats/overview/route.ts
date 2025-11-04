@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const totalCompanies = await sql`SELECT COUNT(*) as count FROM companies`
-    const totalSearches = await sql`SELECT COUNT(*) as count FROM search_history`
-    const avgQuality = await sql`SELECT AVG(data_quality_score) as average FROM companies`
-    const verifiedCompanies = await sql`SELECT COUNT(*) as count FROM companies WHERE verified = true`
+    const accountId = await getAccountIdFromRequest(request)
+
+    const totalCompanies = await sql`SELECT COUNT(*) as count FROM companies WHERE account_id = ${accountId}`
+    const totalSearches = await sql`SELECT COUNT(*) as count FROM search_history WHERE account_id = ${accountId}`
+    const avgQuality =
+      await sql`SELECT AVG(data_quality_score) as average FROM companies WHERE account_id = ${accountId}`
+    const verifiedCompanies =
+      await sql`SELECT COUNT(*) as count FROM companies WHERE account_id = ${accountId} AND verified = true`
 
     return NextResponse.json({
       totalCompanies: Number(totalCompanies[0]?.count || 0),

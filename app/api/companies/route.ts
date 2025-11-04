@@ -1,8 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 export async function GET(request: NextRequest) {
   try {
+    const accountId = await getAccountIdFromRequest(request)
+
     const searchParams = request.nextUrl.searchParams
     const industry = searchParams.get("industry")
     const location = searchParams.get("location")
@@ -11,10 +14,9 @@ export async function GET(request: NextRequest) {
     const limit = Number.parseInt(searchParams.get("limit") || "50")
     const offset = Number.parseInt(searchParams.get("offset") || "0")
 
-    // Build dynamic query
-    let query = "SELECT * FROM companies WHERE 1=1"
-    const params: any[] = []
-    let paramIndex = 1
+    let query = "SELECT * FROM companies WHERE account_id = $1"
+    const params: any[] = [accountId]
+    let paramIndex = 2
 
     if (industry) {
       query += ` AND industry = $${paramIndex}`
@@ -44,10 +46,9 @@ export async function GET(request: NextRequest) {
     const companiesResult = await sql.query(query, params)
     const companies = companiesResult.rows
 
-    // Get total count
-    let countQuery = "SELECT COUNT(*) as total FROM companies WHERE 1=1"
-    const countParams: any[] = []
-    let countParamIndex = 1
+    let countQuery = "SELECT COUNT(*) as total FROM companies WHERE account_id = $1"
+    const countParams: any[] = [accountId]
+    let countParamIndex = 2
 
     if (industry) {
       countQuery += ` AND industry = $${countParamIndex}`

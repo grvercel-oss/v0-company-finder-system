@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 // GET all campaigns
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const accountId = await getAccountIdFromRequest(request)
+
     const campaigns = await sql`
       SELECT 
         c.*,
@@ -12,6 +15,7 @@ export async function GET() {
         COUNT(DISTINCT CASE WHEN co.status = 'replied' THEN co.id END) as replies_received
       FROM campaigns c
       LEFT JOIN contacts co ON c.id = co.campaign_id
+      WHERE c.account_id = ${accountId}
       GROUP BY c.id
       ORDER BY c.created_at DESC
     `
@@ -26,6 +30,8 @@ export async function GET() {
 // POST create new campaign
 export async function POST(request: Request) {
   try {
+    const accountId = await getAccountIdFromRequest(request)
+
     const body = await request.json()
     const { name, description } = body
 
@@ -34,8 +40,8 @@ export async function POST(request: Request) {
     }
 
     const result = await sql`
-      INSERT INTO campaigns (name, description, status)
-      VALUES (${name}, ${description || ""}, 'draft')
+      INSERT INTO campaigns (name, description, status, account_id)
+      VALUES (${name}, ${description || ""}, 'draft', ${accountId})
       RETURNING *
     `
 

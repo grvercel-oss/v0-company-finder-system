@@ -1,13 +1,26 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 export async function GET(request: Request) {
   try {
+    const accountId = await getAccountIdFromRequest(request)
+
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status")
     const campaignId = searchParams.get("campaignId")
 
-    let query = sql`
+    const conditions = [sql`t.account_id = ${accountId}`]
+
+    if (status) {
+      conditions.push(sql`t.status = ${status}`)
+    }
+
+    if (campaignId) {
+      conditions.push(sql`t.campaign_id = ${Number.parseInt(campaignId)}`)
+    }
+
+    const threads = await sql`
       SELECT 
         t.*,
         c.email as contact_email,
@@ -19,20 +32,9 @@ export async function GET(request: Request) {
       FROM email_threads t
       LEFT JOIN contacts c ON t.contact_id = c.id
       LEFT JOIN campaigns camp ON t.campaign_id = camp.id
-      WHERE 1=1
+      WHERE ${sql.join(conditions, sql` AND `)}
+      ORDER BY t.last_message_at DESC NULLS LAST, t.created_at DESC
     `
-
-    if (status) {
-      query = sql`${query} AND t.status = ${status}`
-    }
-
-    if (campaignId) {
-      query = sql`${query} AND t.campaign_id = ${Number.parseInt(campaignId)}`
-    }
-
-    query = sql`${query} ORDER BY t.last_message_at DESC NULLS LAST, t.created_at DESC`
-
-    const threads = await query
 
     return NextResponse.json({ threads })
   } catch (error) {

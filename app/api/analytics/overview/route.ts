@@ -1,26 +1,30 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Get companies stats
-    const totalCompanies = await sql`SELECT COUNT(*) as count FROM companies`
-    const verifiedCompanies = await sql`SELECT COUNT(*) as count FROM companies WHERE verified = true`
+    const accountId = await getAccountIdFromRequest(request)
+
+    const totalCompanies = await sql`SELECT COUNT(*) as count FROM companies WHERE account_id = ${accountId}`
+    const verifiedCompanies =
+      await sql`SELECT COUNT(*) as count FROM companies WHERE account_id = ${accountId} AND verified = true`
     const avgQuality =
-      await sql`SELECT AVG(data_quality_score) as average FROM companies WHERE data_quality_score IS NOT NULL`
+      await sql`SELECT AVG(data_quality_score) as average FROM companies WHERE account_id = ${accountId} AND data_quality_score IS NOT NULL`
 
-    // Get search stats
-    const totalSearches = await sql`SELECT COUNT(*) as count FROM search_history`
-    const totalSearchCost = await sql`SELECT SUM(total_cost) as total FROM search_history WHERE total_cost IS NOT NULL`
+    const totalSearches = await sql`SELECT COUNT(*) as count FROM search_history WHERE account_id = ${accountId}`
+    const totalSearchCost =
+      await sql`SELECT SUM(total_cost) as total FROM search_history WHERE account_id = ${accountId} AND total_cost IS NOT NULL`
 
-    // Get campaign stats
-    const totalCampaigns = await sql`SELECT COUNT(*) as count FROM campaigns`
-    const activeCampaigns = await sql`SELECT COUNT(*) as count FROM campaigns WHERE status = 'active'`
+    const totalCampaigns = await sql`SELECT COUNT(*) as count FROM campaigns WHERE account_id = ${accountId}`
+    const activeCampaigns =
+      await sql`SELECT COUNT(*) as count FROM campaigns WHERE account_id = ${accountId} AND status = 'active'`
 
-    // Get contact stats
-    const totalContacts = await sql`SELECT COUNT(*) as count FROM contacts`
-    const emailsSent = await sql`SELECT COUNT(*) as count FROM contacts WHERE status IN ('sent', 'replied')`
-    const repliesReceived = await sql`SELECT COUNT(*) as count FROM contacts WHERE status = 'replied'`
+    const totalContacts = await sql`SELECT COUNT(*) as count FROM contacts WHERE account_id = ${accountId}`
+    const emailsSent =
+      await sql`SELECT COUNT(*) as count FROM contacts WHERE account_id = ${accountId} AND status IN ('sent', 'replied')`
+    const repliesReceived =
+      await sql`SELECT COUNT(*) as count FROM contacts WHERE account_id = ${accountId} AND status = 'replied'`
 
     return NextResponse.json({
       companies: {

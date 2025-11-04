@@ -1,11 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { initializeDatabase } from "@/lib/db-init"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 // GET /api/lists - Get all company lists
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Fetching all company lists")
+    const accountId = await getAccountIdFromRequest(request)
+
+    console.log("[v0] Fetching company lists for account:", accountId)
 
     const lists = await sql`
       SELECT 
@@ -13,6 +16,7 @@ export async function GET() {
         COUNT(cli.id) as company_count
       FROM company_lists cl
       LEFT JOIN company_list_items cli ON cl.id = cli.list_id
+      WHERE cl.account_id = ${accountId}
       GROUP BY cl.id
       ORDER BY cl.created_at DESC
     `
@@ -30,12 +34,14 @@ export async function GET() {
       if (initResult.success) {
         console.log("[v0] Database initialized, retrying query...")
         try {
+          const accountId = await getAccountIdFromRequest(request)
           const lists = await sql`
             SELECT 
               cl.*,
               COUNT(cli.id) as company_count
             FROM company_lists cl
             LEFT JOIN company_list_items cli ON cl.id = cli.list_id
+            WHERE cl.account_id = ${accountId}
             GROUP BY cl.id
             ORDER BY cl.created_at DESC
           `
@@ -54,18 +60,20 @@ export async function GET() {
 // POST /api/lists - Create a new company list
 export async function POST(request: NextRequest) {
   try {
+    const accountId = await getAccountIdFromRequest(request)
+
     const body = await request.json()
     const { name, description } = body
 
-    console.log("[v0] Creating new list:", name)
+    console.log("[v0] Creating new list:", name, "for account:", accountId)
 
     if (!name) {
       return NextResponse.json({ error: "List name is required" }, { status: 400 })
     }
 
     const result = await sql`
-      INSERT INTO company_lists (name, description)
-      VALUES (${name}, ${description || null})
+      INSERT INTO company_lists (name, description, account_id)
+      VALUES (${name}, ${description || null}, ${accountId})
       RETURNING *
     `
 

@@ -3,6 +3,8 @@ import { getZohoUrls, getPlatformCredentials } from "@/lib/zoho-oauth"
 import { saveEmailProvider } from "@/lib/email-provider"
 import type { ZohoSettings } from "@/lib/email-provider"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
+import { currentUser } from "@clerk/nextjs/server"
+import { syncClerkUser } from "@/lib/clerk-sync"
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -20,6 +22,19 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.redirect(`${origin}/settings?error=no_code`)
+  }
+
+  try {
+    const user = await currentUser()
+    if (user) {
+      const email = user.emailAddresses[0]?.emailAddress || ""
+      const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || email
+      await syncClerkUser(user.id, email, fullName)
+      console.log("[v0] [ZOHO-CALLBACK] Synced Clerk user to accounts table:", user.id)
+    }
+  } catch (syncError) {
+    console.error("[v0] [ZOHO-CALLBACK] Error syncing Clerk user:", syncError)
+    // Continue anyway - getAccountIdFromRequest will handle it
   }
 
   const accountId = await getAccountIdFromRequest(request)

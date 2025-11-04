@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { exchangeCodeForTokens, getUserProfile } from "@/lib/outlook-oauth"
 import { saveEmailProvider, type OutlookSettings } from "@/lib/email-provider"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
+import { currentUser } from "@clerk/nextjs/server"
+import { syncClerkUser } from "@/lib/clerk-sync"
 
 export async function GET(request: Request) {
   console.log("[v0] [OUTLOOK-CALLBACK] Outlook OAuth callback received")
@@ -42,6 +44,19 @@ export async function GET(request: Request) {
   }
 
   console.log("[v0] [OUTLOOK-CALLBACK] State verified successfully")
+
+  try {
+    const user = await currentUser()
+    if (user) {
+      const email = user.emailAddresses[0]?.emailAddress || ""
+      const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || email
+      await syncClerkUser(user.id, email, fullName)
+      console.log("[v0] [OUTLOOK-CALLBACK] Synced Clerk user to accounts table:", user.id)
+    }
+  } catch (syncError) {
+    console.error("[v0] [OUTLOOK-CALLBACK] Error syncing Clerk user:", syncError)
+    // Continue anyway - getAccountIdFromRequest will handle it
+  }
 
   const accountId = await getAccountIdFromRequest(request)
 

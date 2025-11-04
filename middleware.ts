@@ -6,7 +6,19 @@ const publicRoutes = ["/login", "/signup"]
 const publicApiRoutes = ["/api/auth/login", "/api/auth/signup", "/api/auth/session"]
 
 export function middleware(request: NextRequest) {
-  // Allow all requests without authentication
+  const { pathname } = request.nextUrl
+
+  if (publicRoutes.includes(pathname) || publicApiRoutes.some((route) => pathname.startsWith(route))) {
+    return NextResponse.next()
+  }
+
+  const sessionCookie = request.cookies.get("account_session")
+
+  if (!sessionCookie && !publicRoutes.includes(pathname)) {
+    const loginUrl = new URL("/login", request.url)
+    return NextResponse.redirect(loginUrl)
+  }
+
   return NextResponse.next()
 }
 

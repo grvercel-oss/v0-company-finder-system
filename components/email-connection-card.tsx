@@ -201,13 +201,20 @@ export function EmailConnectionCard() {
             {providers.map((provider) => (
               <button
                 key={provider.id}
-                onClick={() => handleConnect(provider)}
+                onClick={() => provider.id !== "gmail" && handleConnect(provider)}
                 onMouseEnter={() => setHoveredProvider(provider.id)}
                 onMouseLeave={() => setHoveredProvider(null)}
-                className="group relative aspect-square w-full max-w-sm rounded-3xl border-2 border-border bg-gradient-to-br from-primary/10 to-primary/5 p-12 transition-all duration-300 hover:border-primary hover:shadow-xl hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                disabled={provider.id === "gmail"}
+                className={`group relative aspect-square w-full max-w-sm rounded-3xl border-2 border-border bg-gradient-to-br from-primary/10 to-primary/5 p-12 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  provider.id === "gmail"
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:border-primary hover:shadow-xl hover:scale-105"
+                }`}
               >
                 <div className="flex h-full flex-col items-center justify-center gap-6">
-                  <div className="relative h-40 w-40 transition-transform duration-300 group-hover:scale-110">
+                  <div
+                    className={`relative h-40 w-40 transition-transform duration-300 ${provider.id !== "gmail" && "group-hover:scale-110"}`}
+                  >
                     <Image
                       src={provider.logo || "/placeholder.svg"}
                       alt={`${provider.name} logo`}
@@ -217,10 +224,16 @@ export function EmailConnectionCard() {
                   </div>
                   <div
                     className={`text-center transition-opacity duration-300 ${
-                      hoveredProvider === provider.id ? "opacity-100" : "opacity-0"
+                      provider.id === "gmail"
+                        ? "opacity-100"
+                        : hoveredProvider === provider.id
+                          ? "opacity-100"
+                          : "opacity-0"
                     }`}
                   >
-                    <p className="text-base font-semibold text-foreground">Connect to {provider.name}</p>
+                    <p className="text-base font-semibold text-foreground">
+                      {provider.id === "gmail" ? "Coming Soon" : `Connect to ${provider.name}`}
+                    </p>
                   </div>
                 </div>
               </button>

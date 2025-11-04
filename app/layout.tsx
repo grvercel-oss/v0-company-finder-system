@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { Navigation } from "@/components/navigation"
 import { ReplyNotification } from "@/components/reply-notification"
+import { AuthProvider } from "@/components/auth-provider"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Company Finder - AI-Powered Business Intelligence",
   description: "Professional company finder and information scraper system utilizing Perplexity and OpenAI",
-    generator: 'v0.app'
+  generator: "v0.app",
 }
 
 export default function RootLayout({
@@ -29,9 +30,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Navigation />
-        <ReplyNotification />
-        {children}
+        <AuthProvider>
+          <Navigation />
+          <ReplyNotification />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   )

@@ -11,7 +11,22 @@ export async function getAccountIdFromRequest(request: Request): Promise<string>
   console.log("[v0] [RLS] Getting account ID from request...")
 
   try {
-    // 1. Check for account_id in header (for API calls)
+    try {
+      const cookieStore = await cookies()
+      const sessionCookie = cookieStore.get("account_session")?.value
+
+      if (sessionCookie) {
+        const sessionData = JSON.parse(sessionCookie)
+        if (sessionData.accountId) {
+          console.log("[v0] [RLS] Using account_id from session:", sessionData.accountId)
+          return sessionData.accountId
+        }
+      }
+    } catch (error) {
+      console.error("[v0] [RLS] Error reading session cookie:", error)
+    }
+
+    // 2. Check for account_id in header (for API calls)
     try {
       const headerAccountId = request.headers.get("x-account-id")
       console.log("[v0] [RLS] Header account_id:", headerAccountId ? "found" : "not found")
@@ -23,7 +38,7 @@ export async function getAccountIdFromRequest(request: Request): Promise<string>
       console.error("[v0] [RLS] Error reading header:", error)
     }
 
-    // 2. Check for account_id in cookie (for browser requests)
+    // 3. Check for old account_id cookie (backward compatibility)
     try {
       const cookieStore = await cookies()
       const cookieAccountId = cookieStore.get("account_id")?.value
@@ -36,8 +51,8 @@ export async function getAccountIdFromRequest(request: Request): Promise<string>
       console.error("[v0] [RLS] Error reading cookie:", error)
     }
 
-    // 3. Fallback: Get from database (check if any config exists)
-    if (process.env.NEON_NEON_NEON_NEON_DATABASE_URL) {
+    // 4. Fallback: Get from database (check if any config exists)
+    if (process.env.NEON_NEON_NEON_NEON_NEON_DATABASE_URL) {
       try {
         const timeoutPromise = new Promise<null>((_, reject) =>
           setTimeout(() => reject(new Error("Database query timeout")), 3000),

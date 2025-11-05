@@ -2,11 +2,11 @@ import type { SearchWorker, SearchWorkerResult, ICP, CompanyResult } from "../ty
 
 export class LinkedInSearchWorker implements SearchWorker {
   name = "LinkedIn"
-  timeout = 30000 // 30 seconds
+  timeout = 60000 // Increased to 60 seconds for multiple API calls
 
   async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
-    console.log("[v0] [LinkedIn] Starting search")
+    console.log(`[v0] [LinkedIn] Starting search for ${desiredCount} companies`)
 
     try {
       const apiKey = process.env.OPENAI_API_KEY
@@ -16,18 +16,36 @@ export class LinkedInSearchWorker implements SearchWorker {
 
       const query = queries[0] || "companies"
 
-      const systemPrompt = `You are a LinkedIn company search expert. Your task is to find real companies that would appear on LinkedIn based on the search query.
+      const allCompanies: CompanyResult[] = []
+      const companiesPerCall = 20 // Request 20 companies per API call
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+
+      console.log(`[v0] [LinkedIn] Will make ${maxCalls} API calls to get ${desiredCount} companies`)
+
+      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
+        const remainingCount = desiredCount - allCompanies.length
+        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+
+        if (countForThisCall <= 0) break
+
+        console.log(`[v0] [LinkedIn] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
+
+        const systemPrompt = `You are a LinkedIn company search expert. Your task is to find real companies that would appear on LinkedIn based on the search query.
 
 Focus ONLY on LinkedIn as your source. Simulate what you would find by searching LinkedIn's company directory.
 
-Return specialized companies, startups, and focused providers - NOT large generic corporations unless they're the primary players in this specific niche.`
+Return specialized companies, startups, and focused providers - NOT large generic corporations unless they're the primary players in this specific niche.
 
-      const userPrompt = `Find ${desiredCount} companies on LinkedIn that match: "${query}"
+IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
+
+        const userPrompt = `Find ${countForThisCall} companies on LinkedIn that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}
 - Locations: ${icp.locations.join(", ")}
 - Company sizes: ${icp.company_sizes.join(", ")}
+
+${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 
 Return a JSON array with this structure:
 [
@@ -43,36 +61,46 @@ Return a JSON array with this structure:
 
 Return ONLY the JSON array, no other text.`
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.3,
-        }),
-      })
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7, // Increased temperature for more variety
+          }),
+        })
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`)
+        if (!response.ok) {
+          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.statusText}`)
+          break // Stop making more calls if one fails
+        }
+
+        const data = await response.json()
+        const answer = data.choices[0].message.content
+
+        const companies = this.parseCompanies(answer)
+        console.log(`[v0] [LinkedIn] Call ${callIndex + 1} returned ${companies.length} companies`)
+
+        allCompanies.push(...companies)
+
+        // Stop if we've reached the desired count
+        if (allCompanies.length >= desiredCount) {
+          break
+        }
       }
 
-      const data = await response.json()
-      const answer = data.choices[0].message.content
-
-      const companies = this.parseCompanies(answer)
       const duration = Date.now() - startTime
-
-      console.log("[v0] [LinkedIn] Found", companies.length, "companies in", duration, "ms")
+      console.log(`[v0] [LinkedIn] Found ${allCompanies.length} total companies in ${duration} ms`)
 
       return {
-        companies,
+        companies: allCompanies.slice(0, desiredCount), // Ensure we don't exceed desired count
         source: this.name,
         duration_ms: duration,
       }

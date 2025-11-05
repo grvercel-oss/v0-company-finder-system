@@ -2,11 +2,11 @@ import type { SearchWorker, SearchWorkerResult, ICP, CompanyResult } from "../ty
 
 export class ClutchSearchWorker implements SearchWorker {
   name = "Clutch"
-  timeout = 30000 // 30 seconds
+  timeout = 60000 // Increased to 60 seconds for multiple API calls
 
   async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
-    console.log("[v0] [Clutch] Starting search")
+    console.log(`[v0] [Clutch] Starting search for ${desiredCount} companies`)
 
     try {
       const apiKey = process.env.OPENAI_API_KEY
@@ -16,18 +16,36 @@ export class ClutchSearchWorker implements SearchWorker {
 
       const query = queries[0] || "companies"
 
-      const systemPrompt = `You are a Clutch.co expert. Your task is to find B2B service companies that would be listed on Clutch.co.
+      const allCompanies: CompanyResult[] = []
+      const companiesPerCall = 20
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+
+      console.log(`[v0] [Clutch] Will make ${maxCalls} API calls to get ${desiredCount} companies`)
+
+      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
+        const remainingCount = desiredCount - allCompanies.length
+        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+
+        if (countForThisCall <= 0) break
+
+        console.log(`[v0] [Clutch] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
+
+        const systemPrompt = `You are a Clutch.co expert. Your task is to find B2B service companies that would be listed on Clutch.co.
 
 Focus ONLY on Clutch.co as your source. Think about what companies would have profiles on Clutch with client reviews and ratings.
 
-Clutch specializes in: software development, marketing agencies, design firms, IT services, consulting, etc.`
+Clutch specializes in: software development, marketing agencies, design firms, IT services, consulting, etc.
 
-      const userPrompt = `Find ${desiredCount} B2B service companies on Clutch.co that match: "${query}"
+IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
+
+        const userPrompt = `Find ${countForThisCall} B2B service companies on Clutch.co that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}
 - Locations: ${icp.locations.join(", ")}
 - Company sizes: ${icp.company_sizes.join(", ")}
+
+${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 
 Return a JSON array with this structure:
 [
@@ -43,36 +61,45 @@ Return a JSON array with this structure:
 
 Return ONLY the JSON array, no other text.`
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.3,
-        }),
-      })
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7, // Increased temperature for more variety
+          }),
+        })
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`)
+        if (!response.ok) {
+          console.error(`[v0] [Clutch] API error on call ${callIndex + 1}: ${response.statusText}`)
+          break
+        }
+
+        const data = await response.json()
+        const answer = data.choices[0].message.content
+
+        const companies = this.parseCompanies(answer)
+        console.log(`[v0] [Clutch] Call ${callIndex + 1} returned ${companies.length} companies`)
+
+        allCompanies.push(...companies)
+
+        if (allCompanies.length >= desiredCount) {
+          break
+        }
       }
 
-      const data = await response.json()
-      const answer = data.choices[0].message.content
-
-      const companies = this.parseCompanies(answer)
       const duration = Date.now() - startTime
-
-      console.log("[v0] [Clutch] Found", companies.length, "companies in", duration, "ms")
+      console.log(`[v0] [Clutch] Found ${allCompanies.length} total companies in ${duration} ms`)
 
       return {
-        companies,
+        companies: allCompanies.slice(0, desiredCount),
         source: this.name,
         duration_ms: duration,
       }

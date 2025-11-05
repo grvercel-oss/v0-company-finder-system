@@ -2,11 +2,11 @@ import type { SearchWorker, SearchWorkerResult, ICP, CompanyResult } from "../ty
 
 export class ProductHuntSearchWorker implements SearchWorker {
   name = "ProductHunt"
-  timeout = 30000 // 30 seconds
+  timeout = 60000 // Increased to 60 seconds for multiple API calls
 
   async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
-    console.log("[v0] [ProductHunt] Starting search")
+    console.log(`[v0] [ProductHunt] Starting search for ${desiredCount} companies`)
 
     try {
       const apiKey = process.env.OPENAI_API_KEY
@@ -16,17 +16,37 @@ export class ProductHuntSearchWorker implements SearchWorker {
 
       const query = queries[0] || "companies"
 
-      const systemPrompt = `You are a Product Hunt expert. Your task is to find innovative startups and products that would be featured on Product Hunt.
+      const allCompanies: CompanyResult[] = []
+      const companiesPerCall = 20
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+
+      console.log(`[v0] [ProductHunt] Will make ${maxCalls} API calls to get ${desiredCount} companies`)
+
+      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
+        const remainingCount = desiredCount - allCompanies.length
+        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+
+        if (countForThisCall <= 0) break
+
+        console.log(
+          `[v0] [ProductHunt] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`,
+        )
+
+        const systemPrompt = `You are a Product Hunt expert. Your task is to find innovative startups and products that would be featured on Product Hunt.
 
 Focus ONLY on Product Hunt as your source. Think about what companies would launch products on Product Hunt and get upvotes from the community.
 
-Product Hunt features: SaaS products, mobile apps, tech tools, innovative startups, etc.`
+Product Hunt features: SaaS products, mobile apps, tech tools, innovative startups, etc.
 
-      const userPrompt = `Find ${desiredCount} innovative companies/products on Product Hunt that match: "${query}"
+IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
+
+        const userPrompt = `Find ${countForThisCall} innovative companies/products on Product Hunt that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}
 - Technologies: ${icp.technologies?.join(", ") || "various"}
+
+${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 
 Return a JSON array with this structure:
 [
@@ -41,36 +61,45 @@ Return a JSON array with this structure:
 
 Return ONLY the JSON array, no other text.`
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.3,
-        }),
-      })
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7,
+          }),
+        })
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`)
+        if (!response.ok) {
+          console.error(`[v0] [ProductHunt] API error on call ${callIndex + 1}: ${response.statusText}`)
+          break
+        }
+
+        const data = await response.json()
+        const answer = data.choices[0].message.content
+
+        const companies = this.parseCompanies(answer)
+        console.log(`[v0] [ProductHunt] Call ${callIndex + 1} returned ${companies.length} companies`)
+
+        allCompanies.push(...companies)
+
+        if (allCompanies.length >= desiredCount) {
+          break
+        }
       }
 
-      const data = await response.json()
-      const answer = data.choices[0].message.content
-
-      const companies = this.parseCompanies(answer)
       const duration = Date.now() - startTime
-
-      console.log("[v0] [ProductHunt] Found", companies.length, "companies in", duration, "ms")
+      console.log(`[v0] [ProductHunt] Found ${allCompanies.length} total companies in ${duration} ms`)
 
       return {
-        companies,
+        companies: allCompanies.slice(0, desiredCount),
         source: this.name,
         duration_ms: duration,
       }

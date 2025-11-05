@@ -34,6 +34,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 }
 
+// GET /api/lists/[id]/companies - Fetch companies in a list
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const listId = Number.parseInt(params.id)
+
+    const companies = await sql`
+      SELECT c.* 
+      FROM companies c
+      INNER JOIN company_list_items cli ON c.id = cli.company_id
+      WHERE cli.list_id = ${listId}
+      ORDER BY cli.added_at DESC
+    `
+
+    return NextResponse.json({ companies })
+  } catch (error: any) {
+    console.error("[v0] Error fetching list companies:", error.message)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
 // DELETE /api/lists/[id]/companies/[companyId] - Remove a company from a list
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {

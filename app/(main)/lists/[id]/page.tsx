@@ -7,26 +7,24 @@ import { CompanyCard } from "@/components/company-card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Trash2 } from "lucide-react"
 import Link from "next/link"
-
-interface Company {
-  id: number
-  name: string
-  domain: string
-  description: string
-  industry: string
-  location: string
-  website: string
-  data_quality_score: number
-  verified: boolean
-  added_at: string
-  notes: string | null
-}
+import type { Company } from "@/lib/db"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface ListDetails {
   id: number
   name: string
   description: string | null
   created_at: string
+  company_count: number
 }
 
 export default function ListDetailPage() {
@@ -37,27 +35,41 @@ export default function ListDetailPage() {
   const [list, setList] = useState<ListDetails | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
+  const [companyToDelete, setCompanyToDelete] = useState<number | null>(null)
+
+  const fetchListDetails = async () => {
+    try {
+      const response = await fetch(`/api/lists/${listId}`)
+      const data = await response.json()
+      setList(data.list)
+      setCompanies(data.companies)
+    } catch (error) {
+      console.error("Failed to fetch list details:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchCompanies = async () => {
+    try {
+      const response = await fetch(`/api/lists/${listId}/companies`)
+      const data = await response.json()
+      setCompanies(data.companies || [])
+    } catch (error) {
+      console.error("Failed to fetch companies:", error)
+    }
+  }
 
   useEffect(() => {
-    const fetchListDetails = async () => {
-      try {
-        const response = await fetch(`/api/lists/${listId}`)
-        const data = await response.json()
-        setList(data.list)
-        setCompanies(data.companies)
-      } catch (error) {
-        console.error("Failed to fetch list details:", error)
-      } finally {
-        setLoading(false)
-      }
+    const fetchDetails = async () => {
+      await fetchListDetails()
+      await fetchCompanies()
     }
 
-    fetchListDetails()
+    fetchDetails()
   }, [listId])
 
   const handleRemoveCompany = async (companyId: number) => {
-    if (!confirm("Remove this company from the list?")) return
-
     try {
       const response = await fetch(`/api/lists/${listId}/companies?companyId=${companyId}`, {
         method: "DELETE",
@@ -65,9 +77,12 @@ export default function ListDetailPage() {
 
       if (response.ok) {
         setCompanies((prev) => prev.filter((c) => c.id !== companyId))
+        setList((prev) => (prev ? { ...prev, company_count: prev.company_count - 1 } : null))
       }
     } catch (error) {
       console.error("Failed to remove company:", error)
+    } finally {
+      setCompanyToDelete(null)
     }
   }
 
@@ -137,6 +152,23 @@ export default function ListDetailPage() {
           ))}
         </div>
       )}
+
+      <AlertDialog open={companyToDelete !== null} onOpenChange={() => setCompanyToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove company from list?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the company from this list. The company data will not be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => companyToDelete && handleRemoveCompany(companyToDelete)}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

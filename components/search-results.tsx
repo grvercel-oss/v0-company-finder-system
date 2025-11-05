@@ -2,10 +2,12 @@
 
 import type React from "react"
 
-import { CompanyCard } from "./company-card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, AlertCircle } from "lucide-react"
 import type { Company } from "@/lib/db"
+import { SearchResultsTable } from "./search-results-table"
+import { BulkAddToList } from "./bulk-add-to-list"
+import { useState } from "react"
 
 interface SearchResultsProps {
   companies: Company[]
@@ -15,6 +17,8 @@ interface SearchResultsProps {
 }
 
 export function SearchResults({ companies, isLoading, error, searchPerformed }: SearchResultsProps) {
+  const [selectedCompanies, setSelectedCompanies] = useState<number[]>([])
+
   if (isLoading && companies.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -60,13 +64,17 @@ export function SearchResults({ companies, isLoading, error, searchPerformed }: 
         <p className="text-sm text-muted-foreground">
           {isLoading ? "Finding" : "Found"} {companies.length} {companies.length === 1 ? "company" : "companies"}
           {isLoading && "..."}
+          {selectedCompanies.length > 0 && ` • ${selectedCompanies.length} selected`}
         </p>
+        {selectedCompanies.length > 0 && (
+          <BulkAddToList companyIds={selectedCompanies} onComplete={() => setSelectedCompanies([])} />
+        )}
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {companies.map((company) => (
-          <CompanyCard key={company.id} company={company} showAddToList={true} />
-        ))}
-      </div>
+      <SearchResultsTable
+        companies={companies}
+        selectedCompanies={selectedCompanies}
+        onSelectionChange={setSelectedCompanies}
+      />
     </div>
   )
 }

@@ -36,12 +36,13 @@ export async function GET(request: Request) {
       SELECT 
         c.id,
         c.name,
+        c.deleted_at,
         SUM(a.cost_usd) as total_cost,
         SUM(a.total_tokens) as total_tokens,
         COUNT(a.id) as generation_count
       FROM campaigns c
       LEFT JOIN ai_usage_tracking a ON c.id = a.campaign_id
-      GROUP BY c.id, c.name
+      GROUP BY c.id, c.name, c.deleted_at
       ORDER BY total_cost DESC NULLS LAST
     `
 

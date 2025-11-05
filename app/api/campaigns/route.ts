@@ -16,6 +16,7 @@ export async function GET(request: Request) {
       FROM campaigns c
       LEFT JOIN contacts co ON c.id = co.campaign_id
       WHERE c.account_id = ${accountId}
+        AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.created_at DESC
     `

@@ -7,7 +7,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params
 
     const campaigns = await sql`
-      SELECT * FROM campaigns WHERE id = ${id}
+      SELECT * FROM campaigns 
+      WHERE id = ${id} 
+        AND deleted_at IS NULL
     `
 
     if (campaigns.length === 0) {
@@ -64,7 +66,18 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     const { id } = await params
 
-    await sql`DELETE FROM campaigns WHERE id = ${id}`
+    const result = await sql`
+      UPDATE campaigns 
+      SET deleted_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${id}
+        AND deleted_at IS NULL
+      RETURNING id
+    `
+
+    if (result.length === 0) {
+      return NextResponse.json({ error: "Campaign not found or already deleted" }, { status: 404 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

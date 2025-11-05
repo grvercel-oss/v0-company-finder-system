@@ -15,12 +15,12 @@ interface SearchResultsProps {
 }
 
 export function SearchResults({ companies, isLoading, error, searchPerformed }: SearchResultsProps) {
-  if (isLoading) {
+  if (isLoading && companies.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Searching companies...</p>
-        <p className="text-sm text-muted-foreground mt-2">Using AI to find and enrich company data</p>
+        <p className="text-muted-foreground">Initializing search...</p>
+        <p className="text-sm text-muted-foreground mt-2">Analyzing your query and preparing sources</p>
       </div>
     )
   }
@@ -44,7 +44,7 @@ export function SearchResults({ companies, isLoading, error, searchPerformed }: 
     )
   }
 
-  if (companies.length === 0) {
+  if (companies.length === 0 && !isLoading) {
     return (
       <div className="text-center py-12">
         <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -58,7 +58,8 @@ export function SearchResults({ companies, isLoading, error, searchPerformed }: 
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Found {companies.length} {companies.length === 1 ? "company" : "companies"}
+          {isLoading ? "Finding" : "Found"} {companies.length} {companies.length === 1 ? "company" : "companies"}
+          {isLoading && "..."}
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

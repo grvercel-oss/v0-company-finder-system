@@ -69,7 +69,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano-2025-08-07", // Updated to correct gpt-5-nano model identifier
+            model: "gpt-5-nano", // Updated to correct GPT-5 Nano model identifier
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -179,7 +179,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano-2025-08-07", // Updated to correct gpt-5-nano model identifier
+            model: "gpt-5-nano", // Updated to correct GPT-5 Nano model identifier
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },

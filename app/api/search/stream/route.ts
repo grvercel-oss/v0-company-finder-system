@@ -5,13 +5,7 @@ import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
-import {
-  checkRateLimit,
-  generateICPHash,
-  getCachedSearchResults,
-  cacheSearchResults,
-  fastInitialLookup,
-} from "@/lib/search-cache"
+import { checkRateLimit, generateICPHash, getCachedSearchResults, cacheSearchResults } from "@/lib/search-cache"
 import { LinkedInSearchWorker } from "@/lib/search-workers/gpt-workers/linkedin-worker"
 import { RedditSearchWorker } from "@/lib/search-workers/gpt-workers/reddit-worker"
 import { ClutchSearchWorker } from "@/lib/search-workers/gpt-workers/clutch-worker"
@@ -101,16 +95,6 @@ export async function GET(request: NextRequest) {
           }
 
           send("status", { message: "Cached results loaded. Searching for new companies..." })
-        }
-
-        send("status", { message: "Searching existing companies..." })
-        const fastResults = await fastInitialLookup(icp, accountId, 20)
-        console.log("[v0] Fast lookup found", fastResults.length, "companies")
-
-        if (fastResults.length > 0) {
-          for (const company of fastResults) {
-            send("new_company", { company, is_new: false, source: "database" })
-          }
         }
 
         send("status", { message: "Creating search request..." })

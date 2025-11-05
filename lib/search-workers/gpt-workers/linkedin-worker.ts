@@ -80,7 +80,7 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano-2025-08-07", // Updated to correct gpt-5-nano model identifier
+            model: "gpt-5-nano", // Updated to correct GPT-5 Nano model identifier
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -90,7 +90,17 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
         })
 
         if (!response.ok) {
-          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorBody = await response.text()
+          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.status} ${response.statusText}`)
+          console.error(`[v0] [LinkedIn] Error details:`, errorBody)
+          console.error(`[v0] [LinkedIn] Request model:`, "gpt-5-nano")
+          console.error(
+            `[v0] [LinkedIn] Request messages:`,
+            JSON.stringify([
+              { role: "system", content: systemPrompt.substring(0, 100) + "..." },
+              { role: "user", content: userPrompt.substring(0, 100) + "..." },
+            ]),
+          )
           break
         }
 
@@ -195,7 +205,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano-2025-08-07", // Updated to correct gpt-5-nano model identifier
+            model: "gpt-5-nano", // Updated to correct GPT-5 Nano model identifier
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -205,7 +215,9 @@ Return ONLY the JSON array, no other text.`
         })
 
         if (!response.ok) {
-          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorBody = await response.text()
+          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.status} ${response.statusText}`)
+          console.error(`[v0] [LinkedIn] Error details:`, errorBody)
           break // Stop making more calls if one fails
         }
 

@@ -50,7 +50,7 @@ Return ONLY the JSON array, no other text.`
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "gpt-4.1",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },

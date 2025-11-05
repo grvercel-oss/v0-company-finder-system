@@ -116,7 +116,6 @@ export async function GET(request: NextRequest) {
         const searchQueries = await generateSearchQueries(query, icp)
         console.log("[v0] Generated queries:", searchQueries)
 
-        // Run workers
         send("status", { message: "Searching multiple sources..." })
         const workers = [
           new LinkedInSearchWorker(),
@@ -131,42 +130,61 @@ export async function GET(request: NextRequest) {
         )
 
         const foundCompanyIds: number[] = []
+        let totalCompaniesFound = 0
 
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
           console.log("[v0] Worker started:", worker.name)
 
           try {
-            const result = await Promise.race([
-              worker.search(searchQueries, icp, desiredCount),
-              new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), worker.timeout)),
-            ])
+            const searchGenerator = worker.searchProgressive(searchQueries, icp, desiredCount)
 
-            console.log("[v0] Worker", worker.name, "found", (result as any).companies.length, "companies")
-            send("worker_completed", { worker: worker.name, count: (result as any).companies.length })
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Timeout")), worker.timeout),
+            )
 
-            // Process companies from this worker
-            for (const companyResult of (result as any).companies) {
-              try {
-                const merged = await mergeAndSaveCompany(companyResult, accountId)
-                await linkSearchResult(searchId, merged.company_id, worker.name, companyResult.confidence_score || 0)
+            let batchCount = 0
+            for await (const batch of searchGenerator) {
+              batchCount++
+              console.log(`[v0] Worker ${worker.name} yielded batch ${batchCount} with ${batch.length} companies`)
 
-                foundCompanyIds.push(merged.company_id)
+              // Process and stream each company immediately
+              for (const companyResult of batch) {
+                try {
+                  const merged = await mergeAndSaveCompany(companyResult, accountId)
+                  await linkSearchResult(searchId, merged.company_id, worker.name, companyResult.confidence_score || 0)
 
-                // Stream new company to client
-                send("new_company", {
-                  company: merged.company,
-                  is_new: merged.is_new,
-                  source: worker.name,
-                })
-                console.log("[v0] Streamed company:", merged.company.name)
-              } catch (error: any) {
-                console.error("[v0] Error merging company:", error.message)
+                  foundCompanyIds.push(merged.company_id)
+                  totalCompaniesFound++
+
+                  send("new_company", {
+                    company: merged.company,
+                    is_new: merged.is_new,
+                    source: worker.name,
+                  })
+
+                  send("progress", {
+                    total: totalCompaniesFound,
+                    target: desiredCount * workers.length,
+                  })
+
+                  console.log(`[v0] Streamed company ${totalCompaniesFound}:`, merged.company.name)
+                } catch (error: any) {
+                  console.error("[v0] Error merging company:", error.message)
+                }
               }
             }
+
+            console.log(`[v0] Worker ${worker.name} completed with ${batchCount} batches`)
+            send("worker_completed", { worker: worker.name, count: batchCount * 10 })
           } catch (error: any) {
-            console.error("[v0] Worker error:", worker.name, error.message)
-            send("worker_error", { worker: worker.name, error: error.message })
+            if (error.message === "Timeout") {
+              console.error("[v0] Worker timeout:", worker.name)
+              send("worker_error", { worker: worker.name, error: "Timeout after 150 seconds" })
+            } else {
+              console.error("[v0] Worker error:", worker.name, error.message)
+              send("worker_error", { worker: worker.name, error: error.message })
+            }
           }
         })
 

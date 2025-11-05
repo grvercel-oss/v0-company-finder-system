@@ -1,8 +1,110 @@
-import type { SearchWorker, SearchWorkerResult, ICP, CompanyResult } from "../types"
+import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
 
-export class ClutchSearchWorker implements SearchWorker {
+export class ClutchSearchWorker implements ProgressiveSearchWorker {
   name = "Clutch"
-  timeout = 60000 // Increased to 60 seconds for multiple API calls
+  timeout = 150000 // Increased timeout from 60s to 150s to allow 5+ API calls to complete
+
+  async *searchProgressive(
+    queries: string[],
+    icp: ICP,
+    desiredCount = 10,
+  ): AsyncGenerator<CompanyResult[], void, unknown> {
+    console.log(`[v0] [Clutch] Starting progressive search for ${desiredCount} companies`)
+
+    try {
+      const apiKey = process.env.OPENAI_API_KEY
+      if (!apiKey) {
+        throw new Error("OPENAI_API_KEY not configured")
+      }
+
+      const query = queries[0] || "companies"
+      const allCompanies: CompanyResult[] = []
+      const companiesPerCall = 10 // Reduced to 10 for faster first results
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+
+      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
+        const remainingCount = desiredCount - allCompanies.length
+        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+
+        if (countForThisCall <= 0) break
+
+        console.log(`[v0] [Clutch] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
+
+        const systemPrompt = `You are a Clutch.co expert. Your task is to find B2B service companies that would be listed on Clutch.co.
+
+Focus ONLY on Clutch.co as your source. Think about what companies would have profiles on Clutch with client reviews and ratings.
+
+Clutch specializes in: software development, marketing agencies, design firms, IT services, consulting, etc.
+
+IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
+
+        const userPrompt = `Find ${countForThisCall} B2B service companies on Clutch.co that match: "${query}"
+
+Based on the ICP:
+- Industries: ${icp.industries.join(", ")}
+- Locations: ${icp.locations.join(", ")}
+- Company sizes: ${icp.company_sizes.join(", ")}
+
+${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
+
+Return a JSON array with this structure:
+[
+  {
+    "name": "Company Name",
+    "website": "https://example.com",
+    "location": "City, Country",
+    "category": "Service Category",
+    "employee_count": "10-50",
+    "description": "Brief description of services"
+  }
+]
+
+Return ONLY the JSON array, no other text.`
+
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7, // Increased temperature for more variety
+          }),
+        })
+
+        if (!response.ok) {
+          console.error(`[v0] [Clutch] API error on call ${callIndex + 1}: ${response.statusText}`)
+          break
+        }
+
+        const data = await response.json()
+        const answer = data.choices[0].message.content
+
+        const companies = this.parseCompanies(answer)
+        console.log(`[v0] [Clutch] Call ${callIndex + 1} returned ${companies.length} companies`)
+
+        allCompanies.push(...companies)
+
+        if (companies.length > 0) {
+          yield companies
+        }
+
+        if (allCompanies.length >= desiredCount) {
+          break
+        }
+      }
+
+      console.log(`[v0] [Clutch] Progressive search completed with ${allCompanies.length} total companies`)
+    } catch (error: any) {
+      console.error("[v0] [Clutch] Error:", error.message)
+      throw error
+    }
+  }
 
   async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
@@ -73,7 +175,7 @@ Return ONLY the JSON array, no other text.`
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.7, // Increased temperature for more variety
+            temperature: 0.7,
           }),
         })
 

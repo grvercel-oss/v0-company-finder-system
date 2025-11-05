@@ -33,6 +33,12 @@ export interface SearchWorkerResult {
   error?: string
 }
 
+export interface ProgressiveSearchWorker {
+  name: string
+  searchProgressive(queries: string[], icp: ICP, desiredCount?: number): AsyncGenerator<CompanyResult[], void, unknown>
+  timeout: number
+}
+
 export interface SearchWorker {
   name: string
   search(queries: string[], icp: ICP, desiredCount?: number): Promise<SearchWorkerResult>

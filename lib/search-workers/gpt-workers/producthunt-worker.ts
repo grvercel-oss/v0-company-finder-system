@@ -1,8 +1,110 @@
-import type { SearchWorker, SearchWorkerResult, ICP, CompanyResult } from "../types"
+import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
 
-export class ProductHuntSearchWorker implements SearchWorker {
+export class ProductHuntSearchWorker implements ProgressiveSearchWorker {
   name = "ProductHunt"
-  timeout = 60000 // Increased to 60 seconds for multiple API calls
+  timeout = 150000 // Increased timeout from 60s to 150s to allow 5+ API calls to complete
+
+  async *searchProgressive(
+    queries: string[],
+    icp: ICP,
+    desiredCount = 10,
+  ): AsyncGenerator<CompanyResult[], void, unknown> {
+    console.log(`[v0] [ProductHunt] Starting progressive search for ${desiredCount} companies`)
+
+    try {
+      const apiKey = process.env.OPENAI_API_KEY
+      if (!apiKey) {
+        throw new Error("OPENAI_API_KEY not configured")
+      }
+
+      const query = queries[0] || "companies"
+      const allCompanies: CompanyResult[] = []
+      const companiesPerCall = 10 // Reduced to 10 for faster first results
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+
+      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
+        const remainingCount = desiredCount - allCompanies.length
+        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+
+        if (countForThisCall <= 0) break
+
+        console.log(
+          `[v0] [ProductHunt] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`,
+        )
+
+        const systemPrompt = `You are a Product Hunt expert. Your task is to find innovative startups and products that would be featured on Product Hunt.
+
+Focus ONLY on Product Hunt as your source. Think about what companies would launch products on Product Hunt and get upvotes from the community.
+
+Product Hunt features: SaaS products, mobile apps, tech tools, innovative startups, etc.
+
+IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
+
+        const userPrompt = `Find ${countForThisCall} innovative companies/products on Product Hunt that match: "${query}"
+
+Based on the ICP:
+- Industries: ${icp.industries.join(", ")}
+- Technologies: ${icp.technologies?.join(", ") || "various"}
+
+${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
+
+Return a JSON array with this structure:
+[
+  {
+    "name": "Company/Product Name",
+    "website": "https://example.com",
+    "location": "City, Country",
+    "category": "Product Category",
+    "description": "Brief description of the product"
+  }
+]
+
+Return ONLY the JSON array, no other text.`
+
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7,
+          }),
+        })
+
+        if (!response.ok) {
+          console.error(`[v0] [ProductHunt] API error on call ${callIndex + 1}: ${response.statusText}`)
+          break
+        }
+
+        const data = await response.json()
+        const answer = data.choices[0].message.content
+
+        const companies = this.parseCompanies(answer)
+        console.log(`[v0] [ProductHunt] Call ${callIndex + 1} returned ${companies.length} companies`)
+
+        allCompanies.push(...companies)
+
+        if (companies.length > 0) {
+          yield companies
+        }
+
+        if (allCompanies.length >= desiredCount) {
+          break
+        }
+      }
+
+      console.log(`[v0] [ProductHunt] Progressive search completed with ${allCompanies.length} total companies`)
+    } catch (error: any) {
+      console.error("[v0] [ProductHunt] Error:", error.message)
+      throw error
+    }
+  }
 
   async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()

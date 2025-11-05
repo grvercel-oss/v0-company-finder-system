@@ -37,8 +37,23 @@ export async function cacheSearchResults(icpHash: string, companyIds: number[]):
 
 export async function getCachedSearchResults(icpHash: string): Promise<number[] | null> {
   const key = `icp:${icpHash}`
-  const cached = await redis.get<string>(key)
-  return cached ? JSON.parse(cached) : null
+  try {
+    const cached = await redis.get<string>(key)
+    if (!cached) return null
+
+    try {
+      return JSON.parse(cached)
+    } catch (parseError: any) {
+      console.error(`[v0] Failed to parse cached search results for key ${key}:`, parseError.message)
+      console.error(`[v0] Corrupted cache data (first 100 chars):`, cached.slice(0, 100))
+      // Delete corrupted cache entry
+      await redis.del(key)
+      return null
+    }
+  } catch (error: any) {
+    console.error(`[v0] Error getting cached search results:`, error.message)
+    return null
+  }
 }
 
 // Cache company details
@@ -49,8 +64,22 @@ export async function cacheCompany(companyId: number, company: any): Promise<voi
 
 export async function getCachedCompany(companyId: number): Promise<any | null> {
   const key = `company:${companyId}`
-  const cached = await redis.get<string>(key)
-  return cached ? JSON.parse(cached) : null
+  try {
+    const cached = await redis.get<string>(key)
+    if (!cached) return null
+
+    try {
+      return JSON.parse(cached)
+    } catch (parseError: any) {
+      console.error(`[v0] Failed to parse cached company for key ${key}:`, parseError.message)
+      // Delete corrupted cache entry
+      await redis.del(key)
+      return null
+    }
+  } catch (error: any) {
+    console.error(`[v0] Error getting cached company:`, error.message)
+    return null
+  }
 }
 
 // Fast initial lookup: Query existing companies from DB
@@ -136,13 +165,22 @@ export async function fastInitialLookup(icp: ICP, accountId: string, limit = 20)
 // Domain verification cache helpers
 export async function getCachedDomainVerification(domain: string): Promise<boolean | null> {
   const key = `domain:verified:${domain}`
-  const cached = await redis.get<string>(key)
-  return cached ? JSON.parse(cached) : null
-}
+  try {
+    const cached = await redis.get<string>(key)
+    if (!cached) return null
 
-export async function cacheDomainVerification(domain: string, isValid: boolean): Promise<void> {
-  const key = `domain:verified:${domain}`
-  await redis.set(key, JSON.stringify(isValid), { ex: 604800 }) // 7 days
+    try {
+      return JSON.parse(cached)
+    } catch (parseError: any) {
+      console.error(`[v0] Failed to parse cached domain verification for ${domain}:`, parseError.message)
+      // Delete corrupted cache entry
+      await redis.del(key)
+      return null
+    }
+  } catch (error: any) {
+    console.error(`[v0] Error getting cached domain verification:`, error.message)
+    return null
+  }
 }
 
 // Batch domain verification cache
@@ -154,7 +192,12 @@ export async function getCachedDomainVerifications(domains: string[]): Promise<M
 
   cached.forEach((value, index) => {
     if (value !== null) {
-      results.set(domains[index], JSON.parse(value))
+      try {
+        results.set(domains[index], JSON.parse(value))
+      } catch (parseError: any) {
+        console.error(`[v0] Failed to parse cached domain verification for ${domains[index]}:`, parseError.message)
+        // Skip corrupted entry
+      }
     }
   })
 

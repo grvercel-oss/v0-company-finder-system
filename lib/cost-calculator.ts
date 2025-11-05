@@ -1,5 +1,9 @@
 // Cost calculator for GPT API usage
 
+// gpt-5-nano pricing (per 1M tokens)
+const GPT_5_NANO_INPUT_COST = 0.05 // $0.05 per 1M input tokens
+const GPT_5_NANO_OUTPUT_COST = 0.4 // $0.40 per 1M output tokens
+
 // GPT-4o pricing (per 1M tokens)
 const GPT_4O_INPUT_COST = 2.5 // $2.50 per 1M input tokens
 const GPT_4O_OUTPUT_COST = 10.0 // $10.00 per 1M output tokens
@@ -15,6 +19,12 @@ export interface CostBreakdown {
   total_cost: number
   input_tokens: number
   output_tokens: number
+}
+
+export function calculateCost(inputTokens: number, outputTokens: number): number {
+  const input_cost = (inputTokens / 1_000_000) * GPT_5_NANO_INPUT_COST
+  const output_cost = (outputTokens / 1_000_000) * GPT_5_NANO_OUTPUT_COST
+  return input_cost + output_cost
 }
 
 export function calculateGPT4oCost(usage: TokenUsage): CostBreakdown {

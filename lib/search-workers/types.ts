@@ -24,6 +24,11 @@ export interface CompanyResult {
   technologies?: string[]
   source: string
   confidence_score?: number
+  tokenUsage?: {
+    prompt_tokens: number
+    completion_tokens: number
+    cost: number
+  }
 }
 
 export interface SearchWorkerResult {
@@ -35,7 +40,7 @@ export interface SearchWorkerResult {
 
 export interface ProgressiveSearchWorker {
   name: string
-  searchProgressive(queries: string[], icp: ICP, desiredCount?: number): AsyncGenerator<CompanyResult[], void, unknown>
+  searchProgressive(query: string, desiredCount?: number): AsyncGenerator<CompanyResult[], void, unknown>
   timeout: number
 }
 

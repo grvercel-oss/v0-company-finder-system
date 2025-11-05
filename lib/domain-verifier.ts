@@ -1,80 +1,67 @@
-export interface DomainVerificationResult {
-  domain: string
-  isValid: boolean
-  isReachable: boolean
-  statusCode?: number
-  error?: string
-}
+import type { CompanyResult } from "./search-workers/types"
 
-export async function verifyDomain(domain: string): Promise<DomainVerificationResult> {
-  if (!domain || domain.trim() === "") {
-    return {
-      domain,
-      isValid: false,
-      isReachable: false,
-      error: "Empty domain",
-    }
-  }
-
-  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$/
-  if (!domainRegex.test(domain)) {
-    return {
-      domain,
-      isValid: false,
-      isReachable: false,
-      error: "Invalid domain format",
-    }
-  }
+export async function verifyDomain(domain: string): Promise<boolean> {
+  if (!domain) return false
 
   try {
+    const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "")
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
-    const response = await fetch(`https://${domain}`, {
+    const response = await fetch(`https://${cleanDomain}`, {
       method: "HEAD",
       signal: controller.signal,
       redirect: "follow",
     })
 
     clearTimeout(timeoutId)
-
-    return {
-      domain,
-      isValid: true,
-      isReachable: response.ok || response.status === 403,
-      statusCode: response.status,
-    }
-  } catch (error: any) {
-    return {
-      domain,
-      isValid: true,
-      isReachable: false,
-      error: error.message,
-    }
+    return response.ok || response.status === 403
+  } catch (error) {
+    return false
   }
 }
 
-export async function verifyDomains(domains: string[]): Promise<Map<string, DomainVerificationResult>> {
-  const results = await Promise.all(domains.map((domain) => verifyDomain(domain)))
-  const resultMap = new Map<string, DomainVerificationResult>()
-  results.forEach((result) => {
-    resultMap.set(result.domain, result)
-  })
-  return resultMap
+export async function verifyDomains(domains: string[], concurrency = 10): Promise<Map<string, boolean>> {
+  const results = new Map<string, boolean>()
+  const chunks: string[][] = []
+
+  for (let i = 0; i < domains.length; i += concurrency) {
+    chunks.push(domains.slice(i, i + concurrency))
+  }
+
+  for (const chunk of chunks) {
+    const chunkResults = await Promise.all(
+      chunk.map(async (domain) => ({
+        domain,
+        isValid: await verifyDomain(domain),
+      })),
+    )
+
+    chunkResults.forEach(({ domain, isValid }) => {
+      results.set(domain, isValid)
+    })
+  }
+
+  return results
 }
 
-export async function filterVerifiedCompanies<T extends { domain: string }>(
-  companies: T[],
-): Promise<{ verified: T[]; rejected: T[] }> {
-  const domains = companies.map((c) => c.domain)
+export async function filterVerifiedCompanies(
+  companies: CompanyResult[],
+): Promise<{ verified: CompanyResult[]; rejected: CompanyResult[] }> {
+  const domains = companies.map((c) => c.domain).filter(Boolean) as string[]
   const verificationResults = await verifyDomains(domains)
 
-  const verified: T[] = []
-  const rejected: T[] = []
+  const verified: CompanyResult[] = []
+  const rejected: CompanyResult[] = []
 
   for (const company of companies) {
-    const result = verificationResults.get(company.domain)
-    if (result && result.isValid && result.isReachable) {
+    if (!company.domain) {
+      rejected.push(company)
+      continue
+    }
+
+    const isValid = verificationResults.get(company.domain)
+    if (isValid) {
       verified.push(company)
     } else {
       rejected.push(company)

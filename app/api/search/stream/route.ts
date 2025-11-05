@@ -17,7 +17,7 @@ import { RedditSearchWorker } from "@/lib/search-workers/gpt-workers/reddit-work
 import { ClutchSearchWorker } from "@/lib/search-workers/gpt-workers/clutch-worker"
 import { ProductHuntSearchWorker } from "@/lib/search-workers/gpt-workers/producthunt-worker"
 import { CrunchbaseSearchWorker } from "@/lib/search-workers/gpt-workers/crunchbase-worker"
-import { calculateGPT4oCost, formatCost } from "@/lib/cost-calculator"
+import { formatCost } from "@/lib/cost-calculator"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -132,9 +132,9 @@ export async function GET(request: NextRequest) {
 
         const foundCompanyIds: number[] = []
         let totalCompaniesFound = 0
-        let totalCost = 0
-        let totalInputTokens = 0
-        let totalOutputTokens = 0
+        const totalCost = 0
+        const totalInputTokens = 0
+        const totalOutputTokens = 0
 
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
@@ -148,33 +148,10 @@ export async function GET(request: NextRequest) {
             )
 
             let batchCount = 0
-            for await (const result of searchGenerator) {
+            for await (const batch of searchGenerator) {
               batchCount++
-              const batch = result.companies
               console.log(`[v0] Worker ${worker.name} yielded batch ${batchCount} with ${batch.length} companies`)
 
-              if (result.tokenUsage) {
-                const cost = calculateGPT4oCost(result.tokenUsage)
-                totalCost += cost.total_cost
-                totalInputTokens += cost.input_tokens
-                totalOutputTokens += cost.output_tokens
-
-                // Send cost update
-                send("cost_update", {
-                  worker: worker.name,
-                  batch_cost: cost.total_cost,
-                  total_cost: totalCost,
-                  total_input_tokens: totalInputTokens,
-                  total_output_tokens: totalOutputTokens,
-                  formatted_total: formatCost(totalCost),
-                })
-
-                console.log(
-                  `[v0] Cost update: ${formatCost(cost.total_cost)} for batch, total: ${formatCost(totalCost)}`,
-                )
-              }
-
-              // Process and stream each company immediately
               for (const companyResult of batch) {
                 try {
                   const merged = await mergeAndSaveCompany(companyResult, accountId)

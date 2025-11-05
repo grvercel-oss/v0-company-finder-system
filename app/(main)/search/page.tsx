@@ -53,13 +53,23 @@ export default function SearchPage() {
   const [costPerCompany, setCostPerCompany] = useState<string>("$0.00")
 
   useEffect(() => {
+    let mounted = true
+
     const loadPreviousSearch = async () => {
       try {
         console.log("[v0] Loading previous search...")
         const response = await fetch("/api/search/latest")
-        if (!response.ok) throw new Error("Failed to load previous search")
+
+        if (!mounted) return
+
+        if (!response.ok) {
+          throw new Error("Failed to load previous search")
+        }
 
         const data = await response.json()
+
+        if (!mounted) return
+
         if (data.search && data.companies.length > 0) {
           console.log("[v0] Loaded previous search:", data.search.query, "with", data.companies.length, "companies")
           setCompanies(data.companies)
@@ -73,11 +83,17 @@ export default function SearchPage() {
       } catch (err) {
         console.error("[v0] Error loading previous search:", err)
       } finally {
-        setIsLoadingPrevious(false)
+        if (mounted) {
+          setIsLoadingPrevious(false)
+        }
       }
     }
 
     loadPreviousSearch()
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   const handleSearch = async (query: string) => {
@@ -171,7 +187,7 @@ export default function SearchPage() {
       eventSource.addEventListener("cost_update", (e) => {
         const data = JSON.parse(e.data)
         setTotalCost(data.total_cost)
-        console.log("[v0] Cost update:", data.formatted_total, "from", data.worker)
+        console.log("[v0] Cost update:", data.formatted_total)
       })
 
       eventSource.addEventListener("cost_summary", (e) => {
@@ -205,7 +221,9 @@ export default function SearchPage() {
                 <h1 className="text-4xl font-bold tracking-tight mb-2">Company Finder</h1>
                 <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
               </div>
-              <SearchBar onSearch={handleSearch} isLoading={true} />
+              <div className="animate-pulse">
+                <div className="h-12 bg-muted rounded-lg" />
+              </div>
             </div>
           </div>
         </div>
@@ -226,20 +244,20 @@ export default function SearchPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Label htmlFor="company-count" className="text-sm font-medium whitespace-nowrap">
-                  Companies per source:
+                  Target companies:
                 </Label>
                 <Input
                   id="company-count"
                   type="number"
                   min="5"
-                  max="50"
+                  max="100"
                   value={desiredCount}
                   onChange={(e) => setDesiredCount(Number.parseInt(e.target.value) || 20)}
                   className="w-20"
                   disabled={isLoading}
                 />
                 <span className="text-xs text-muted-foreground">
-                  (Total: up to {desiredCount * 5} companies from 5 sources)
+                  (Search will stop at exactly {desiredCount} companies)
                 </span>
               </div>
             </div>

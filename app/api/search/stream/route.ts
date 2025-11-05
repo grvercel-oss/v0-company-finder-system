@@ -132,19 +132,22 @@ export async function GET(request: NextRequest) {
 
         const foundCompanyIds: number[] = []
         let totalCompaniesFound = 0
-        const totalCost = 0
-        const totalInputTokens = 0
-        const totalOutputTokens = 0
+        let totalCost = 0
+        let totalInputTokens = 0
+        let totalOutputTokens = 0
 
         const abortController = new AbortController()
         const { signal } = abortController
+
+        const targetWithBuffer = Math.ceil(desiredCount * 1.3)
+        console.log(`[v0] Target: ${desiredCount}, with buffer: ${targetWithBuffer}`)
 
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
           console.log("[v0] Worker started:", worker.name)
 
           try {
-            const searchGenerator = worker.searchProgressive(searchQueries, icp, desiredCount)
+            const searchGenerator = worker.searchProgressive(searchQueries, icp, targetWithBuffer)
 
             const timeoutPromise = new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error("Timeout")), worker.timeout),
@@ -172,6 +175,22 @@ export async function GET(request: NextRequest) {
 
                   foundCompanyIds.push(merged.company_id)
                   totalCompaniesFound++
+
+                  if (companyResult.tokenUsage) {
+                    totalInputTokens += companyResult.tokenUsage.prompt_tokens
+                    totalOutputTokens += companyResult.tokenUsage.completion_tokens
+                    totalCost += companyResult.tokenUsage.cost
+
+                    console.log(
+                      `[v0] Cost update: +$${companyResult.tokenUsage.cost.toFixed(4)} (Total: $${totalCost.toFixed(4)})`,
+                    )
+
+                    send("cost_update", {
+                      total_cost: totalCost,
+                      formatted_total: formatCost(totalCost),
+                      companies_found: totalCompaniesFound,
+                    })
+                  }
 
                   send("new_company", {
                     company: merged.company,

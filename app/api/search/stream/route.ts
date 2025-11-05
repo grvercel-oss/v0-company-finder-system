@@ -6,6 +6,13 @@ import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
 import { PerplexityWorker } from "@/lib/search-workers/perplexity-worker"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
+import {
+  checkRateLimit,
+  generateICPHash,
+  getCachedSearchResults,
+  cacheSearchResults,
+  fastInitialLookup,
+} from "@/lib/search-cache"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -17,6 +24,16 @@ export async function GET(request: NextRequest) {
   }
 
   console.log("[v0] Account ID:", accountId)
+
+  const rateLimit = await checkRateLimit(accountId)
+  if (!rateLimit.allowed) {
+    console.error("[v0] Rate limit exceeded for account:", accountId)
+    return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+  console.log("[v0] Rate limit check passed, remaining:", rateLimit.remaining)
 
   const searchParams = request.nextUrl.searchParams
   const query = searchParams.get("query")
@@ -47,6 +64,36 @@ export async function GET(request: NextRequest) {
         console.log("[v0] ICP extracted:", icp)
         send("icp", { icp })
 
+        const icpHash = generateICPHash(icp)
+        console.log("[v0] ICP hash:", icpHash)
+
+        const cachedCompanyIds = await getCachedSearchResults(icpHash)
+        if (cachedCompanyIds && cachedCompanyIds.length > 0) {
+          console.log("[v0] Found cached results:", cachedCompanyIds.length, "companies")
+          send("status", { message: "Loading cached results..." })
+
+          // Fetch cached companies
+          const cachedCompanies = await sql`
+            SELECT * FROM companies WHERE id = ANY(${cachedCompanyIds})
+          `
+
+          for (const company of cachedCompanies) {
+            send("new_company", { company, is_new: false, source: "cache" })
+          }
+
+          send("status", { message: "Cached results loaded. Searching for new companies..." })
+        }
+
+        send("status", { message: "Searching existing companies..." })
+        const fastResults = await fastInitialLookup(icp, accountId, 20)
+        console.log("[v0] Fast lookup found", fastResults.length, "companies")
+
+        if (fastResults.length > 0) {
+          for (const company of fastResults) {
+            send("new_company", { company, is_new: false, source: "database" })
+          }
+        }
+
         // Create search request
         console.log("[v0] Creating search request...")
         const searchRequest = await sql`
@@ -73,6 +120,8 @@ export async function GET(request: NextRequest) {
           workers.map((w) => w.name),
         )
 
+        const foundCompanyIds: number[] = []
+
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
           console.log("[v0] Worker started:", worker.name)
@@ -92,6 +141,8 @@ export async function GET(request: NextRequest) {
                 const merged = await mergeAndSaveCompany(companyResult, accountId)
                 await linkSearchResult(searchId, merged.company_id, worker.name, companyResult.confidence_score || 0)
 
+                foundCompanyIds.push(merged.company_id)
+
                 // Stream new company to client
                 send("new_company", {
                   company: merged.company,
@@ -110,6 +161,11 @@ export async function GET(request: NextRequest) {
         })
 
         await Promise.allSettled(workerPromises)
+
+        if (foundCompanyIds.length > 0) {
+          await cacheSearchResults(icpHash, foundCompanyIds)
+          console.log("[v0] Cached", foundCompanyIds.length, "company IDs")
+        }
 
         // Mark search as completed
         console.log("[v0] Marking search as completed...")

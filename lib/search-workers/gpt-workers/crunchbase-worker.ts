@@ -1,5 +1,6 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
 import { filterCompaniesByDomain } from "@/lib/domain-verifier"
+import { calculateGPT4oCost } from "@/lib/cost-calculator"
 
 export class CrunchbaseSearchWorker implements ProgressiveSearchWorker {
   name = "Crunchbase"
@@ -15,14 +16,14 @@ export class CrunchbaseSearchWorker implements ProgressiveSearchWorker {
       }
 
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10
-      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+      const companiesPerCall = 20
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2
 
       for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
         const remainingCount = desiredCount - allCompanies.length
-        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+        if (remainingCount <= 0) break
 
-        if (countForThisCall <= 0) break
+        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2)
 
         console.log(`[v0] [Crunchbase] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
 
@@ -71,20 +72,23 @@ Return ONLY the JSON array, no other text.`
         })
 
         if (!response.ok) {
-          console.error(`[v0] [Crunchbase] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorText = await response.text()
+          console.error(`[v0] [Crunchbase] API error on call ${callIndex + 1}:`, response.status, errorText)
           break
         }
 
         const data = await response.json()
-
-        const usage = data.usage
-        if (usage) {
-          console.log(
-            `[v0] [Crunchbase] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`,
-          )
-        }
-
         const answer = data.choices[0].message.content
+
+        const tokenUsage = data.usage
+        const costBreakdown = calculateGPT4oCost({
+          input_tokens: tokenUsage.prompt_tokens,
+          output_tokens: tokenUsage.completion_tokens,
+        })
+
+        console.log(
+          `[v0] [Crunchbase] API call cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens} in, ${tokenUsage.completion_tokens} out)`,
+        )
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [Crunchbase] Call ${callIndex + 1} returned ${companies.length} companies`)
@@ -94,8 +98,18 @@ Return ONLY the JSON array, no other text.`
           console.log(`[v0] [Crunchbase] Verified ${verified.length}/${companies.length} companies`)
 
           if (verified.length > 0) {
-            allCompanies.push(...verified)
-            yield verified
+            const costPerCompany = costBreakdown.total_cost / verified.length
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: {
+                prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                cost: costPerCompany,
+              },
+            }))
+
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
           }
         }
 
@@ -131,11 +145,9 @@ Return ONLY the JSON array, no other text.`
 
       for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
         const remainingCount = desiredCount - allCompanies.length
-        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+        if (remainingCount <= 0) break
 
-        if (countForThisCall <= 0) break
-
-        console.log(`[v0] [Crunchbase] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
+        console.log(`[v0] [Crunchbase] API call ${callIndex + 1}/${maxCalls}, requesting ${remainingCount} companies`)
 
         const systemPrompt = `You are a Crunchbase expert. Your task is to find funded startups and companies that would have profiles on Crunchbase.
 
@@ -145,7 +157,7 @@ Crunchbase specializes in: funded startups, venture-backed companies, acquisitio
 
 IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
 
-        const userPrompt = `Find ${countForThisCall} funded companies on Crunchbase that match: "${query}"
+        const userPrompt = `Find ${remainingCount} funded companies on Crunchbase that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}
@@ -187,7 +199,8 @@ Return ONLY the JSON array, no other text.`
         })
 
         if (!response.ok) {
-          console.error(`[v0] [Crunchbase] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorText = await response.text()
+          console.error(`[v0] [Crunchbase] API error on call ${callIndex + 1}:`, response.status, errorText)
           break
         }
 

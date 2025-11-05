@@ -86,7 +86,6 @@ export async function GET(request: NextRequest) {
 
         send("search_started", { search_id: searchId })
 
-        send("status", { message: "Searching multiple sources..." })
         const workers = [
           new LinkedInSearchWorker(),
           new RedditSearchWorker(),
@@ -111,96 +110,139 @@ export async function GET(request: NextRequest) {
         const targetWithBuffer = Math.ceil(desiredCount * 1.3)
         console.log(`[v0] Target: ${desiredCount}, with buffer: ${targetWithBuffer}`)
 
-        const workerPromises = workers.map(async (worker) => {
-          send("worker_started", { worker: worker.name })
-          console.log("[v0] Worker started:", worker.name)
+        let searchRound = 0
+        const maxSearchRounds = 3 // Maximum 3 rounds of searching
 
-          try {
-            const searchGenerator = worker.searchProgressive(query, targetWithBuffer)
+        while (totalCompaniesFound < desiredCount && searchRound < maxSearchRounds) {
+          searchRound++
+          const remainingNeeded = desiredCount - totalCompaniesFound
+          console.log(`[v0] Search round ${searchRound}: Need ${remainingNeeded} more companies`)
 
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error("Timeout")), worker.timeout),
-            )
+          send("status", {
+            message:
+              searchRound === 1
+                ? "Searching multiple sources..."
+                : `Round ${searchRound}: Searching for ${remainingNeeded} more companies...`,
+          })
 
-            let batchCount = 0
-            for await (const batch of searchGenerator) {
-              if (signal.aborted) {
-                console.log(`[v0] Worker ${worker.name} stopped - target count reached`)
-                break
-              }
+          const workerPromises = workers.map(async (worker) => {
+            if (searchRound === 1) {
+              send("worker_started", { worker: worker.name })
+              console.log("[v0] Worker started:", worker.name)
+            }
 
-              batchCount++
-              console.log(`[v0] Worker ${worker.name} yielded batch ${batchCount} with ${batch.length} companies`)
+            try {
+              const searchGenerator = worker.searchProgressive(query, remainingNeeded)
 
-              for (const companyResult of batch) {
+              let batchCount = 0
+              for await (const batch of searchGenerator) {
                 if (signal.aborted) {
-                  console.log(`[v0] Worker ${worker.name} stopped mid-batch - target count reached`)
+                  console.log(`[v0] Worker ${worker.name} stopped - target count reached`)
                   break
                 }
 
-                try {
-                  const merged = await mergeAndSaveCompany(companyResult, accountId)
-                  await linkSearchResult(searchId, merged.company_id, worker.name, companyResult.confidence_score || 0)
+                batchCount++
+                console.log(`[v0] Worker ${worker.name} yielded batch ${batchCount} with ${batch.length} companies`)
 
-                  foundCompanyIds.push(merged.company_id)
-                  totalCompaniesFound++
-
-                  if (companyResult.tokenUsage) {
-                    totalInputTokens += companyResult.tokenUsage.prompt_tokens
-                    totalOutputTokens += companyResult.tokenUsage.completion_tokens
-                    totalCost += companyResult.tokenUsage.cost
-
-                    console.log(
-                      `[v0] Cost update: +$${companyResult.tokenUsage.cost.toFixed(4)} (Total: $${totalCost.toFixed(4)})`,
-                    )
-
-                    send("cost_update", {
-                      total_cost: totalCost,
-                      formatted_total: formatCost(totalCost),
-                      companies_found: totalCompaniesFound,
-                    })
-                  }
-
-                  send("new_company", {
-                    company: merged.company,
-                    is_new: merged.is_new,
-                    source: worker.name,
-                  })
-
-                  send("progress", {
-                    total: totalCompaniesFound,
-                    target: desiredCount,
-                  })
-
-                  console.log(`[v0] Streamed company ${totalCompaniesFound}/${desiredCount}:`, merged.company.name)
-
-                  if (totalCompaniesFound >= desiredCount) {
-                    console.log(`[v0] Target count ${desiredCount} reached! Stopping all workers...`)
-                    abortController.abort()
+                for (const companyResult of batch) {
+                  if (signal.aborted) {
+                    console.log(`[v0] Worker ${worker.name} stopped mid-batch - target count reached`)
                     break
                   }
-                } catch (error: any) {
-                  console.error("[v0] Error merging company:", error.message)
+
+                  try {
+                    const merged = await mergeAndSaveCompany(companyResult, accountId)
+                    await linkSearchResult(
+                      searchId,
+                      merged.company_id,
+                      worker.name,
+                      companyResult.confidence_score || 0,
+                    )
+
+                    foundCompanyIds.push(merged.company_id)
+                    totalCompaniesFound++
+
+                    if (companyResult.tokenUsage) {
+                      totalInputTokens += companyResult.tokenUsage.prompt_tokens
+                      totalOutputTokens += companyResult.tokenUsage.completion_tokens
+                      totalCost += companyResult.tokenUsage.cost
+
+                      console.log(
+                        `[v0] Cost update: +$${companyResult.tokenUsage.cost.toFixed(4)} (Total: $${totalCost.toFixed(4)})`,
+                      )
+
+                      send("cost_update", {
+                        total_cost: totalCost,
+                        formatted_total: formatCost(totalCost),
+                        companies_found: totalCompaniesFound,
+                      })
+                    }
+
+                    send("new_company", {
+                      company: merged.company,
+                      is_new: merged.is_new,
+                      source: worker.name,
+                    })
+
+                    send("progress", {
+                      total: totalCompaniesFound,
+                      target: desiredCount,
+                    })
+
+                    console.log(`[v0] Streamed company ${totalCompaniesFound}/${desiredCount}:`, merged.company.name)
+
+                    if (totalCompaniesFound >= desiredCount) {
+                      console.log(`[v0] Target count ${desiredCount} reached! Stopping all workers...`)
+                      abortController.abort()
+                      break
+                    }
+                  } catch (error: any) {
+                    console.error("[v0] Error merging company:", error.message)
+                  }
                 }
+
+                if (signal.aborted) break
               }
 
-              if (signal.aborted) break
+              console.log(`[v0] Worker ${worker.name} completed round ${searchRound} with ${batchCount} batches`)
+              if (searchRound === 1) {
+                send("worker_completed", { worker: worker.name, count: totalCompaniesFound })
+              }
+            } catch (error: any) {
+              if (error.message === "Timeout") {
+                console.error("[v0] Worker timeout:", worker.name)
+                send("worker_error", { worker: worker.name, error: "Timeout after 150 seconds" })
+              } else {
+                console.error("[v0] Worker error:", worker.name, error.message)
+                send("worker_error", { worker: worker.name, error: error.message })
+              }
             }
+          })
 
-            console.log(`[v0] Worker ${worker.name} completed with ${batchCount} batches`)
-            send("worker_completed", { worker: worker.name, count: totalCompaniesFound })
-          } catch (error: any) {
-            if (error.message === "Timeout") {
-              console.error("[v0] Worker timeout:", worker.name)
-              send("worker_error", { worker: worker.name, error: "Timeout after 150 seconds" })
-            } else {
-              console.error("[v0] Worker error:", worker.name, error.message)
-              send("worker_error", { worker: worker.name, error: error.message })
-            }
+          await Promise.allSettled(workerPromises)
+
+          // Check if we've reached the target
+          if (totalCompaniesFound >= desiredCount) {
+            console.log(`[v0] Target reached after round ${searchRound}`)
+            break
           }
-        })
 
-        await Promise.allSettled(workerPromises)
+          // If we haven't reached the target and this isn't the last round, continue
+          if (searchRound < maxSearchRounds) {
+            console.log(
+              `[v0] Only found ${totalCompaniesFound}/${desiredCount} companies. Starting round ${searchRound + 1}...`,
+            )
+          }
+        }
+
+        if (totalCompaniesFound < desiredCount) {
+          console.log(
+            `[v0] Search completed with ${totalCompaniesFound}/${desiredCount} companies after ${searchRound} rounds`,
+          )
+          send("status", {
+            message: `Found ${totalCompaniesFound} companies (requested ${desiredCount}). No more results available.`,
+          })
+        }
 
         if (foundCompanyIds.length > 0) {
           await cacheSearchResults(cacheKey, foundCompanyIds)

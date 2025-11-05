@@ -1,5 +1,6 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
 import { filterCompaniesByDomain } from "@/lib/domain-verifier"
+import { calculateGPT4oCost } from "@/lib/cost-calculator"
 
 export class RedditSearchWorker implements ProgressiveSearchWorker {
   name = "Reddit"
@@ -15,14 +16,14 @@ export class RedditSearchWorker implements ProgressiveSearchWorker {
       }
 
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10
-      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+      const companiesPerCall = 20
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2
 
       for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
         const remainingCount = desiredCount - allCompanies.length
-        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+        if (remainingCount <= 0) break
 
-        if (countForThisCall <= 0) break
+        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2)
 
         console.log(`[v0] [Reddit] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
 
@@ -68,18 +69,23 @@ Return ONLY the JSON array, no other text.`
         })
 
         if (!response.ok) {
-          console.error(`[v0] [Reddit] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorText = await response.text()
+          console.error(`[v0] [Reddit] API error on call ${callIndex + 1}:`, response.status, errorText)
           break
         }
 
         const data = await response.json()
-
-        const usage = data.usage
-        if (usage) {
-          console.log(`[v0] [Reddit] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`)
-        }
-
         const answer = data.choices[0].message.content
+
+        const tokenUsage = data.usage
+        const costBreakdown = calculateGPT4oCost({
+          input_tokens: tokenUsage.prompt_tokens,
+          output_tokens: tokenUsage.completion_tokens,
+        })
+
+        console.log(
+          `[v0] [Reddit] API call cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens} in, ${tokenUsage.completion_tokens} out)`,
+        )
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [Reddit] Call ${callIndex + 1} returned ${companies.length} companies`)
@@ -89,8 +95,18 @@ Return ONLY the JSON array, no other text.`
           console.log(`[v0] [Reddit] Verified ${verified.length}/${companies.length} companies`)
 
           if (verified.length > 0) {
-            allCompanies.push(...verified)
-            yield verified
+            const costPerCompany = costBreakdown.total_cost / verified.length
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: {
+                prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                cost: costPerCompany,
+              },
+            }))
+
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
           }
         }
 
@@ -173,28 +189,32 @@ Return ONLY the JSON array, no other text.`
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.7, // Increased temperature for more variety
+            temperature: 0.7,
           }),
         })
 
         if (!response.ok) {
-          console.error(`[v0] [Reddit] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorText = await response.text()
+          console.error(`[v0] [Reddit] API error on call ${callIndex + 1}:`, response.status, errorText)
           break
         }
 
         const data = await response.json()
-
-        const usage = data.usage
-        if (usage) {
-          console.log(`[v0] [Reddit] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`)
-        }
-
         const answer = data.choices[0].message.content
+
+        const tokenUsage = data.usage
+        const costBreakdown = calculateGPT4oCost({
+          input_tokens: tokenUsage.prompt_tokens,
+          output_tokens: tokenUsage.completion_tokens,
+        })
+
+        console.log(
+          `[v0] [Reddit] API call cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens} in, ${tokenUsage.completion_tokens} out)`,
+        )
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [Reddit] Call ${callIndex + 1} returned ${companies.length} companies`)
 
-        // Verify domains before adding to allCompanies
         if (companies.length > 0) {
           const { verified, rejected } = await filterCompaniesByDomain(companies)
           console.log(`[v0] [Reddit] Verified ${verified.length}/${companies.length} companies`)

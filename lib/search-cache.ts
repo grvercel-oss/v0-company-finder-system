@@ -132,3 +132,31 @@ export async function fastInitialLookup(icp: ICP, accountId: string, limit = 20)
     return []
   }
 }
+
+// Domain verification cache helpers
+export async function getCachedDomainVerification(domain: string): Promise<boolean | null> {
+  const key = `domain:verified:${domain}`
+  const cached = await redis.get<string>(key)
+  return cached ? JSON.parse(cached) : null
+}
+
+export async function cacheDomainVerification(domain: string, isValid: boolean): Promise<void> {
+  const key = `domain:verified:${domain}`
+  await redis.set(key, JSON.stringify(isValid), { ex: 604800 }) // 7 days
+}
+
+// Batch domain verification cache
+export async function getCachedDomainVerifications(domains: string[]): Promise<Map<string, boolean>> {
+  const results = new Map<string, boolean>()
+
+  const keys = domains.map((d) => `domain:verified:${d}`)
+  const cached = await Promise.all(keys.map((k) => redis.get<string>(k)))
+
+  cached.forEach((value, index) => {
+    if (value !== null) {
+      results.set(domains[index], JSON.parse(value))
+    }
+  })
+
+  return results
+}

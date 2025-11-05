@@ -1,12 +1,29 @@
 import type { CompanyResult } from "./search-workers/types"
+import { redis } from "./redis"
+
+async function getCachedDomainVerification(domain: string): Promise<boolean | null> {
+  const key = `domain:verified:${domain}`
+  const cached = await redis.get<string>(key)
+  return cached ? JSON.parse(cached) : null
+}
+
+async function cacheDomainVerification(domain: string, isValid: boolean): Promise<void> {
+  const key = `domain:verified:${domain}`
+  await redis.set(key, JSON.stringify(isValid), { ex: 604800 }) // 7 days
+}
 
 export async function verifyDomain(domain: string): Promise<boolean> {
   if (!domain) return false
 
+  const cached = await getCachedDomainVerification(domain)
+  if (cached !== null) {
+    return cached
+  }
+
   try {
     const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/\/$/, "")
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
 
     const response = await fetch(`https://${cleanDomain}`, {
       method: "HEAD",
@@ -15,13 +32,18 @@ export async function verifyDomain(domain: string): Promise<boolean> {
     })
 
     clearTimeout(timeoutId)
-    return response.ok || response.status === 403
+    const isValid = response.ok || response.status === 403
+
+    await cacheDomainVerification(domain, isValid)
+
+    return isValid
   } catch (error) {
+    await cacheDomainVerification(domain, false)
     return false
   }
 }
 
-export async function verifyDomains(domains: string[], concurrency = 10): Promise<Map<string, boolean>> {
+export async function verifyDomains(domains: string[], concurrency = 20): Promise<Map<string, boolean>> {
   const results = new Map<string, boolean>()
   const chunks: string[][] = []
 

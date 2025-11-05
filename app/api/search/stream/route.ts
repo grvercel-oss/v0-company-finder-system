@@ -49,17 +49,43 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, data: any) => {
-        console.log("[v0] Sending event:", event, data)
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+      }
+
+      const eventBatch: Array<{ event: string; data: any }> = []
+      const flushEvents = () => {
+        if (eventBatch.length > 0) {
+          for (const { event, data } of eventBatch) {
+            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+          }
+          eventBatch.length = 0
+        }
+      }
+
+      const batchSend = (event: string, data: any) => {
+        eventBatch.push({ event, data })
+        if (eventBatch.length >= 5) {
+          flushEvents()
+        }
       }
 
       try {
         send("status", { message: "Starting search..." })
 
         const cacheKey = query.toLowerCase().trim().replace(/\s+/g, "-")
-        console.log("[v0] Cache key:", cacheKey)
 
-        const cachedCompanyIds = await getCachedSearchResults(cacheKey)
+        const [cachedCompanyIds, searchRequest] = await Promise.all([
+          getCachedSearchResults(cacheKey),
+          sql`
+            INSERT INTO search_requests (account_id, raw_query, desired_count, status)
+            VALUES (${accountId}, ${query}, ${desiredCount}, 'processing')
+            RETURNING *
+          `,
+        ])
+
+        const searchId = searchRequest[0].id
+        console.log("[v0] Search request created:", searchId)
+
         if (cachedCompanyIds && cachedCompanyIds.length > 0) {
           console.log("[v0] Found cached results:", cachedCompanyIds.length, "companies")
           send("status", { message: "Loading cached results..." })
@@ -69,20 +95,12 @@ export async function GET(request: NextRequest) {
           `
 
           for (const company of cachedCompanies) {
-            send("new_company", { company, is_new: false, source: "cache" })
+            batchSend("new_company", { company, is_new: false, source: "cache" })
           }
+          flushEvents()
 
           send("status", { message: "Cached results loaded. Searching for new companies..." })
         }
-
-        console.log("[v0] Creating search request...")
-        const searchRequest = await sql`
-          INSERT INTO search_requests (account_id, raw_query, desired_count, status)
-          VALUES (${accountId}, ${query}, ${desiredCount}, 'processing')
-          RETURNING *
-        `
-        const searchId = searchRequest[0].id
-        console.log("[v0] Search request created:", searchId)
 
         send("search_started", { search_id: searchId })
 
@@ -93,10 +111,6 @@ export async function GET(request: NextRequest) {
           new ProductHuntSearchWorker(),
           new CrunchbaseSearchWorker(),
         ]
-        console.log(
-          "[v0] Starting workers:",
-          workers.map((w) => w.name),
-        )
 
         const foundCompanyIds: number[] = []
         let totalCompaniesFound = 0
@@ -108,15 +122,73 @@ export async function GET(request: NextRequest) {
         const { signal } = abortController
 
         const targetWithBuffer = Math.ceil(desiredCount * 1.3)
-        console.log(`[v0] Target: ${desiredCount}, with buffer: ${targetWithBuffer}`)
 
         let searchRound = 0
-        const maxSearchRounds = 3 // Maximum 3 rounds of searching
+        const maxSearchRounds = 3
+
+        const pendingMerges: Array<{ companyResult: any; workerName: string }> = []
+        const processBatch = async () => {
+          if (pendingMerges.length === 0) return
+
+          const batch = pendingMerges.splice(0, pendingMerges.length)
+          console.log(`[v0] Processing batch of ${batch.length} companies`)
+
+          // Process all merges in parallel
+          const mergeResults = await Promise.allSettled(
+            batch.map(async ({ companyResult, workerName }) => {
+              try {
+                const merged = await mergeAndSaveCompany(companyResult, accountId)
+                await linkSearchResult(searchId, merged.company_id, workerName, companyResult.confidence_score || 0)
+
+                foundCompanyIds.push(merged.company_id)
+                totalCompaniesFound++
+
+                if (companyResult.tokenUsage) {
+                  totalInputTokens += companyResult.tokenUsage.prompt_tokens
+                  totalOutputTokens += companyResult.tokenUsage.completion_tokens
+                  totalCost += companyResult.tokenUsage.cost
+                }
+
+                return { merged, companyResult, workerName }
+              } catch (error: any) {
+                console.error("[v0] Error merging company:", error.message)
+                return null
+              }
+            }),
+          )
+
+          // Stream all successful results
+          for (const result of mergeResults) {
+            if (result.status === "fulfilled" && result.value) {
+              const { merged, companyResult, workerName } = result.value
+
+              batchSend("new_company", {
+                company: merged.company,
+                is_new: merged.is_new,
+                source: workerName,
+              })
+
+              if (companyResult.tokenUsage) {
+                batchSend("cost_update", {
+                  total_cost: totalCost,
+                  formatted_total: formatCost(totalCost),
+                  companies_found: totalCompaniesFound,
+                })
+              }
+
+              batchSend("progress", {
+                total: totalCompaniesFound,
+                target: desiredCount,
+              })
+            }
+          }
+
+          flushEvents()
+        }
 
         while (totalCompaniesFound < desiredCount && searchRound < maxSearchRounds) {
           searchRound++
           const remainingNeeded = desiredCount - totalCompaniesFound
-          console.log(`[v0] Search round ${searchRound}: Need ${remainingNeeded} more companies`)
 
           send("status", {
             message:
@@ -128,92 +200,42 @@ export async function GET(request: NextRequest) {
           const workerPromises = workers.map(async (worker) => {
             if (searchRound === 1) {
               send("worker_started", { worker: worker.name })
-              console.log("[v0] Worker started:", worker.name)
             }
 
             try {
               const searchGenerator = worker.searchProgressive(query, remainingNeeded)
 
-              let batchCount = 0
               for await (const batch of searchGenerator) {
-                if (signal.aborted) {
-                  console.log(`[v0] Worker ${worker.name} stopped - target count reached`)
-                  break
-                }
-
-                batchCount++
-                console.log(`[v0] Worker ${worker.name} yielded batch ${batchCount} with ${batch.length} companies`)
+                if (signal.aborted) break
 
                 for (const companyResult of batch) {
-                  if (signal.aborted) {
-                    console.log(`[v0] Worker ${worker.name} stopped mid-batch - target count reached`)
-                    break
+                  if (signal.aborted) break
+                  pendingMerges.push({ companyResult, workerName: worker.name })
+
+                  // Process batch when it reaches optimal size
+                  if (pendingMerges.length >= 10) {
+                    await processBatch()
                   }
 
-                  try {
-                    const merged = await mergeAndSaveCompany(companyResult, accountId)
-                    await linkSearchResult(
-                      searchId,
-                      merged.company_id,
-                      worker.name,
-                      companyResult.confidence_score || 0,
-                    )
-
-                    foundCompanyIds.push(merged.company_id)
-                    totalCompaniesFound++
-
-                    if (companyResult.tokenUsage) {
-                      totalInputTokens += companyResult.tokenUsage.prompt_tokens
-                      totalOutputTokens += companyResult.tokenUsage.completion_tokens
-                      totalCost += companyResult.tokenUsage.cost
-
-                      console.log(
-                        `[v0] Cost update: +$${companyResult.tokenUsage.cost.toFixed(4)} (Total: $${totalCost.toFixed(4)})`,
-                      )
-
-                      send("cost_update", {
-                        total_cost: totalCost,
-                        formatted_total: formatCost(totalCost),
-                        companies_found: totalCompaniesFound,
-                      })
-                    }
-
-                    send("new_company", {
-                      company: merged.company,
-                      is_new: merged.is_new,
-                      source: worker.name,
-                    })
-
-                    send("progress", {
-                      total: totalCompaniesFound,
-                      target: desiredCount,
-                    })
-
-                    console.log(`[v0] Streamed company ${totalCompaniesFound}/${desiredCount}:`, merged.company.name)
-
-                    if (totalCompaniesFound >= desiredCount) {
-                      console.log(`[v0] Target count ${desiredCount} reached! Stopping all workers...`)
-                      abortController.abort()
-                      break
-                    }
-                  } catch (error: any) {
-                    console.error("[v0] Error merging company:", error.message)
+                  if (totalCompaniesFound >= desiredCount) {
+                    abortController.abort()
+                    break
                   }
                 }
 
                 if (signal.aborted) break
               }
 
-              console.log(`[v0] Worker ${worker.name} completed round ${searchRound} with ${batchCount} batches`)
+              // Process remaining companies from this worker
+              await processBatch()
+
               if (searchRound === 1) {
                 send("worker_completed", { worker: worker.name, count: totalCompaniesFound })
               }
             } catch (error: any) {
               if (error.message === "Timeout") {
-                console.error("[v0] Worker timeout:", worker.name)
                 send("worker_error", { worker: worker.name, error: "Timeout after 150 seconds" })
               } else {
-                console.error("[v0] Worker error:", worker.name, error.message)
                 send("worker_error", { worker: worker.name, error: error.message })
               }
             }
@@ -221,13 +243,13 @@ export async function GET(request: NextRequest) {
 
           await Promise.allSettled(workerPromises)
 
-          // Check if we've reached the target
+          // Process any remaining companies
+          await processBatch()
+
           if (totalCompaniesFound >= desiredCount) {
-            console.log(`[v0] Target reached after round ${searchRound}`)
             break
           }
 
-          // If we haven't reached the target and this isn't the last round, continue
           if (searchRound < maxSearchRounds) {
             console.log(
               `[v0] Only found ${totalCompaniesFound}/${desiredCount} companies. Starting round ${searchRound + 1}...`,
@@ -236,9 +258,6 @@ export async function GET(request: NextRequest) {
         }
 
         if (totalCompaniesFound < desiredCount) {
-          console.log(
-            `[v0] Search completed with ${totalCompaniesFound}/${desiredCount} companies after ${searchRound} rounds`,
-          )
           send("status", {
             message: `Found ${totalCompaniesFound} companies (requested ${desiredCount}). No more results available.`,
           })
@@ -246,11 +265,8 @@ export async function GET(request: NextRequest) {
 
         if (foundCompanyIds.length > 0) {
           await cacheSearchResults(cacheKey, foundCompanyIds)
-          console.log("[v0] Cached", foundCompanyIds.length, "company IDs")
         }
 
-        // Mark search as completed
-        console.log("[v0] Marking search as completed...")
         await sql`
           UPDATE search_requests 
           SET status = 'completed', completed_at = now()
@@ -267,7 +283,6 @@ export async function GET(request: NextRequest) {
         })
 
         send("search_completed", { search_id: searchId })
-        console.log("[v0] Search completed successfully")
         controller.close()
       } catch (error: any) {
         console.error("[v0] Stream error:", error)

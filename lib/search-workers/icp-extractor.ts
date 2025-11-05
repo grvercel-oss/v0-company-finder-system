@@ -53,7 +53,7 @@ Return JSON with this structure:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-nano", // Updated model
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -65,14 +65,12 @@ Return JSON with this structure:
             content: prompt,
           },
         ],
+        temperature: 0.3,
         response_format: { type: "json_object" },
       }),
     })
 
     if (!response.ok) {
-      const errorBody = await response.text()
-      console.error(`[v0] ICP extraction API error: ${response.status} ${response.statusText}`)
-      console.error(`[v0] ICP extraction error details:`, errorBody)
       throw new Error(`OpenAI API error: ${response.statusText}`)
     }
 
@@ -152,7 +150,7 @@ Return JSON with this exact structure:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-nano", // Updated model
+        model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
@@ -164,14 +162,12 @@ Return JSON with this exact structure:
             content: prompt,
           },
         ],
+        temperature: 0.5,
         response_format: { type: "json_object" },
       }),
     })
 
     if (!response.ok) {
-      const errorBody = await response.text()
-      console.error(`[v0] Query generation API error: ${response.status} ${response.statusText}`)
-      console.error(`[v0] Query generation error details:`, errorBody)
       return [rawQuery]
     }
 

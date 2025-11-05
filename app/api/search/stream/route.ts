@@ -5,7 +5,13 @@ import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
-import { checkRateLimit, generateICPHash, getCachedSearchResults, cacheSearchResults } from "@/lib/search-cache"
+import {
+  checkRateLimit,
+  generateICPHash,
+  getCachedSearchResults,
+  cacheSearchResults,
+  fastInitialLookup,
+} from "@/lib/search-cache"
 import { LinkedInSearchWorker } from "@/lib/search-workers/gpt-workers/linkedin-worker"
 import { RedditSearchWorker } from "@/lib/search-workers/gpt-workers/reddit-worker"
 import { ClutchSearchWorker } from "@/lib/search-workers/gpt-workers/clutch-worker"
@@ -37,15 +43,15 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const query = searchParams.get("query")
   const desiredCount = Number.parseInt(searchParams.get("desired_count") || "20")
-  const useICP = searchParams.get("use_icp") !== "false"
 
   if (!query) {
     console.error("[v0] No query provided")
     return new Response("Query required", { status: 400 })
   }
 
-  console.log("[v0] Starting search for query:", query, "with desired count:", desiredCount, "use ICP:", useICP)
+  console.log("[v0] Starting search for query:", query, "with desired count:", desiredCount)
 
+  // Create SSE stream
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
@@ -55,37 +61,23 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        let icp: any
-        let icpHash: string
-        let searchQueries: string[]
+        send("status", { message: "Extracting ICP..." })
 
-        if (useICP) {
-          send("status", { message: "Extracting ICP..." })
-          console.log("[v0] Extracting ICP...")
-          icp = await extractICP(query)
-          console.log("[v0] ICP extracted:", icp)
-          send("icp", { icp })
+        // Extract ICP
+        console.log("[v0] Extracting ICP...")
+        const icp = await extractICP(query)
+        console.log("[v0] ICP extracted:", icp)
+        send("icp", { icp })
 
-          icpHash = generateICPHash(icp)
-          console.log("[v0] ICP hash:", icpHash)
-
-          send("status", { message: "Generating search queries..." })
-          console.log("[v0] Generating search queries...")
-          searchQueries = await generateSearchQueries(query, icp)
-          console.log("[v0] Generated queries:", searchQueries)
-        } else {
-          console.log("[v0] Skipping ICP extraction - using raw query")
-          icp = { raw_query: query }
-          icpHash = generateICPHash(icp)
-          searchQueries = [query]
-          send("status", { message: "Using direct search (ICP disabled)..." })
-        }
+        const icpHash = generateICPHash(icp)
+        console.log("[v0] ICP hash:", icpHash)
 
         const cachedCompanyIds = await getCachedSearchResults(icpHash)
         if (cachedCompanyIds && cachedCompanyIds.length > 0) {
           console.log("[v0] Found cached results:", cachedCompanyIds.length, "companies")
           send("status", { message: "Loading cached results..." })
 
+          // Fetch cached companies
           const cachedCompanies = await sql`
             SELECT * FROM companies WHERE id = ANY(${cachedCompanyIds})
           `
@@ -97,7 +89,17 @@ export async function GET(request: NextRequest) {
           send("status", { message: "Cached results loaded. Searching for new companies..." })
         }
 
-        send("status", { message: "Creating search request..." })
+        send("status", { message: "Searching existing companies..." })
+        const fastResults = await fastInitialLookup(icp, accountId, 20)
+        console.log("[v0] Fast lookup found", fastResults.length, "companies")
+
+        if (fastResults.length > 0) {
+          for (const company of fastResults) {
+            send("new_company", { company, is_new: false, source: "database" })
+          }
+        }
+
+        // Create search request
         console.log("[v0] Creating search request...")
         const searchRequest = await sql`
           INSERT INTO search_requests (account_id, raw_query, icp, desired_count, status)
@@ -108,6 +110,25 @@ export async function GET(request: NextRequest) {
         console.log("[v0] Search request created:", searchId)
 
         send("search_started", { search_id: searchId })
+
+        // Generate queries
+        send("status", { message: "Generating search queries..." })
+        console.log("[v0] Generating search queries...")
+        const searchQueries = await generateSearchQueries(query, icp)
+        console.log("[v0] Generated queries:", searchQueries)
+
+        send("status", { message: "Searching multiple sources..." })
+        const workers = [
+          new LinkedInSearchWorker(),
+          new RedditSearchWorker(),
+          new ClutchSearchWorker(),
+          new ProductHuntSearchWorker(),
+          new CrunchbaseSearchWorker(),
+        ]
+        console.log(
+          "[v0] Starting workers:",
+          workers.map((w) => w.name),
+        )
 
         const foundCompanyIds: number[] = []
         let totalCompaniesFound = 0
@@ -120,18 +141,6 @@ export async function GET(request: NextRequest) {
 
         const targetWithBuffer = Math.ceil(desiredCount * 1.3)
         console.log(`[v0] Target: ${desiredCount}, with buffer: ${targetWithBuffer}`)
-
-        const workers = [
-          new LinkedInSearchWorker(),
-          new RedditSearchWorker(),
-          new ClutchSearchWorker(),
-          new ProductHuntSearchWorker(),
-          new CrunchbaseSearchWorker(),
-        ]
-        console.log(
-          "[v0] Starting workers:",
-          workers.map((w) => w.name),
-        )
 
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
@@ -229,7 +238,7 @@ export async function GET(request: NextRequest) {
           console.log("[v0] Cached", foundCompanyIds.length, "company IDs")
         }
 
-        send("status", { message: "Marking search as completed..." })
+        // Mark search as completed
         console.log("[v0] Marking search as completed...")
         await sql`
           UPDATE search_requests 

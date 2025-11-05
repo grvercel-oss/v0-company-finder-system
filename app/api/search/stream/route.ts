@@ -4,8 +4,6 @@ import type { NextRequest } from "next/server"
 import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
-import { PerplexityWorker } from "@/lib/search-workers/perplexity-worker"
-import { ClutchScraperWorker } from "@/lib/search-workers/clutch-worker"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
 import {
   checkRateLimit,
@@ -14,6 +12,11 @@ import {
   cacheSearchResults,
   fastInitialLookup,
 } from "@/lib/search-cache"
+import { LinkedInSearchWorker } from "@/lib/search-workers/gpt-workers/linkedin-worker"
+import { RedditSearchWorker } from "@/lib/search-workers/gpt-workers/reddit-worker"
+import { ClutchSearchWorker } from "@/lib/search-workers/gpt-workers/clutch-worker"
+import { ProductHuntSearchWorker } from "@/lib/search-workers/gpt-workers/producthunt-worker"
+import { CrunchbaseSearchWorker } from "@/lib/search-workers/gpt-workers/crunchbase-worker"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -115,7 +118,13 @@ export async function GET(request: NextRequest) {
 
         // Run workers
         send("status", { message: "Searching multiple sources..." })
-        const workers = [new PerplexityWorker(), new ClutchScraperWorker()]
+        const workers = [
+          new LinkedInSearchWorker(),
+          new RedditSearchWorker(),
+          new ClutchSearchWorker(),
+          new ProductHuntSearchWorker(),
+          new CrunchbaseSearchWorker(),
+        ]
         console.log(
           "[v0] Starting workers:",
           workers.map((w) => w.name),

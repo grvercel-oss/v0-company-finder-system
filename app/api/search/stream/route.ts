@@ -121,10 +121,8 @@ export async function GET(request: NextRequest) {
         const abortController = new AbortController()
         const { signal } = abortController
 
-        const targetWithBuffer = Math.ceil(desiredCount * 1.3)
-
         let searchRound = 0
-        const maxSearchRounds = 3
+        const maxSearchRounds = 5
 
         const pendingMerges: Array<{ companyResult: any; workerName: string }> = []
         const processBatch = async () => {
@@ -189,6 +187,7 @@ export async function GET(request: NextRequest) {
         while (totalCompaniesFound < desiredCount && searchRound < maxSearchRounds) {
           searchRound++
           const remainingNeeded = desiredCount - totalCompaniesFound
+          const requestCount = Math.ceil(remainingNeeded * 2)
 
           send("status", {
             message:
@@ -203,7 +202,7 @@ export async function GET(request: NextRequest) {
             }
 
             try {
-              const searchGenerator = worker.searchProgressive(query, remainingNeeded)
+              const searchGenerator = worker.searchProgressive(query, requestCount)
 
               for await (const batch of searchGenerator) {
                 if (signal.aborted) break

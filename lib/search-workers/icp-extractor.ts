@@ -65,7 +65,6 @@ Return JSON with this structure:
             content: prompt,
           },
         ],
-        temperature: 0.3,
         response_format: { type: "json_object" },
       }),
     })
@@ -165,7 +164,6 @@ Return JSON with this exact structure:
             content: prompt,
           },
         ],
-        temperature: 0.5,
         response_format: { type: "json_object" },
       }),
     })

@@ -74,7 +74,6 @@ Return ONLY the JSON array, no other text.`
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.7,
           }),
         })
 
@@ -184,7 +183,6 @@ Return ONLY the JSON array, no other text.`
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.7,
           }),
         })
 

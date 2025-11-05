@@ -85,7 +85,6 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.3, // Lower temperature for more factual responses
           }),
         })
 
@@ -210,7 +209,6 @@ Return ONLY the JSON array, no other text.`
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.7, // Increased temperature for more variety
           }),
         })
 

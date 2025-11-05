@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { SearchBar } from "@/components/search-bar"
 import { AdvancedFilters, type FilterOptions } from "@/components/advanced-filters"
 import { SearchResults } from "@/components/search-results"
 import { CostTracker } from "@/components/cost-tracker"
 import { SearchProgress } from "@/components/search-progress"
 import type { Company } from "@/lib/db"
+import { Badge } from "@/components/ui/badge"
+import { Clock } from "lucide-react"
 
 interface SearchCost {
   perplexity?: {
@@ -39,8 +41,42 @@ export default function SearchPage() {
   const [workers, setWorkers] = useState<WorkerStatus[]>([])
   const [icp, setIcp] = useState<any>(null)
   const [searchId, setSearchId] = useState<string>()
+  const [previousSearch, setPreviousSearch] = useState<{
+    query: string
+    createdAt: string
+  } | null>(null)
+  const [isLoadingPrevious, setIsLoadingPrevious] = useState(true)
+
+  useEffect(() => {
+    const loadPreviousSearch = async () => {
+      try {
+        console.log("[v0] Loading previous search...")
+        const response = await fetch("/api/search/latest")
+        if (!response.ok) throw new Error("Failed to load previous search")
+
+        const data = await response.json()
+        if (data.search && data.companies.length > 0) {
+          console.log("[v0] Loaded previous search:", data.search.query, "with", data.companies.length, "companies")
+          setCompanies(data.companies)
+          setSearchPerformed(true)
+          setPreviousSearch({
+            query: data.search.query,
+            createdAt: data.search.createdAt,
+          })
+          setIcp(data.search.icp)
+        }
+      } catch (err) {
+        console.error("[v0] Error loading previous search:", err)
+      } finally {
+        setIsLoadingPrevious(false)
+      }
+    }
+
+    loadPreviousSearch()
+  }, [])
 
   const handleSearch = async (query: string) => {
+    setPreviousSearch(null)
     setIsLoading(true)
     setError(undefined)
     setSearchPerformed(true)
@@ -128,8 +164,8 @@ export default function SearchPage() {
       eventSource.onerror = (e) => {
         console.error("[v0] EventSource connection error:", e)
         setError("Failed to connect to search stream. Please try again.")
+        setCompanies([])
         setIsLoading(false)
-        eventSource.close()
       }
     } catch (err: any) {
       console.error("[v0] Search error:", err)
@@ -137,6 +173,24 @@ export default function SearchPage() {
       setCompanies([])
       setIsLoading(false)
     }
+  }
+
+  if (isLoadingPrevious) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="border-b bg-card">
+          <div className="container mx-auto px-4 py-8">
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div>
+                <h1 className="text-4xl font-bold tracking-tight mb-2">Company Finder</h1>
+                <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
+              </div>
+              <SearchBar onSearch={handleSearch} isLoading={true} />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -155,6 +209,21 @@ export default function SearchPage() {
       </div>
 
       <div className="container mx-auto px-4 py-8">
+        {previousSearch && !isLoading && (
+          <div className="max-w-4xl mx-auto mb-6">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-4 py-3 rounded-lg border">
+              <Clock className="h-4 w-4" />
+              <span>
+                Showing results from previous search:{" "}
+                <span className="font-medium text-foreground">"{previousSearch.query}"</span>
+              </span>
+              <Badge variant="outline" className="ml-auto">
+                {new Date(previousSearch.createdAt).toLocaleString()}
+              </Badge>
+            </div>
+          </div>
+        )}
+
         {isLoading && (
           <div className="max-w-4xl mx-auto mb-6">
             <SearchProgress workers={workers} icp={icp} companiesFound={companies.length} />

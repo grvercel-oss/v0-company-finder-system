@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import { SearchBar } from "@/components/search-bar"
 import { AdvancedFilters, type FilterOptions } from "@/components/advanced-filters"
 import { SearchResults } from "@/components/search-results"
-import { CostTracker } from "@/components/cost-tracker"
 import { SearchProgress } from "@/components/search-progress"
+import { CostTracker } from "@/components/cost-tracker"
 import type { Company } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { Clock } from "lucide-react"
@@ -41,8 +41,6 @@ export default function SearchPage() {
   const [filters, setFilters] = useState<FilterOptions>({})
   const [searchCost, setSearchCost] = useState<SearchCost>()
   const [workers, setWorkers] = useState<WorkerStatus[]>([])
-  const [icp, setIcp] = useState<any>(null)
-  const [searchId, setSearchId] = useState<string>()
   const [previousSearch, setPreviousSearch] = useState<{
     query: string
     createdAt: string
@@ -51,6 +49,7 @@ export default function SearchPage() {
   const [desiredCount, setDesiredCount] = useState<number>(20)
   const [totalCost, setTotalCost] = useState<number>(0)
   const [costPerCompany, setCostPerCompany] = useState<string>("$0.00")
+  const [searchId, setSearchId] = useState<string | undefined>()
 
   useEffect(() => {
     let mounted = true
@@ -78,7 +77,6 @@ export default function SearchPage() {
             query: data.search.query,
             createdAt: data.search.createdAt,
           })
-          setIcp(data.search.icp)
         }
       } catch (err) {
         console.error("[v0] Error loading previous search:", err)
@@ -104,7 +102,6 @@ export default function SearchPage() {
     setSearchCost(undefined)
     setCompanies([])
     setWorkers([])
-    setIcp(null)
     setSearchId(undefined)
     setTotalCost(0)
     setCostPerCompany("$0.00")
@@ -117,12 +114,6 @@ export default function SearchPage() {
       const eventSource = new EventSource(`/api/search/stream?${params.toString()}`)
 
       console.log("[v0] Connecting to search stream...")
-
-      eventSource.addEventListener("icp", (e) => {
-        const data = JSON.parse(e.data)
-        setIcp(data.icp)
-        console.log("[v0] ICP extracted:", data.icp)
-      })
 
       eventSource.addEventListener("search_started", (e) => {
         const data = JSON.parse(e.data)
@@ -303,7 +294,7 @@ export default function SearchPage() {
 
         {isLoading && (
           <div className="max-w-4xl mx-auto mb-6">
-            <SearchProgress workers={workers} icp={icp} companiesFound={companies.length} />
+            <SearchProgress workers={workers} companiesFound={companies.length} />
           </div>
         )}
 

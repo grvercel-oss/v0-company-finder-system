@@ -3,15 +3,8 @@
 import type { NextRequest } from "next/server"
 import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
-import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
-import {
-  checkRateLimit,
-  generateICPHash,
-  getCachedSearchResults,
-  cacheSearchResults,
-  fastInitialLookup,
-} from "@/lib/search-cache"
+import { checkRateLimit, getCachedSearchResults, cacheSearchResults } from "@/lib/search-cache"
 import { LinkedInSearchWorker } from "@/lib/search-workers/gpt-workers/linkedin-worker"
 import { RedditSearchWorker } from "@/lib/search-workers/gpt-workers/reddit-worker"
 import { ClutchSearchWorker } from "@/lib/search-workers/gpt-workers/clutch-worker"
@@ -61,23 +54,16 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        send("status", { message: "Extracting ICP..." })
+        send("status", { message: "Starting search..." })
 
-        // Extract ICP
-        console.log("[v0] Extracting ICP...")
-        const icp = await extractICP(query)
-        console.log("[v0] ICP extracted:", icp)
-        send("icp", { icp })
+        const cacheKey = query.toLowerCase().trim().replace(/\s+/g, "-")
+        console.log("[v0] Cache key:", cacheKey)
 
-        const icpHash = generateICPHash(icp)
-        console.log("[v0] ICP hash:", icpHash)
-
-        const cachedCompanyIds = await getCachedSearchResults(icpHash)
+        const cachedCompanyIds = await getCachedSearchResults(cacheKey)
         if (cachedCompanyIds && cachedCompanyIds.length > 0) {
           console.log("[v0] Found cached results:", cachedCompanyIds.length, "companies")
           send("status", { message: "Loading cached results..." })
 
-          // Fetch cached companies
           const cachedCompanies = await sql`
             SELECT * FROM companies WHERE id = ANY(${cachedCompanyIds})
           `
@@ -89,33 +75,16 @@ export async function GET(request: NextRequest) {
           send("status", { message: "Cached results loaded. Searching for new companies..." })
         }
 
-        send("status", { message: "Searching existing companies..." })
-        const fastResults = await fastInitialLookup(icp, accountId, 20)
-        console.log("[v0] Fast lookup found", fastResults.length, "companies")
-
-        if (fastResults.length > 0) {
-          for (const company of fastResults) {
-            send("new_company", { company, is_new: false, source: "database" })
-          }
-        }
-
-        // Create search request
         console.log("[v0] Creating search request...")
         const searchRequest = await sql`
-          INSERT INTO search_requests (account_id, raw_query, icp, desired_count, status)
-          VALUES (${accountId}, ${query}, ${JSON.stringify(icp)}, ${desiredCount}, 'processing')
+          INSERT INTO search_requests (account_id, raw_query, desired_count, status)
+          VALUES (${accountId}, ${query}, ${desiredCount}, 'processing')
           RETURNING *
         `
         const searchId = searchRequest[0].id
         console.log("[v0] Search request created:", searchId)
 
         send("search_started", { search_id: searchId })
-
-        // Generate queries
-        send("status", { message: "Generating search queries..." })
-        console.log("[v0] Generating search queries...")
-        const searchQueries = await generateSearchQueries(query, icp)
-        console.log("[v0] Generated queries:", searchQueries)
 
         send("status", { message: "Searching multiple sources..." })
         const workers = [
@@ -147,7 +116,7 @@ export async function GET(request: NextRequest) {
           console.log("[v0] Worker started:", worker.name)
 
           try {
-            const searchGenerator = worker.searchProgressive(searchQueries, icp, targetWithBuffer)
+            const searchGenerator = worker.searchProgressive(query, targetWithBuffer)
 
             const timeoutPromise = new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error("Timeout")), worker.timeout),
@@ -234,7 +203,7 @@ export async function GET(request: NextRequest) {
         await Promise.allSettled(workerPromises)
 
         if (foundCompanyIds.length > 0) {
-          await cacheSearchResults(icpHash, foundCompanyIds)
+          await cacheSearchResults(cacheKey, foundCompanyIds)
           console.log("[v0] Cached", foundCompanyIds.length, "company IDs")
         }
 

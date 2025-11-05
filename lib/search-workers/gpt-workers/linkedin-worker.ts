@@ -1,15 +1,12 @@
-import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import type { SearchWorkerResult, CompanyResult, ProgressiveSearchWorker, ICP } from "../types"
 import { filterCompaniesByDomain } from "@/lib/domain-verifier"
+import { calculateCost } from "@/lib/cost-calculator"
 
 export class LinkedInSearchWorker implements ProgressiveSearchWorker {
   name = "LinkedIn"
   timeout = 150000
 
-  async *searchProgressive(
-    queries: string[],
-    icp: ICP,
-    desiredCount = 10,
-  ): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(query: string, desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [LinkedIn] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -18,10 +15,9 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
         throw new Error("OPENAI_API_KEY not configured")
       }
 
-      const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10
-      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2 // Request 2x to account for filtering
+      const companiesPerCall = 20 // Increased batch size for faster results
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2
 
       console.log(`[v0] [LinkedIn] Will make up to ${maxCalls} API calls`)
 
@@ -29,7 +25,7 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
         const remainingCount = desiredCount - allCompanies.length
         if (remainingCount <= 0) break
 
-        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2) // Request 2x
+        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2)
 
         console.log(`[v0] [LinkedIn] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
 
@@ -45,11 +41,6 @@ CRITICAL RULES:
 Focus on LinkedIn as your primary source. Return specialized companies, startups, and focused providers.`
 
         const userPrompt = `Find ${countForThisCall} REAL, ACTIVE companies on LinkedIn that match: "${query}"
-
-Based on the ICP:
-- Industries: ${icp.industries.join(", ")}
-- Locations: ${icp.locations.join(", ")}
-- Company sizes: ${icp.company_sizes.join(", ")}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 
@@ -80,17 +71,17 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano", // Switched from gpt-4o to gpt-5-nano for lower cost
+            model: "gpt-5-nano",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.3, // Lower temperature for more factual responses
           }),
         })
 
         if (!response.ok) {
-          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.statusText}`)
+          const errorText = await response.text()
+          console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}:`, response.status, errorText)
           break
         }
 
@@ -99,8 +90,9 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
 
         const tokenUsage = data.usage
           ? {
-              input_tokens: data.usage.prompt_tokens || 0,
-              output_tokens: data.usage.completion_tokens || 0,
+              prompt_tokens: data.usage.prompt_tokens || 0,
+              completion_tokens: data.usage.completion_tokens || 0,
+              cost: calculateCost(data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0),
             }
           : undefined
 
@@ -109,7 +101,7 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
 
         if (tokenUsage) {
           console.log(
-            `[v0] [LinkedIn] Token usage: ${tokenUsage.input_tokens} input, ${tokenUsage.output_tokens} output`,
+            `[v0] [LinkedIn] Token usage: ${tokenUsage.prompt_tokens} input, ${tokenUsage.completion_tokens} output, cost: $${tokenUsage.cost.toFixed(4)}`,
           )
         }
 
@@ -118,9 +110,25 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
           console.log(`[v0] [LinkedIn] Domain verification: ${verified.length} verified, ${rejected.length} rejected`)
 
           if (verified.length > 0) {
-            allCompanies.push(...verified)
-            yield verified
+            const costPerCompany = tokenUsage ? tokenUsage.cost / verified.length : 0
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: tokenUsage
+                ? {
+                    prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                    completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                    cost: costPerCompany,
+                  }
+                : undefined,
+            }))
+
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
           }
+        }
+
+        if (allCompanies.length >= desiredCount) {
+          break
         }
       }
 
@@ -195,7 +203,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano", // Switched from gpt-4o to gpt-5-nano for lower cost
+            model: "gpt-4o",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },

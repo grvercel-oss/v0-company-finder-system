@@ -136,6 +136,9 @@ export async function GET(request: NextRequest) {
         const totalInputTokens = 0
         const totalOutputTokens = 0
 
+        const abortController = new AbortController()
+        const { signal } = abortController
+
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
           console.log("[v0] Worker started:", worker.name)
@@ -149,10 +152,20 @@ export async function GET(request: NextRequest) {
 
             let batchCount = 0
             for await (const batch of searchGenerator) {
+              if (signal.aborted) {
+                console.log(`[v0] Worker ${worker.name} stopped - target count reached`)
+                break
+              }
+
               batchCount++
               console.log(`[v0] Worker ${worker.name} yielded batch ${batchCount} with ${batch.length} companies`)
 
               for (const companyResult of batch) {
+                if (signal.aborted) {
+                  console.log(`[v0] Worker ${worker.name} stopped mid-batch - target count reached`)
+                  break
+                }
+
                 try {
                   const merged = await mergeAndSaveCompany(companyResult, accountId)
                   await linkSearchResult(searchId, merged.company_id, worker.name, companyResult.confidence_score || 0)
@@ -168,18 +181,26 @@ export async function GET(request: NextRequest) {
 
                   send("progress", {
                     total: totalCompaniesFound,
-                    target: desiredCount * workers.length,
+                    target: desiredCount,
                   })
 
-                  console.log(`[v0] Streamed company ${totalCompaniesFound}:`, merged.company.name)
+                  console.log(`[v0] Streamed company ${totalCompaniesFound}/${desiredCount}:`, merged.company.name)
+
+                  if (totalCompaniesFound >= desiredCount) {
+                    console.log(`[v0] Target count ${desiredCount} reached! Stopping all workers...`)
+                    abortController.abort()
+                    break
+                  }
                 } catch (error: any) {
                   console.error("[v0] Error merging company:", error.message)
                 }
               }
+
+              if (signal.aborted) break
             }
 
             console.log(`[v0] Worker ${worker.name} completed with ${batchCount} batches`)
-            send("worker_completed", { worker: worker.name, count: batchCount * 10 })
+            send("worker_completed", { worker: worker.name, count: totalCompaniesFound })
           } catch (error: any) {
             if (error.message === "Timeout") {
               console.error("[v0] Worker timeout:", worker.name)

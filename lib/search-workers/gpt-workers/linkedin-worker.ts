@@ -9,11 +9,7 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
     queries: string[],
     icp: ICP,
     desiredCount = 10,
-  ): AsyncGenerator<
-    { companies: CompanyResult[]; tokenUsage?: { input_tokens: number; output_tokens: number } },
-    void,
-    unknown
-  > {
+  ): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [LinkedIn] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -111,13 +107,19 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [LinkedIn] Call ${callIndex + 1} returned ${companies.length} companies`)
 
+        if (tokenUsage) {
+          console.log(
+            `[v0] [LinkedIn] Token usage: ${tokenUsage.input_tokens} input, ${tokenUsage.output_tokens} output`,
+          )
+        }
+
         if (companies.length > 0) {
           const { verified, rejected } = await filterCompaniesByDomain(companies)
           console.log(`[v0] [LinkedIn] Domain verification: ${verified.length} verified, ${rejected.length} rejected`)
 
           if (verified.length > 0) {
             allCompanies.push(...verified)
-            yield { companies: verified, tokenUsage }
+            yield verified
           }
         }
 

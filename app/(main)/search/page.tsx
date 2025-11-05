@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Clock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 
 interface SearchCost {
   perplexity?: {
@@ -51,6 +52,12 @@ export default function SearchPage() {
   const [desiredCount, setDesiredCount] = useState<number>(20)
   const [totalCost, setTotalCost] = useState<number>(0)
   const [costPerCompany, setCostPerCompany] = useState<string>("$0.00")
+  const [useICP, setUseICP] = useState(true)
+  const [finalCost, setFinalCost] = useState<{
+    total: number
+    perCompany: string
+    companiesFound: number
+  } | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -108,11 +115,13 @@ export default function SearchPage() {
     setSearchId(undefined)
     setTotalCost(0)
     setCostPerCompany("$0.00")
+    setFinalCost(null)
 
     try {
       const params = new URLSearchParams({
         query,
         desired_count: desiredCount.toString(),
+        use_icp: useICP.toString(),
       })
       const eventSource = new EventSource(`/api/search/stream?${params.toString()}`)
 
@@ -194,6 +203,11 @@ export default function SearchPage() {
         const data = JSON.parse(e.data)
         setTotalCost(data.total_cost)
         setCostPerCompany(data.cost_per_company)
+        setFinalCost({
+          total: data.total_cost,
+          perCompany: data.cost_per_company,
+          companiesFound: data.companies_found,
+        })
         console.log("[v0] Final cost:", data.formatted_total, "for", data.companies_found, "companies")
       })
 
@@ -241,7 +255,7 @@ export default function SearchPage() {
               <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
             </div>
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6 flex-wrap">
               <div className="flex items-center gap-2">
                 <Label htmlFor="company-count" className="text-sm font-medium whitespace-nowrap">
                   Target companies:
@@ -258,6 +272,15 @@ export default function SearchPage() {
                 />
                 <span className="text-xs text-muted-foreground">
                   (Search will stop at exactly {desiredCount} companies)
+                </span>
+              </div>
+              <div className="flex items-center gap-3 border-l pl-6">
+                <Label htmlFor="icp-toggle" className="text-sm font-medium whitespace-nowrap cursor-pointer">
+                  Use ICP Extraction
+                </Label>
+                <Switch id="icp-toggle" checked={useICP} onCheckedChange={setUseICP} disabled={isLoading} />
+                <span className="text-xs text-muted-foreground">
+                  {useICP ? "(Slower, more accurate)" : "(Faster, direct search)"}
                 </span>
               </div>
             </div>
@@ -282,18 +305,26 @@ export default function SearchPage() {
           </div>
         )}
 
-        {(isLoading || totalCost > 0) && (
+        {(isLoading || finalCost) && (
           <div className="max-w-4xl mx-auto mb-6">
             <div className="bg-card border rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Search Cost</p>
-                  <p className="text-2xl font-bold">${totalCost.toFixed(4)}</p>
+                  <p className="text-2xl font-bold">${(isLoading ? totalCost : finalCost?.total || 0).toFixed(4)}</p>
                 </div>
-                {companies.length > 0 && (
+                {((isLoading && companies.length > 0) || finalCost) && (
                   <div className="text-right">
                     <p className="text-sm font-medium text-muted-foreground">Cost per Company</p>
-                    <p className="text-lg font-semibold">{costPerCompany}</p>
+                    <p className="text-lg font-semibold">
+                      {isLoading ? costPerCompany : finalCost?.perCompany || "$0.00"}
+                    </p>
+                  </div>
+                )}
+                {finalCost && (
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-muted-foreground">Companies Found</p>
+                    <p className="text-lg font-semibold">{finalCost.companiesFound}</p>
                   </div>
                 )}
               </div>

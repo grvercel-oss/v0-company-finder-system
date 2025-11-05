@@ -43,15 +43,15 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const query = searchParams.get("query")
   const desiredCount = Number.parseInt(searchParams.get("desired_count") || "20")
+  const useICP = searchParams.get("use_icp") !== "false"
 
   if (!query) {
     console.error("[v0] No query provided")
     return new Response("Query required", { status: 400 })
   }
 
-  console.log("[v0] Starting search for query:", query, "with desired count:", desiredCount)
+  console.log("[v0] Starting search for query:", query, "with desired count:", desiredCount, "use ICP:", useICP)
 
-  // Create SSE stream
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
@@ -61,23 +61,37 @@ export async function GET(request: NextRequest) {
       }
 
       try {
-        send("status", { message: "Extracting ICP..." })
+        let icp: any
+        let icpHash: string
+        let searchQueries: string[]
 
-        // Extract ICP
-        console.log("[v0] Extracting ICP...")
-        const icp = await extractICP(query)
-        console.log("[v0] ICP extracted:", icp)
-        send("icp", { icp })
+        if (useICP) {
+          send("status", { message: "Extracting ICP..." })
+          console.log("[v0] Extracting ICP...")
+          icp = await extractICP(query)
+          console.log("[v0] ICP extracted:", icp)
+          send("icp", { icp })
 
-        const icpHash = generateICPHash(icp)
-        console.log("[v0] ICP hash:", icpHash)
+          icpHash = generateICPHash(icp)
+          console.log("[v0] ICP hash:", icpHash)
+
+          send("status", { message: "Generating search queries..." })
+          console.log("[v0] Generating search queries...")
+          searchQueries = await generateSearchQueries(query, icp)
+          console.log("[v0] Generated queries:", searchQueries)
+        } else {
+          console.log("[v0] Skipping ICP extraction - using raw query")
+          icp = { raw_query: query }
+          icpHash = generateICPHash(icp)
+          searchQueries = [query]
+          send("status", { message: "Using direct search (ICP disabled)..." })
+        }
 
         const cachedCompanyIds = await getCachedSearchResults(icpHash)
         if (cachedCompanyIds && cachedCompanyIds.length > 0) {
           console.log("[v0] Found cached results:", cachedCompanyIds.length, "companies")
           send("status", { message: "Loading cached results..." })
 
-          // Fetch cached companies
           const cachedCompanies = await sql`
             SELECT * FROM companies WHERE id = ANY(${cachedCompanyIds})
           `
@@ -99,7 +113,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Create search request
+        send("status", { message: "Creating search request..." })
         console.log("[v0] Creating search request...")
         const searchRequest = await sql`
           INSERT INTO search_requests (account_id, raw_query, icp, desired_count, status)
@@ -110,25 +124,6 @@ export async function GET(request: NextRequest) {
         console.log("[v0] Search request created:", searchId)
 
         send("search_started", { search_id: searchId })
-
-        // Generate queries
-        send("status", { message: "Generating search queries..." })
-        console.log("[v0] Generating search queries...")
-        const searchQueries = await generateSearchQueries(query, icp)
-        console.log("[v0] Generated queries:", searchQueries)
-
-        send("status", { message: "Searching multiple sources..." })
-        const workers = [
-          new LinkedInSearchWorker(),
-          new RedditSearchWorker(),
-          new ClutchSearchWorker(),
-          new ProductHuntSearchWorker(),
-          new CrunchbaseSearchWorker(),
-        ]
-        console.log(
-          "[v0] Starting workers:",
-          workers.map((w) => w.name),
-        )
 
         const foundCompanyIds: number[] = []
         let totalCompaniesFound = 0
@@ -141,6 +136,18 @@ export async function GET(request: NextRequest) {
 
         const targetWithBuffer = Math.ceil(desiredCount * 1.3)
         console.log(`[v0] Target: ${desiredCount}, with buffer: ${targetWithBuffer}`)
+
+        const workers = [
+          new LinkedInSearchWorker(),
+          new RedditSearchWorker(),
+          new ClutchSearchWorker(),
+          new ProductHuntSearchWorker(),
+          new CrunchbaseSearchWorker(),
+        ]
+        console.log(
+          "[v0] Starting workers:",
+          workers.map((w) => w.name),
+        )
 
         const workerPromises = workers.map(async (worker) => {
           send("worker_started", { worker: worker.name })
@@ -238,7 +245,7 @@ export async function GET(request: NextRequest) {
           console.log("[v0] Cached", foundCompanyIds.length, "company IDs")
         }
 
-        // Mark search as completed
+        send("status", { message: "Marking search as completed..." })
         console.log("[v0] Marking search as completed...")
         await sql`
           UPDATE search_requests 

@@ -20,8 +20,8 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
 
       const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10
-      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2 // Request 2x to account for filtering
+      const companiesPerCall = 20
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2
 
       console.log(`[v0] [LinkedIn] Will make up to ${maxCalls} API calls`)
 
@@ -29,7 +29,7 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
         const remainingCount = desiredCount - allCompanies.length
         if (remainingCount <= 0) break
 
-        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2) // Request 2x
+        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2)
 
         console.log(`[v0] [LinkedIn] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
 
@@ -80,7 +80,7 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano", // Updated to correct GPT-5 Nano model identifier
+            model: "gpt-5-nano",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -108,8 +108,11 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
 
         const tokenUsage = data.usage
           ? {
-              input_tokens: data.usage.prompt_tokens || 0,
-              output_tokens: data.usage.completion_tokens || 0,
+              prompt_tokens: data.usage.prompt_tokens || 0,
+              completion_tokens: data.usage.completion_tokens || 0,
+              cost:
+                ((data.usage.prompt_tokens || 0) / 1_000_000) * 0.05 +
+                ((data.usage.completion_tokens || 0) / 1_000_000) * 0.4,
             }
           : undefined
 
@@ -118,7 +121,7 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
 
         if (tokenUsage) {
           console.log(
-            `[v0] [LinkedIn] Token usage: ${tokenUsage.input_tokens} input, ${tokenUsage.output_tokens} output`,
+            `[v0] [LinkedIn] Token usage: ${tokenUsage.prompt_tokens} input, ${tokenUsage.completion_tokens} output, cost: $${tokenUsage.cost.toFixed(4)}`,
           )
         }
 
@@ -127,8 +130,18 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
           console.log(`[v0] [LinkedIn] Domain verification: ${verified.length} verified, ${rejected.length} rejected`)
 
           if (verified.length > 0) {
-            allCompanies.push(...verified)
-            yield verified
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: tokenUsage
+                ? {
+                    prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                    completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                    cost: tokenUsage.cost / verified.length,
+                  }
+                : undefined,
+            }))
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
           }
         }
       }
@@ -153,7 +166,7 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
       const query = queries[0] || "companies"
 
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 20 // Request 20 companies per API call
+      const companiesPerCall = 20
       const maxCalls = Math.ceil(desiredCount / companiesPerCall)
 
       console.log(`[v0] [LinkedIn] Will make ${maxCalls} API calls to get ${desiredCount} companies`)
@@ -204,7 +217,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano", // Updated to correct GPT-5 Nano model identifier
+            model: "gpt-5-nano",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -216,7 +229,7 @@ Return ONLY the JSON array, no other text.`
           const errorBody = await response.text()
           console.error(`[v0] [LinkedIn] API error on call ${callIndex + 1}: ${response.status} ${response.statusText}`)
           console.error(`[v0] [LinkedIn] Error details:`, errorBody)
-          break // Stop making more calls if one fails
+          break
         }
 
         const data = await response.json()
@@ -227,7 +240,6 @@ Return ONLY the JSON array, no other text.`
 
         allCompanies.push(...companies)
 
-        // Stop if we've reached the desired count
         if (allCompanies.length >= desiredCount) {
           break
         }
@@ -237,7 +249,7 @@ Return ONLY the JSON array, no other text.`
       console.log(`[v0] [LinkedIn] Found ${allCompanies.length} total companies in ${duration} ms`)
 
       return {
-        companies: allCompanies.slice(0, desiredCount), // Ensure we don't exceed desired count
+        companies: allCompanies.slice(0, desiredCount),
         source: this.name,
         duration_ms: duration,
       }
@@ -281,7 +293,7 @@ Return ONLY the JSON array, no other text.`
           website: c.website || "",
           employee_count: c.employee_count || "",
           source: this.name,
-          confidence_score: c.confidence || 0.75, // Use confidence from GPT
+          confidence_score: c.confidence || 0.75,
         }))
       }
 

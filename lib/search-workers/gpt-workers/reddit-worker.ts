@@ -20,7 +20,7 @@ export class RedditSearchWorker implements ProgressiveSearchWorker {
 
       const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10 // Reduced to 10 for faster results
+      const companiesPerCall = 20 // Increased batch size from 10 to 20 for better performance
       const maxCalls = Math.ceil(desiredCount / companiesPerCall)
 
       for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
@@ -82,9 +82,20 @@ Return ONLY the JSON array, no other text.`
 
         const data = await response.json()
 
-        const usage = data.usage
-        if (usage) {
-          console.log(`[v0] [Reddit] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`)
+        const tokenUsage = data.usage
+          ? {
+              prompt_tokens: data.usage.prompt_tokens || 0,
+              completion_tokens: data.usage.completion_tokens || 0,
+              cost:
+                ((data.usage.prompt_tokens || 0) / 1_000_000) * 0.05 +
+                ((data.usage.completion_tokens || 0) / 1_000_000) * 0.4,
+            }
+          : undefined
+
+        if (tokenUsage) {
+          console.log(
+            `[v0] [Reddit] Token usage: ${tokenUsage.prompt_tokens} input, ${tokenUsage.completion_tokens} output, cost: $${tokenUsage.cost.toFixed(4)}`,
+          )
         }
 
         const answer = data.choices[0].message.content
@@ -97,8 +108,18 @@ Return ONLY the JSON array, no other text.`
           console.log(`[v0] [Reddit] Verified ${verified.length}/${companies.length} companies`)
 
           if (verified.length > 0) {
-            allCompanies.push(...verified)
-            yield verified
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: tokenUsage
+                ? {
+                    prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                    completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                    cost: tokenUsage.cost / verified.length,
+                  }
+                : undefined,
+            }))
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
           }
         }
 

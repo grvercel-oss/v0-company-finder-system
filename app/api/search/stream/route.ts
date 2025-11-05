@@ -5,12 +5,9 @@ import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
 import { checkRateLimit, getCachedSearchResults, cacheSearchResults } from "@/lib/search-cache"
-import { LinkedInSearchWorker } from "@/lib/search-workers/gpt-workers/linkedin-worker"
-import { RedditSearchWorker } from "@/lib/search-workers/gpt-workers/reddit-worker"
-import { ClutchSearchWorker } from "@/lib/search-workers/gpt-workers/clutch-worker"
-import { ProductHuntSearchWorker } from "@/lib/search-workers/gpt-workers/producthunt-worker"
-import { CrunchbaseSearchWorker } from "@/lib/search-workers/gpt-workers/crunchbase-worker"
 import { formatCost } from "@/lib/cost-calculator"
+import { generateQueryVariants } from "@/lib/search-workers/query-variant-generator"
+import { MultiSourceWorker } from "@/lib/search-workers/multi-source-worker"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -104,13 +101,16 @@ export async function GET(request: NextRequest) {
 
         send("search_started", { search_id: searchId })
 
-        const workers = [
-          new LinkedInSearchWorker(),
-          new RedditSearchWorker(),
-          new ClutchSearchWorker(),
-          new ProductHuntSearchWorker(),
-          new CrunchbaseSearchWorker(),
-        ]
+        send("status", { message: "Generating search strategies..." })
+        const queryVariants = await generateQueryVariants(query, 4)
+        console.log(
+          "[v0] Generated query variants:",
+          queryVariants.map((v) => v.variant),
+        )
+
+        const workers = queryVariants.map(
+          (variant, index) => new MultiSourceWorker(variant.variant, variant.focus, variant.suggestedSources, index),
+        )
 
         const foundCompanyIds: number[] = []
         let totalCompaniesFound = 0
@@ -131,7 +131,6 @@ export async function GET(request: NextRequest) {
           const batch = pendingMerges.splice(0, pendingMerges.length)
           console.log(`[v0] Processing batch of ${batch.length} companies`)
 
-          // Process all merges in parallel
           const mergeResults = await Promise.allSettled(
             batch.map(async ({ companyResult, workerName }) => {
               try {
@@ -155,7 +154,6 @@ export async function GET(request: NextRequest) {
             }),
           )
 
-          // Stream all successful results
           for (const result of mergeResults) {
             if (result.status === "fulfilled" && result.value) {
               const { merged, companyResult, workerName } = result.value
@@ -192,7 +190,7 @@ export async function GET(request: NextRequest) {
           send("status", {
             message:
               searchRound === 1
-                ? "Searching multiple sources..."
+                ? "Searching across all sources..."
                 : `Round ${searchRound}: Searching for ${remainingNeeded} more companies...`,
           })
 
@@ -202,7 +200,7 @@ export async function GET(request: NextRequest) {
             }
 
             try {
-              const searchGenerator = worker.searchProgressive(query, requestCount)
+              const searchGenerator = worker.searchProgressive(requestCount)
 
               for await (const batch of searchGenerator) {
                 if (signal.aborted) break
@@ -211,7 +209,6 @@ export async function GET(request: NextRequest) {
                   if (signal.aborted) break
                   pendingMerges.push({ companyResult, workerName: worker.name })
 
-                  // Process batch when it reaches optimal size
                   if (pendingMerges.length >= 10) {
                     await processBatch()
                   }
@@ -225,7 +222,6 @@ export async function GET(request: NextRequest) {
                 if (signal.aborted) break
               }
 
-              // Process remaining companies from this worker
               await processBatch()
 
               if (searchRound === 1) {
@@ -242,7 +238,6 @@ export async function GET(request: NextRequest) {
 
           await Promise.allSettled(workerPromises)
 
-          // Process any remaining companies
           await processBatch()
 
           if (totalCompaniesFound >= desiredCount) {

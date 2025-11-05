@@ -44,7 +44,7 @@ CRITICAL RULES:
 5. Keep the same specificity level (location, size, type, etc.)
 
 RESPONSE FORMAT:
-Return ONLY valid JSON. Do not include explanations, comments, or text outside the JSON structure.
+Return ONLY a valid JSON array. Do not include explanations, comments, or text outside the JSON structure.
 
 Example:
 Original: "gyms in Santa Cruz de Tenerife"
@@ -65,13 +65,15 @@ Each variant must:
 - Use different words/synonyms
 - Preserve all key details (location, industry, company type, etc.)
 
-Return ONLY a JSON array with no additional text:
+Return ONLY a JSON array with this exact structure:
 [
   {
     "variant": "rephrased search query",
     "focus": "what synonym/phrasing approach was used"
   }
-]`
+]
+
+Do not wrap the array in an object. Return the array directly.`
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -86,22 +88,23 @@ Return ONLY a JSON array with no additional text:
         { role: "user", content: userPrompt },
       ],
       temperature: 0.3,
-      response_format: { type: "json_object" },
     }),
   })
 
   if (!response.ok) {
+    const errorText = await response.text()
+    console.error("[v0] OpenAI API error:", errorText)
     throw new Error(`Failed to generate query variants: ${response.statusText}`)
   }
 
   const data = await response.json()
   const content = data.choices[0].message.content
 
-  console.log("[v0] Raw GPT response:", content.slice(0, 200))
+  console.log("[v0] Raw GPT response (first 300 chars):", content.slice(0, 300))
 
   try {
     const jsonText = cleanJsonResponse(content)
-    console.log("[v0] Cleaned JSON:", jsonText.slice(0, 200))
+    console.log("[v0] Cleaned JSON (first 300 chars):", jsonText.slice(0, 300))
 
     const parsed = JSON.parse(jsonText)
 
@@ -110,13 +113,28 @@ Return ONLY a JSON array with no additional text:
       variants = parsed
     } else if (parsed.variants && Array.isArray(parsed.variants)) {
       variants = parsed.variants
+    } else if (typeof parsed === "object") {
+      // If it's an object but not in expected format, try to extract array from any property
+      const firstArrayValue = Object.values(parsed).find((v) => Array.isArray(v))
+      if (firstArrayValue) {
+        variants = firstArrayValue as QueryVariant[]
+      } else {
+        throw new Error("Invalid response structure: no array found")
+      }
     } else {
-      throw new Error("Invalid response structure")
+      throw new Error("Invalid response structure: not an array or object")
     }
 
     // Validate the structure
     if (variants.length === 0) {
       throw new Error("No variants generated")
+    }
+
+    // Validate each variant has required fields
+    for (const variant of variants) {
+      if (!variant.variant || !variant.focus) {
+        throw new Error("Invalid variant structure: missing variant or focus field")
+      }
     }
 
     console.log(`[v0] Successfully generated ${variants.length} query variants`)

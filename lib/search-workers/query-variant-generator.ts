@@ -5,6 +5,27 @@ export interface QueryVariant {
   focus: string
 }
 
+function cleanJsonResponse(raw: string): string {
+  let cleaned = raw.trim()
+
+  // Remove markdown code blocks
+  if (cleaned.includes("```json")) {
+    const match = cleaned.match(/```json\s*([\s\S]*?)\s*```/)
+    if (match) cleaned = match[1].trim()
+  } else if (cleaned.includes("```")) {
+    const match = cleaned.match(/```\s*([\s\S]*?)\s*```/)
+    if (match) cleaned = match[1].trim()
+  }
+
+  // Remove everything before the first [ or {
+  cleaned = cleaned.replace(/^[^{[]*/, "")
+
+  // Remove everything after the last ] or }
+  cleaned = cleaned.replace(/[^}\]]*$/, "")
+
+  return cleaned.trim()
+}
+
 export async function generateQueryVariants(originalQuery: string, count = 4): Promise<QueryVariant[]> {
   console.log(`[v0] Generating ${count} query variants for: "${originalQuery}"`)
 
@@ -21,6 +42,9 @@ CRITICAL RULES:
 3. DO NOT change the topic, industry, or type of company being searched
 4. DO NOT add new concepts or remove key concepts
 5. Keep the same specificity level (location, size, type, etc.)
+
+RESPONSE FORMAT:
+Return ONLY valid JSON. Do not include explanations, comments, or text outside the JSON structure.
 
 Example:
 Original: "gyms in Santa Cruz de Tenerife"
@@ -41,15 +65,13 @@ Each variant must:
 - Use different words/synonyms
 - Preserve all key details (location, industry, company type, etc.)
 
-Return a JSON array:
+Return ONLY a JSON array with no additional text:
 [
   {
     "variant": "rephrased search query",
     "focus": "what synonym/phrasing approach was used"
   }
-]
-
-Return ONLY the JSON array.`
+]`
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -64,6 +86,7 @@ Return ONLY the JSON array.`
         { role: "user", content: userPrompt },
       ],
       temperature: 0.3,
+      response_format: { type: "json_object" },
     }),
   })
 
@@ -74,47 +97,40 @@ Return ONLY the JSON array.`
   const data = await response.json()
   const content = data.choices[0].message.content
 
-  console.log("[v0] Raw GPT response:", content)
+  console.log("[v0] Raw GPT response:", content.slice(0, 200))
 
   try {
-    let jsonText = content.trim()
+    const jsonText = cleanJsonResponse(content)
+    console.log("[v0] Cleaned JSON:", jsonText.slice(0, 200))
 
-    // Remove markdown code blocks
-    if (jsonText.includes("```json")) {
-      const match = jsonText.match(/```json\s*([\s\S]*?)\s*```/)
-      if (match) jsonText = match[1].trim()
-    } else if (jsonText.includes("```")) {
-      const match = jsonText.match(/```\s*([\s\S]*?)\s*```/)
-      if (match) jsonText = match[1].trim()
+    const parsed = JSON.parse(jsonText)
+
+    let variants: QueryVariant[]
+    if (Array.isArray(parsed)) {
+      variants = parsed
+    } else if (parsed.variants && Array.isArray(parsed.variants)) {
+      variants = parsed.variants
+    } else {
+      throw new Error("Invalid response structure")
     }
-
-    // Remove any text before the first [ and after the last ]
-    const arrayStart = jsonText.indexOf("[")
-    const arrayEnd = jsonText.lastIndexOf("]")
-
-    if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
-      jsonText = jsonText.substring(arrayStart, arrayEnd + 1)
-    }
-
-    console.log("[v0] Extracted JSON text:", jsonText)
-
-    const variants = JSON.parse(jsonText)
 
     // Validate the structure
-    if (!Array.isArray(variants) || variants.length === 0) {
-      throw new Error("Invalid variants structure")
+    if (variants.length === 0) {
+      throw new Error("No variants generated")
     }
 
-    console.log(`[v0] Generated ${variants.length} query variants`)
+    console.log(`[v0] Successfully generated ${variants.length} query variants`)
     return variants
   } catch (error) {
     console.error("[v0] Failed to parse query variants:", error)
-    console.error("[v0] Content was:", content)
+    console.error("[v0] Raw content (first 500 chars):", content.slice(0, 500))
+
+    console.log("[v0] Using fallback variants")
     return [
       { variant: originalQuery, focus: "original query" },
-      { variant: `${originalQuery} list`, focus: "list format" },
+      { variant: `${originalQuery} companies`, focus: "explicit companies" },
+      { variant: `${originalQuery} businesses`, focus: "businesses variant" },
       { variant: `find ${originalQuery}`, focus: "action-oriented" },
-      { variant: `${originalQuery} directory`, focus: "directory search" },
     ]
   }
 }

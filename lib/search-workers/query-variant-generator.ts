@@ -74,8 +74,12 @@ Return ONLY the JSON array.`
   const data = await response.json()
   const content = data.choices[0].message.content
 
+  console.log("[v0] Raw GPT response:", content)
+
   try {
     let jsonText = content.trim()
+
+    // Remove markdown code blocks
     if (jsonText.includes("```json")) {
       const match = jsonText.match(/```json\s*([\s\S]*?)\s*```/)
       if (match) jsonText = match[1].trim()
@@ -84,16 +88,33 @@ Return ONLY the JSON array.`
       if (match) jsonText = match[1].trim()
     }
 
+    // Remove any text before the first [ and after the last ]
+    const arrayStart = jsonText.indexOf("[")
+    const arrayEnd = jsonText.lastIndexOf("]")
+
+    if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+      jsonText = jsonText.substring(arrayStart, arrayEnd + 1)
+    }
+
+    console.log("[v0] Extracted JSON text:", jsonText)
+
     const variants = JSON.parse(jsonText)
+
+    // Validate the structure
+    if (!Array.isArray(variants) || variants.length === 0) {
+      throw new Error("Invalid variants structure")
+    }
+
     console.log(`[v0] Generated ${variants.length} query variants`)
     return variants
   } catch (error) {
-    console.error("[v0] Failed to parse query variants, using fallback")
+    console.error("[v0] Failed to parse query variants:", error)
+    console.error("[v0] Content was:", content)
     return [
-      { variant: originalQuery, focus: "original" },
-      { variant: `${originalQuery} companies`, focus: "explicit companies" },
+      { variant: originalQuery, focus: "original query" },
+      { variant: `${originalQuery} list`, focus: "list format" },
       { variant: `find ${originalQuery}`, focus: "action-oriented" },
-      { variant: `list of ${originalQuery}`, focus: "list format" },
+      { variant: `${originalQuery} directory`, focus: "directory search" },
     ]
   }
 }

@@ -49,6 +49,8 @@ export default function SearchPage() {
   } | null>(null)
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(true)
   const [desiredCount, setDesiredCount] = useState<number>(20)
+  const [totalCost, setTotalCost] = useState<number>(0)
+  const [costPerCompany, setCostPerCompany] = useState<string>("$0.00")
 
   useEffect(() => {
     const loadPreviousSearch = async () => {
@@ -88,6 +90,8 @@ export default function SearchPage() {
     setWorkers([])
     setIcp(null)
     setSearchId(undefined)
+    setTotalCost(0)
+    setCostPerCompany("$0.00")
 
     try {
       const params = new URLSearchParams({
@@ -162,6 +166,19 @@ export default function SearchPage() {
         setError("Connection to search stream lost. Please try again.")
         setIsLoading(false)
         eventSource.close()
+      })
+
+      eventSource.addEventListener("cost_update", (e) => {
+        const data = JSON.parse(e.data)
+        setTotalCost(data.total_cost)
+        console.log("[v0] Cost update:", data.formatted_total, "from", data.worker)
+      })
+
+      eventSource.addEventListener("cost_summary", (e) => {
+        const data = JSON.parse(e.data)
+        setTotalCost(data.total_cost)
+        setCostPerCompany(data.cost_per_company)
+        console.log("[v0] Final cost:", data.formatted_total, "for", data.companies_found, "companies")
       })
 
       eventSource.onerror = (e) => {
@@ -243,6 +260,25 @@ export default function SearchPage() {
               <Badge variant="outline" className="ml-auto">
                 {new Date(previousSearch.createdAt).toLocaleString()}
               </Badge>
+            </div>
+          </div>
+        )}
+
+        {(isLoading || totalCost > 0) && (
+          <div className="max-w-4xl mx-auto mb-6">
+            <div className="bg-card border rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Search Cost</p>
+                  <p className="text-2xl font-bold">${totalCost.toFixed(4)}</p>
+                </div>
+                {companies.length > 0 && (
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-muted-foreground">Cost per Company</p>
+                    <p className="text-lg font-semibold">{costPerCompany}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

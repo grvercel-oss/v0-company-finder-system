@@ -1,4 +1,5 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import { filterCompaniesByDomain } from "@/lib/domain-verifier"
 
 export class CrunchbaseSearchWorker implements ProgressiveSearchWorker {
   name = "Crunchbase"
@@ -85,15 +86,27 @@ Return ONLY the JSON array, no other text.`
         }
 
         const data = await response.json()
+
+        const usage = data.usage
+        if (usage) {
+          console.log(
+            `[v0] [Crunchbase] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`,
+          )
+        }
+
         const answer = data.choices[0].message.content
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [Crunchbase] Call ${callIndex + 1} returned ${companies.length} companies`)
 
-        allCompanies.push(...companies)
-
         if (companies.length > 0) {
-          yield companies
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [Crunchbase] Verified ${verified.length}/${companies.length} companies`)
+
+          if (verified.length > 0) {
+            allCompanies.push(...verified)
+            yield verified
+          }
         }
 
         if (allCompanies.length >= desiredCount) {

@@ -1,4 +1,5 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import { filterCompaniesByDomain } from "@/lib/domain-verifier"
 
 export class ClutchSearchWorker implements ProgressiveSearchWorker {
   name = "Clutch"
@@ -83,15 +84,25 @@ Return ONLY the JSON array, no other text.`
         }
 
         const data = await response.json()
+
+        const usage = data.usage
+        if (usage) {
+          console.log(`[v0] [Clutch] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`)
+        }
+
         const answer = data.choices[0].message.content
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [Clutch] Call ${callIndex + 1} returned ${companies.length} companies`)
 
-        allCompanies.push(...companies)
-
         if (companies.length > 0) {
-          yield companies
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [Clutch] Verified ${verified.length}/${companies.length} companies`)
+
+          if (verified.length > 0) {
+            allCompanies.push(...verified)
+            yield verified
+          }
         }
 
         if (allCompanies.length >= desiredCount) {
@@ -185,6 +196,12 @@ Return ONLY the JSON array, no other text.`
         }
 
         const data = await response.json()
+
+        const usage = data.usage
+        if (usage) {
+          console.log(`[v0] [Clutch] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`)
+        }
+
         const answer = data.choices[0].message.content
 
         const companies = this.parseCompanies(answer)
@@ -197,11 +214,15 @@ Return ONLY the JSON array, no other text.`
         }
       }
 
+      // Verify domains before returning
+      const { verified, rejected } = await filterCompaniesByDomain(allCompanies)
+      console.log(`[v0] [Clutch] Verified ${verified.length}/${allCompanies.length} companies`)
+
       const duration = Date.now() - startTime
-      console.log(`[v0] [Clutch] Found ${allCompanies.length} total companies in ${duration} ms`)
+      console.log(`[v0] [Clutch] Found ${verified.length} total companies in ${duration} ms`)
 
       return {
-        companies: allCompanies.slice(0, desiredCount),
+        companies: verified.slice(0, desiredCount),
         source: this.name,
         duration_ms: duration,
       }

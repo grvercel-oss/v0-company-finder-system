@@ -1,4 +1,5 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import { filterCompaniesByDomain } from "@/lib/domain-verifier"
 
 export class ProductHuntSearchWorker implements ProgressiveSearchWorker {
   name = "ProductHunt"
@@ -83,15 +84,27 @@ Return ONLY the JSON array, no other text.`
         }
 
         const data = await response.json()
+
+        const usage = data.usage
+        if (usage) {
+          console.log(
+            `[v0] [ProductHunt] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`,
+          )
+        }
+
         const answer = data.choices[0].message.content
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [ProductHunt] Call ${callIndex + 1} returned ${companies.length} companies`)
 
-        allCompanies.push(...companies)
-
         if (companies.length > 0) {
-          yield companies
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [ProductHunt] Verified ${verified.length}/${companies.length} companies`)
+
+          if (verified.length > 0) {
+            allCompanies.push(...verified)
+            yield verified
+          }
         }
 
         if (allCompanies.length >= desiredCount) {
@@ -185,12 +198,25 @@ Return ONLY the JSON array, no other text.`
         }
 
         const data = await response.json()
+
+        const usage = data.usage
+        if (usage) {
+          console.log(
+            `[v0] [ProductHunt] Token usage - Input: ${usage.prompt_tokens}, Output: ${usage.completion_tokens}`,
+          )
+        }
+
         const answer = data.choices[0].message.content
 
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [ProductHunt] Call ${callIndex + 1} returned ${companies.length} companies`)
 
-        allCompanies.push(...companies)
+        // Verify domains before adding to allCompanies
+        if (companies.length > 0) {
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [ProductHunt] Verified ${verified.length}/${companies.length} companies`)
+          allCompanies.push(...verified)
+        }
 
         if (allCompanies.length >= desiredCount) {
           break

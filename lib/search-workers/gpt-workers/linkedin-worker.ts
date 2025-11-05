@@ -1,4 +1,5 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import { filterCompaniesByDomain } from "@/lib/domain-verifier"
 
 export class LinkedInSearchWorker implements ProgressiveSearchWorker {
   name = "LinkedIn"
@@ -8,7 +9,11 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
     queries: string[],
     icp: ICP,
     desiredCount = 10,
-  ): AsyncGenerator<CompanyResult[], void, unknown> {
+  ): AsyncGenerator<
+    { companies: CompanyResult[]; tokenUsage?: { input_tokens: number; output_tokens: number } },
+    void,
+    unknown
+  > {
     console.log(`[v0] [LinkedIn] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -19,28 +24,31 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
 
       const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10 // Reduced to 10 for faster first results
-      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+      const companiesPerCall = 10
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2 // Request 2x to account for filtering
 
       console.log(`[v0] [LinkedIn] Will make up to ${maxCalls} API calls`)
 
       for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
         const remainingCount = desiredCount - allCompanies.length
-        const countForThisCall = Math.min(companiesPerCall, remainingCount)
+        if (remainingCount <= 0) break
 
-        if (countForThisCall <= 0) break
+        const countForThisCall = Math.min(companiesPerCall, remainingCount * 2) // Request 2x
 
         console.log(`[v0] [LinkedIn] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`)
 
-        const systemPrompt = `You are a LinkedIn company search expert. Your task is to find real companies that would appear on LinkedIn based on the search query.
+        const systemPrompt = `You are a LinkedIn company search expert with access to real, current company data.
 
-Focus ONLY on LinkedIn as your source. Simulate what you would find by searching LinkedIn's company directory.
+CRITICAL RULES:
+1. Only return companies you are CONFIDENT exist and are currently active
+2. All websites must be real, working domains (no made-up URLs)
+3. Prefer well-known companies in the niche over obscure ones
+4. If unsure about a company's existence, DO NOT include it
+5. Return DIFFERENT companies each time to avoid duplicates
 
-Return specialized companies, startups, and focused providers - NOT large generic corporations unless they're the primary players in this specific niche.
+Focus on LinkedIn as your primary source. Return specialized companies, startups, and focused providers.`
 
-IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
-
-        const userPrompt = `Find ${countForThisCall} companies on LinkedIn that match: "${query}"
+        const userPrompt = `Find ${countForThisCall} REAL, ACTIVE companies on LinkedIn that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}
@@ -48,6 +56,11 @@ Based on the ICP:
 - Company sizes: ${icp.company_sizes.join(", ")}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
+
+For each company, include a confidence score (0.0-1.0) indicating how certain you are that:
+- The company exists and is active
+- The website is correct and working
+- The information is current
 
 Return a JSON array with this structure:
 [
@@ -57,11 +70,12 @@ Return a JSON array with this structure:
     "location": "City, Country",
     "category": "Industry/Category",
     "employee_count": "10-50",
-    "description": "Brief description"
+    "description": "Brief description",
+    "confidence": 0.95
   }
 ]
 
-Return ONLY the JSON array, no other text.`
+Only include companies with confidence >= 0.7. Return ONLY the JSON array, no other text.`
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -75,7 +89,7 @@ Return ONLY the JSON array, no other text.`
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-            temperature: 0.7,
+            temperature: 0.3, // Lower temperature for more factual responses
           }),
         })
 
@@ -87,13 +101,24 @@ Return ONLY the JSON array, no other text.`
         const data = await response.json()
         const answer = data.choices[0].message.content
 
+        const tokenUsage = data.usage
+          ? {
+              input_tokens: data.usage.prompt_tokens || 0,
+              output_tokens: data.usage.completion_tokens || 0,
+            }
+          : undefined
+
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [LinkedIn] Call ${callIndex + 1} returned ${companies.length} companies`)
 
-        allCompanies.push(...companies)
-
         if (companies.length > 0) {
-          yield companies
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [LinkedIn] Domain verification: ${verified.length} verified, ${rejected.length} rejected`)
+
+          if (verified.length > 0) {
+            allCompanies.push(...verified)
+            yield { companies: verified, tokenUsage }
+          }
         }
 
         if (allCompanies.length >= desiredCount) {
@@ -248,7 +273,7 @@ Return ONLY the JSON array, no other text.`
           website: c.website || "",
           employee_count: c.employee_count || "",
           source: this.name,
-          confidence_score: 0.75,
+          confidence_score: c.confidence || 0.75, // Use confidence from GPT
         }))
       }
 

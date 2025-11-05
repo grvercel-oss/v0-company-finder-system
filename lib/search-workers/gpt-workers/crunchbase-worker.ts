@@ -5,11 +5,7 @@ export class CrunchbaseSearchWorker implements ProgressiveSearchWorker {
   name = "Crunchbase"
   timeout = 150000
 
-  async *searchProgressive(
-    queries: string[],
-    icp: ICP,
-    desiredCount = 10,
-  ): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(query: string, desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [Crunchbase] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -18,7 +14,6 @@ export class CrunchbaseSearchWorker implements ProgressiveSearchWorker {
         throw new Error("OPENAI_API_KEY not configured")
       }
 
-      const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
       const companiesPerCall = 10
       const maxCalls = Math.ceil(desiredCount / companiesPerCall)
@@ -40,11 +35,6 @@ Crunchbase specializes in: funded startups, venture-backed companies, acquisitio
 IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
 
         const userPrompt = `Find ${countForThisCall} funded companies on Crunchbase that match: "${query}"
-
-Based on the ICP:
-- Industries: ${icp.industries.join(", ")}
-- Locations: ${icp.locations.join(", ")}
-- Funding stages: ${icp.funding_stages?.join(", ") || "various"}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 

@@ -5,11 +5,7 @@ export class ProductHuntSearchWorker implements ProgressiveSearchWorker {
   name = "ProductHunt"
   timeout = 150000 // Increased timeout from 60s to 150s to allow 5+ API calls to complete
 
-  async *searchProgressive(
-    queries: string[],
-    icp: ICP,
-    desiredCount = 10,
-  ): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(query: string, desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [ProductHunt] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -18,7 +14,6 @@ export class ProductHuntSearchWorker implements ProgressiveSearchWorker {
         throw new Error("OPENAI_API_KEY not configured")
       }
 
-      const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
       const companiesPerCall = 10 // Reduced to 10 for faster first results
       const maxCalls = Math.ceil(desiredCount / companiesPerCall)
@@ -42,10 +37,6 @@ Product Hunt features: SaaS products, mobile apps, tech tools, innovative startu
 IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
 
         const userPrompt = `Find ${countForThisCall} innovative companies/products on Product Hunt that match: "${query}"
-
-Based on the ICP:
-- Industries: ${icp.industries.join(", ")}
-- Technologies: ${icp.technologies?.join(", ") || "various"}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 

@@ -5,11 +5,7 @@ export class ClutchSearchWorker implements ProgressiveSearchWorker {
   name = "Clutch"
   timeout = 150000 // Increased timeout from 60s to 150s to allow 5+ API calls to complete
 
-  async *searchProgressive(
-    queries: string[],
-    icp: ICP,
-    desiredCount = 10,
-  ): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(query: string, desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [Clutch] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -18,7 +14,6 @@ export class ClutchSearchWorker implements ProgressiveSearchWorker {
         throw new Error("OPENAI_API_KEY not configured")
       }
 
-      const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
       const companiesPerCall = 10 // Reduced to 10 for faster first results
       const maxCalls = Math.ceil(desiredCount / companiesPerCall)
@@ -40,11 +35,6 @@ Clutch specializes in: software development, marketing agencies, design firms, I
 IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
 
         const userPrompt = `Find ${countForThisCall} B2B service companies on Clutch.co that match: "${query}"
-
-Based on the ICP:
-- Industries: ${icp.industries.join(", ")}
-- Locations: ${icp.locations.join(", ")}
-- Company sizes: ${icp.company_sizes.join(", ")}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 

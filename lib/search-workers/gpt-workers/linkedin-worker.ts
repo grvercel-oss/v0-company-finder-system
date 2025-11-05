@@ -1,6 +1,5 @@
 import type { SearchWorkerResult, CompanyResult, ProgressiveSearchWorker, ICP } from "../types"
 import { filterCompaniesByDomain } from "@/lib/domain-verifier"
-import { calculateCost } from "@/lib/cost-calculator"
 
 export class LinkedInSearchWorker implements ProgressiveSearchWorker {
   name = "LinkedIn"
@@ -16,7 +15,7 @@ export class LinkedInSearchWorker implements ProgressiveSearchWorker {
       }
 
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 20 // Increased batch size for faster results
+      const companiesPerCall = 20
       const maxCalls = Math.ceil(desiredCount / companiesPerCall) * 2
 
       console.log(`[v0] [LinkedIn] Will make up to ${maxCalls} API calls`)
@@ -71,11 +70,12 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-5-nano",
+            model: "gpt-4o",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
+            temperature: 0.7,
           }),
         })
 
@@ -88,42 +88,16 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
         const data = await response.json()
         const answer = data.choices[0].message.content
 
-        const tokenUsage = data.usage
-          ? {
-              prompt_tokens: data.usage.prompt_tokens || 0,
-              completion_tokens: data.usage.completion_tokens || 0,
-              cost: calculateCost(data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0),
-            }
-          : undefined
-
         const companies = this.parseCompanies(answer)
         console.log(`[v0] [LinkedIn] Call ${callIndex + 1} returned ${companies.length} companies`)
-
-        if (tokenUsage) {
-          console.log(
-            `[v0] [LinkedIn] Token usage: ${tokenUsage.prompt_tokens} input, ${tokenUsage.completion_tokens} output, cost: $${tokenUsage.cost.toFixed(4)}`,
-          )
-        }
 
         if (companies.length > 0) {
           const { verified, rejected } = await filterCompaniesByDomain(companies)
           console.log(`[v0] [LinkedIn] Domain verification: ${verified.length} verified, ${rejected.length} rejected`)
 
           if (verified.length > 0) {
-            const costPerCompany = tokenUsage ? tokenUsage.cost / verified.length : 0
-            const companiesWithCost = verified.map((company) => ({
-              ...company,
-              tokenUsage: tokenUsage
-                ? {
-                    prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
-                    completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
-                    cost: costPerCompany,
-                  }
-                : undefined,
-            }))
-
-            allCompanies.push(...companiesWithCost)
-            yield companiesWithCost
+            allCompanies.push(...verified)
+            yield verified
           }
         }
 
@@ -279,7 +253,7 @@ Return ONLY the JSON array, no other text.`
           website: c.website || "",
           employee_count: c.employee_count || "",
           source: this.name,
-          confidence_score: c.confidence || 0.75, // Use confidence from GPT
+          confidence_score: c.confidence || 0.75,
         }))
       }
 

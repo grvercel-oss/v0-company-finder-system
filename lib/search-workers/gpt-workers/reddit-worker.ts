@@ -5,11 +5,7 @@ export class RedditSearchWorker implements ProgressiveSearchWorker {
   name = "Reddit"
   timeout = 150000
 
-  async *searchProgressive(
-    queries: string[],
-    icp: ICP,
-    desiredCount = 10,
-  ): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(query: string, desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [Reddit] Starting progressive search for ${desiredCount} companies`)
 
     try {
@@ -18,9 +14,8 @@ export class RedditSearchWorker implements ProgressiveSearchWorker {
         throw new Error("OPENAI_API_KEY not configured")
       }
 
-      const query = queries[0] || "companies"
       const allCompanies: CompanyResult[] = []
-      const companiesPerCall = 10 // Reduced to 10 for faster results
+      const companiesPerCall = 10
       const maxCalls = Math.ceil(desiredCount / companiesPerCall)
 
       for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
@@ -40,10 +35,6 @@ Return companies that have active Reddit presence or are frequently recommended 
 IMPORTANT: Return DIFFERENT companies each time. Avoid duplicates from previous searches.`
 
         const userPrompt = `Find ${countForThisCall} companies frequently mentioned on Reddit that match: "${query}"
-
-Based on the ICP:
-- Industries: ${icp.industries.join(", ")}
-- Locations: ${icp.locations.join(", ")}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 

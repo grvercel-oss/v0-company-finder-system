@@ -111,21 +111,36 @@ export async function generateSearchQueries(rawQuery: string, icp: ICP): Promise
     return [rawQuery]
   }
 
-  const prompt = `Generate 8-12 diverse search queries to find companies matching this profile:
+  const prompt = `Generate 8-12 highly specific search queries to find companies that SPECIALIZE in this area (not large corporations that just offer it as one service):
 
 Raw Query: "${rawQuery}"
 
 ICP:
 ${JSON.stringify(icp, null, 2)}
 
-Generate queries optimized for different sources:
-- 3-4 queries for Google search (use site: operators, specific terms)
-- 2-3 queries for Clutch.co (focus on services, industries)
-- 2-3 queries for LinkedIn (company search terms)
-- 2-3 general web queries
+IMPORTANT RULES:
+1. Focus on finding SPECIALIZED companies, startups, and focused providers
+2. AVOID queries that would return large generic corporations (e.g., don't use "site:telecom.com" for eSIM searches)
+3. Use specific product/service names, not broad industry terms
+4. Include terms like "startup", "provider", "platform", "solution", "specialized"
+5. For technology searches, focus on companies that BUILD or SPECIALIZE in that tech, not just use it
 
-Return JSON array of strings:
-["query 1", "query 2", ...]`
+Generate queries optimized for different sources:
+- 3-4 queries for finding specialized providers and startups
+- 2-3 queries for finding companies on product directories (ProductHunt, G2, Capterra)
+- 2-3 queries for finding companies on tech platforms (GitHub, Stack Overflow, dev communities)
+- 2-3 queries for finding companies in industry-specific publications
+
+Examples of GOOD vs BAD queries:
+- BAD: "site:telecom operators eSIM technology" (finds big telecoms)
+- GOOD: "eSIM platform provider startup" (finds specialized companies)
+- BAD: "AI companies" (too broad)
+- GOOD: "AI-powered customer support platform startup" (specific)
+
+Return JSON with this exact structure:
+{
+  "queries": ["query 1", "query 2", ...]
+}`
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -137,6 +152,11 @@ Return JSON array of strings:
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
+          {
+            role: "system",
+            content:
+              "You are an expert at generating precise search queries that find specialized companies and startups, not generic large corporations. Focus on specificity and relevance.",
+          },
           {
             role: "user",
             content: prompt,

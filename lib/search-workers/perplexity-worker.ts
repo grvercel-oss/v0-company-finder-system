@@ -23,6 +23,38 @@ export class PerplexityWorker implements SearchWorker {
       for (const query of searchQueries) {
         console.log("[v0] [Perplexity] Searching:", query)
 
+        const systemPrompt = `You are a business intelligence assistant specializing in finding SPECIALIZED companies and startups.
+
+IMPORTANT: Focus on companies that SPECIALIZE in the requested area, not large corporations that just offer it as one of many services.
+
+For example:
+- If searching for "eSIM companies", find eSIM-focused startups and platforms (like Airalo, Truphone, 1Global), NOT large telecom operators (like Vodafone, AT&T)
+- If searching for "AI chatbot companies", find specialized AI chatbot platforms, NOT general tech giants
+
+Return ONLY companies that are specialized providers, startups, or focused platforms in the requested area.`
+
+        const userPrompt = `Find 5 SPECIALIZED companies (startups, focused providers, or platforms) that match: "${query}"
+
+Focus on companies whose PRIMARY business is in this area, not large corporations that just offer it as one service.
+
+Return a JSON array with this structure:
+[
+  {
+    "name": "Company Name",
+    "domain": "example.com",
+    "description": "What they do (be specific about their specialization)",
+    "industry": "Specific industry",
+    "location": "City, Country",
+    "website": "https://example.com",
+    "employee_count": "10-50" or "50-200" etc,
+    "revenue_range": "$1M-$10M" etc,
+    "funding_stage": "Seed" or "Series A" etc,
+    "technologies": ["tech1", "tech2"]
+  }
+]
+
+Return ONLY the JSON array, no other text.`
+
         const response = await fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: {
@@ -34,12 +66,11 @@ export class PerplexityWorker implements SearchWorker {
             messages: [
               {
                 role: "system",
-                content:
-                  "You are a business intelligence assistant. Search the internet and return company information in JSON format only.",
+                content: systemPrompt,
               },
               {
                 role: "user",
-                content: `Find 5 companies matching: "${query}". Return JSON array with: name, domain, description, industry, location, website, employee_count, revenue_range, funding_stage, technologies (array).`,
+                content: userPrompt,
               },
             ],
             temperature: 0.2,

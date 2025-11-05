@@ -51,76 +51,88 @@ export default function SearchPage() {
     setSearchId(undefined)
 
     try {
-      const response = await fetch("/api/search/v2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, filters }),
+      const params = new URLSearchParams({
+        query,
+        desired_count: "20",
       })
+      const eventSource = new EventSource(`/api/search/stream?${params.toString()}`)
 
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Search failed")
-      }
+      console.log("[v0] Connecting to search stream...")
 
-      const data = await response.json()
-      setSearchId(data.searchId)
-      setIcp(data.icp)
-
-      const eventSource = new EventSource(`/api/search/stream?searchId=${data.searchId}`)
-
-      eventSource.addEventListener("icp_extracted", (e) => {
+      eventSource.addEventListener("icp", (e) => {
         const data = JSON.parse(e.data)
         setIcp(data.icp)
         console.log("[v0] ICP extracted:", data.icp)
       })
 
+      eventSource.addEventListener("search_started", (e) => {
+        const data = JSON.parse(e.data)
+        setSearchId(data.search_id)
+        console.log("[v0] Search started:", data.search_id)
+      })
+
+      eventSource.addEventListener("status", (e) => {
+        const data = JSON.parse(e.data)
+        console.log("[v0] Status:", data.message)
+      })
+
       eventSource.addEventListener("worker_started", (e) => {
         const data = JSON.parse(e.data)
-        setWorkers((prev) => [...prev, { name: data.worker, status: "running", companiesFound: 0 }])
+        setWorkers((prev) => {
+          const exists = prev.find((w) => w.name === data.worker)
+          if (exists) return prev
+          return [...prev, { name: data.worker, status: "running", companiesFound: 0 }]
+        })
         console.log("[v0] Worker started:", data.worker)
       })
 
       eventSource.addEventListener("new_company", (e) => {
         const data = JSON.parse(e.data)
         setCompanies((prev) => {
-          // Deduplicate by ID
           const exists = prev.find((c) => c.id === data.company.id)
           if (exists) return prev
           return [...prev, data.company]
         })
-        // Update worker company count
         setWorkers((prev) =>
           prev.map((w) => (w.name === data.source ? { ...w, companiesFound: w.companiesFound + 1 } : w)),
         )
         console.log("[v0] New company:", data.company.name, "from", data.source)
       })
 
-      eventSource.addEventListener("worker_complete", (e) => {
+      eventSource.addEventListener("worker_completed", (e) => {
         const data = JSON.parse(e.data)
         setWorkers((prev) => prev.map((w) => (w.name === data.worker ? { ...w, status: "completed" } : w)))
-        console.log("[v0] Worker completed:", data.worker)
+        console.log("[v0] Worker completed:", data.worker, "found", data.count, "companies")
       })
 
-      eventSource.addEventListener("worker_failed", (e) => {
+      eventSource.addEventListener("worker_error", (e) => {
         const data = JSON.parse(e.data)
         setWorkers((prev) => prev.map((w) => (w.name === data.worker ? { ...w, status: "failed" } : w)))
-        console.log("[v0] Worker failed:", data.worker, data.error)
+        console.error("[v0] Worker error:", data.worker, data.error)
       })
 
-      eventSource.addEventListener("search_complete", (e) => {
+      eventSource.addEventListener("search_completed", (e) => {
         const data = JSON.parse(e.data)
-        setSearchCost(data.cost)
+        console.log("[v0] Search completed:", data.search_id)
         setIsLoading(false)
         eventSource.close()
-        console.log("[v0] Search complete. Total companies:", data.totalCompanies)
       })
 
-      eventSource.addEventListener("error", () => {
-        setError("Connection to search stream lost")
+      eventSource.addEventListener("error", (e) => {
+        console.error("[v0] EventSource error:", e)
+        setError("Connection to search stream lost. Please try again.")
         setIsLoading(false)
         eventSource.close()
       })
+
+      eventSource.onerror = (e) => {
+        console.error("[v0] EventSource connection error:", e)
+        setError("Failed to connect to search stream. Please try again.")
+        setIsLoading(false)
+        eventSource.close()
+      }
     } catch (err: any) {
+      console.error("[v0] Search error:", err)
       setError(err.message || "An error occurred while searching")
       setCompanies([])
       setIsLoading(false)

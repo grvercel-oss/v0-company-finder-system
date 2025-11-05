@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
         )
 
         const workers = queryVariants.map(
-          (variant, index) => new MultiSourceWorker(variant.variant, variant.focus, variant.suggestedSources, index),
+          (variant, index) => new MultiSourceWorker(variant.variant, variant.focus, index),
         )
 
         const foundCompanyIds: number[] = []

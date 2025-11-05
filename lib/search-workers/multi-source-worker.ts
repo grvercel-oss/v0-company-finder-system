@@ -1,4 +1,4 @@
-// Multi-source worker that can search across all platforms
+// Multi-source worker that searches the open internet
 
 import type { CompanyResult } from "./types"
 import { filterCompaniesByDomain } from "@/lib/domain-verifier"
@@ -8,19 +8,16 @@ export class MultiSourceWorker {
   name: string
   queryVariant: string
   focus: string
-  suggestedSources: string[]
   timeout = 150000
 
-  constructor(queryVariant: string, focus: string, suggestedSources: string[], index: number) {
+  constructor(queryVariant: string, focus: string, index: number) {
     this.name = `Worker-${index + 1}`
     this.queryVariant = queryVariant
     this.focus = focus
-    this.suggestedSources = suggestedSources
   }
 
   async *searchProgressive(desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
-    console.log(`[v0] [${this.name}] Starting search with variant: "${this.queryVariant}" (focus: ${this.focus})`)
-    console.log(`[v0] [${this.name}] Suggested sources: ${this.suggestedSources.join(", ")}`)
+    console.log(`[v0] [${this.name}] Starting open internet search with: "${this.queryVariant}" (focus: ${this.focus})`)
 
     try {
       const apiKey = process.env.OPENAI_API_KEY
@@ -42,31 +39,34 @@ export class MultiSourceWorker {
           `[v0] [${this.name}] API call ${callIndex + 1}/${maxCalls}, requesting ${countForThisCall} companies`,
         )
 
-        const sourceInstructions = this.buildSourceInstructions()
+        const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base.
 
-        const systemPrompt = `You are an expert at finding companies across multiple platforms: LinkedIn, Reddit, Clutch, ProductHunt, and Crunchbase.
-
-Your task is to search these platforms and find REAL, ACTIVE companies that match the search criteria.
-
-${sourceInstructions}
+Your task is to find REAL, ACTIVE companies that match the search criteria. You can use information from:
+- Professional networks (LinkedIn, etc.)
+- Business directories (Clutch, Crunchbase, etc.)
+- Product platforms (ProductHunt, etc.)
+- Community discussions (Reddit, forums, etc.)
+- Company websites and databases
+- News articles and press releases
+- Industry reports and listings
+- ANY other reliable source you know about
 
 CRITICAL RULES:
 1. Only return companies you are CONFIDENT exist and are currently active
 2. All websites must be real, working domains (no made-up URLs)
-3. Prefer well-known companies in the niche over obscure ones
+3. Prefer well-known, verifiable companies
 4. If unsure about a company's existence, DO NOT include it
 5. Return DIFFERENT companies each time to avoid duplicates
-6. Focus on the suggested sources but can use others if relevant`
+6. Search ANYWHERE on the internet - you are not limited to specific platforms`
 
         const userPrompt = `Find ${countForThisCall} REAL, ACTIVE companies that match: "${this.queryVariant}"
 
-Search focus: ${this.focus}
-Priority sources: ${this.suggestedSources.join(", ")}
+Search approach: ${this.focus}
 
 ${allCompanies.length > 0 ? `AVOID these companies already found: ${allCompanies.map((c) => c.name).join(", ")}` : ""}
 
 For each company, include:
-- Which source you found it on (LinkedIn/Reddit/Clutch/ProductHunt/Crunchbase)
+- Where you found information about it (any source)
 - Confidence score (0.0-1.0) indicating certainty about existence and accuracy
 
 Return a JSON array:
@@ -78,7 +78,7 @@ Return a JSON array:
     "category": "Industry/Category",
     "employee_count": "10-50",
     "description": "Brief description",
-    "source": "LinkedIn",
+    "source": "where you found this company",
     "confidence": 0.95
   }
 ]
@@ -155,22 +155,6 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
       console.error(`[v0] [${this.name}] Error:`, error.message)
       throw error
     }
-  }
-
-  private buildSourceInstructions(): string {
-    const instructions: Record<string, string> = {
-      LinkedIn:
-        "LinkedIn: Professional company profiles, employee counts, locations, industries. Best for established companies.",
-      Reddit:
-        "Reddit: Community discussions, recommendations, user experiences. Best for finding trending tools and startups.",
-      Clutch: "Clutch: B2B service providers with reviews and ratings. Best for agencies and service companies.",
-      ProductHunt:
-        "ProductHunt: New product launches and startups. Best for innovative tools and early-stage companies.",
-      Crunchbase:
-        "Crunchbase: Funding data, startup information, company financials. Best for funded startups and growth companies.",
-    }
-
-    return this.suggestedSources.map((source) => instructions[source] || "").join("\n")
   }
 
   private parseCompanies(text: string): CompanyResult[] {

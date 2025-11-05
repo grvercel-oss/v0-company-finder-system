@@ -3,7 +3,6 @@
 export interface QueryVariant {
   variant: string
   focus: string
-  suggestedSources: string[]
 }
 
 export async function generateQueryVariants(originalQuery: string, count = 4): Promise<QueryVariant[]> {
@@ -14,31 +13,39 @@ export async function generateQueryVariants(originalQuery: string, count = 4): P
     throw new Error("OPENAI_API_KEY not configured")
   }
 
-  const systemPrompt = `You are a search query optimization expert. Your task is to generate multiple search query variants that approach the same search goal from different angles.
+  const systemPrompt = `You are a search query optimization expert. Your task is to generate multiple REPHRASED versions of the same search query.
 
-Each variant should:
-1. Target the same underlying need but use different terminology
-2. Focus on different aspects (company type, technology, use case, industry)
-3. Be optimized for different data sources (LinkedIn, Reddit, Clutch, ProductHunt, Crunchbase)
+CRITICAL RULES:
+1. PRESERVE the exact same intent and meaning as the original query
+2. Only use SYNONYMS and alternative phrasings
+3. DO NOT change the topic, industry, or type of company being searched
+4. DO NOT add new concepts or remove key concepts
+5. Keep the same specificity level (location, size, type, etc.)
 
-For each variant, suggest which sources would be most effective.`
+Example:
+Original: "gyms in Santa Cruz de Tenerife"
+✅ GOOD variants:
+- "fitness centers in Santa Cruz de Tenerife"
+- "workout facilities Santa Cruz Tenerife"
+- "health clubs Santa Cruz de Tenerife"
 
-  const userPrompt = `Generate ${count} different search query variants for: "${originalQuery}"
+❌ BAD variants:
+- "sports equipment stores" (changes topic)
+- "gyms in Spain" (changes location)
+- "fitness startups" (changes company type)`
 
-Each variant should approach the search differently:
-- Variant 1: Direct/literal interpretation
-- Variant 2: Technology/product focused
-- Variant 3: Industry/use-case focused  
-- Variant 4: Company-type focused (startups, enterprises, etc.)
+  const userPrompt = `Generate ${count} different REPHRASED versions of this search query: "${originalQuery}"
 
-For each variant, suggest 2-3 best sources from: LinkedIn, Reddit, Clutch, ProductHunt, Crunchbase
+Each variant must:
+- Mean EXACTLY the same thing as the original
+- Use different words/synonyms
+- Preserve all key details (location, industry, company type, etc.)
 
 Return a JSON array:
 [
   {
-    "variant": "search query text",
-    "focus": "what this variant emphasizes",
-    "suggestedSources": ["LinkedIn", "Clutch"]
+    "variant": "rephrased search query",
+    "focus": "what synonym/phrasing approach was used"
   }
 ]
 
@@ -51,12 +58,12 @@ Return ONLY the JSON array.`
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "gpt-4.1-mini",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.8,
+      temperature: 0.3,
     }),
   })
 
@@ -82,24 +89,11 @@ Return ONLY the JSON array.`
     return variants
   } catch (error) {
     console.error("[v0] Failed to parse query variants, using fallback")
-    // Fallback: return original query with different focuses
     return [
-      { variant: originalQuery, focus: "direct", suggestedSources: ["LinkedIn", "Clutch", "Crunchbase"] },
-      {
-        variant: `${originalQuery} startups`,
-        focus: "startups",
-        suggestedSources: ["ProductHunt", "Crunchbase", "Reddit"],
-      },
-      {
-        variant: `${originalQuery} companies`,
-        focus: "established companies",
-        suggestedSources: ["LinkedIn", "Clutch"],
-      },
-      {
-        variant: `${originalQuery} tools platforms`,
-        focus: "products",
-        suggestedSources: ["ProductHunt", "Reddit"],
-      },
+      { variant: originalQuery, focus: "original" },
+      { variant: `${originalQuery} companies`, focus: "explicit companies" },
+      { variant: `find ${originalQuery}`, focus: "action-oriented" },
+      { variant: `list of ${originalQuery}`, focus: "list format" },
     ]
   }
 }

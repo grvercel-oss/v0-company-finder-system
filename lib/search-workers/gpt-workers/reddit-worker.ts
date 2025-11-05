@@ -67,7 +67,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4o",
+            model: "gpt-5-nano", // Switched from gpt-4o to gpt-5-nano for lower cost
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -177,7 +177,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4o",
+            model: "gpt-5-nano", // Switched from gpt-4o to gpt-5-nano for lower cost
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },

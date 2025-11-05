@@ -80,7 +80,7 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4o",
+            model: "gpt-5-nano", // Switched from gpt-4o to gpt-5-nano for lower cost
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -121,10 +121,6 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             allCompanies.push(...verified)
             yield verified
           }
-        }
-
-        if (allCompanies.length >= desiredCount) {
-          break
         }
       }
 
@@ -199,7 +195,7 @@ Return ONLY the JSON array, no other text.`
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4o",
+            model: "gpt-5-nano", // Switched from gpt-4o to gpt-5-nano for lower cost
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },

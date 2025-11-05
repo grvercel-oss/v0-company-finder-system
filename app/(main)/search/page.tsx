@@ -9,6 +9,8 @@ import { SearchProgress } from "@/components/search-progress"
 import type { Company } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { Clock } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface SearchCost {
   perplexity?: {
@@ -46,6 +48,7 @@ export default function SearchPage() {
     createdAt: string
   } | null>(null)
   const [isLoadingPrevious, setIsLoadingPrevious] = useState(true)
+  const [desiredCount, setDesiredCount] = useState<number>(20)
 
   useEffect(() => {
     const loadPreviousSearch = async () => {
@@ -89,7 +92,7 @@ export default function SearchPage() {
     try {
       const params = new URLSearchParams({
         query,
-        desired_count: "20",
+        desired_count: desiredCount.toString(),
       })
       const eventSource = new EventSource(`/api/search/stream?${params.toString()}`)
 
@@ -203,6 +206,26 @@ export default function SearchPage() {
               <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
             </div>
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="company-count" className="text-sm font-medium whitespace-nowrap">
+                  Companies per source:
+                </Label>
+                <Input
+                  id="company-count"
+                  type="number"
+                  min="5"
+                  max="50"
+                  value={desiredCount}
+                  onChange={(e) => setDesiredCount(Number.parseInt(e.target.value) || 20)}
+                  className="w-20"
+                  disabled={isLoading}
+                />
+                <span className="text-xs text-muted-foreground">
+                  (Total: up to {desiredCount * 5} companies from 5 sources)
+                </span>
+              </div>
+            </div>
             <AdvancedFilters filters={filters} onFiltersChange={setFilters} />
           </div>
         </div>

@@ -4,7 +4,7 @@ export class ClutchSearchWorker implements SearchWorker {
   name = "Clutch"
   timeout = 15000 // 15 seconds
 
-  async search(queries: string[], icp: ICP): Promise<SearchWorkerResult> {
+  async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
     console.log("[v0] [Clutch] Starting search")
 
@@ -22,7 +22,7 @@ Focus ONLY on Clutch.co as your source. Think about what companies would have pr
 
 Clutch specializes in: software development, marketing agencies, design firms, IT services, consulting, etc.`
 
-      const userPrompt = `Find 10 B2B service companies on Clutch.co that match: "${query}"
+      const userPrompt = `Find ${desiredCount} B2B service companies on Clutch.co that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}

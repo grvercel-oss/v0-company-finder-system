@@ -4,7 +4,7 @@ export class ProductHuntSearchWorker implements SearchWorker {
   name = "ProductHunt"
   timeout = 15000 // 15 seconds
 
-  async search(queries: string[], icp: ICP): Promise<SearchWorkerResult> {
+  async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
     console.log("[v0] [ProductHunt] Starting search")
 
@@ -22,7 +22,7 @@ Focus ONLY on Product Hunt as your source. Think about what companies would laun
 
 Product Hunt features: SaaS products, mobile apps, tech tools, innovative startups, etc.`
 
-      const userPrompt = `Find 10 innovative companies/products on Product Hunt that match: "${query}"
+      const userPrompt = `Find ${desiredCount} innovative companies/products on Product Hunt that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}

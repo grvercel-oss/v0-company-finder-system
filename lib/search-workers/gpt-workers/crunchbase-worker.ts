@@ -4,7 +4,7 @@ export class CrunchbaseSearchWorker implements SearchWorker {
   name = "Crunchbase"
   timeout = 15000 // 15 seconds
 
-  async search(queries: string[], icp: ICP): Promise<SearchWorkerResult> {
+  async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
     console.log("[v0] [Crunchbase] Starting search")
 
@@ -22,7 +22,7 @@ Focus ONLY on Crunchbase as your source. Think about what companies would be lis
 
 Crunchbase specializes in: funded startups, venture-backed companies, acquisition data, funding rounds, etc.`
 
-      const userPrompt = `Find 10 funded companies on Crunchbase that match: "${query}"
+      const userPrompt = `Find ${desiredCount} funded companies on Crunchbase that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}

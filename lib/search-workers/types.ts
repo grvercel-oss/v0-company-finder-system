@@ -35,6 +35,6 @@ export interface SearchWorkerResult {
 
 export interface SearchWorker {
   name: string
-  search(queries: string[], icp: ICP): Promise<SearchWorkerResult>
+  search(queries: string[], icp: ICP, desiredCount?: number): Promise<SearchWorkerResult>
   timeout: number
 }

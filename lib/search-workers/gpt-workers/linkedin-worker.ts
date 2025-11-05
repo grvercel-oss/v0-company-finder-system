@@ -4,7 +4,7 @@ export class LinkedInSearchWorker implements SearchWorker {
   name = "LinkedIn"
   timeout = 15000 // 15 seconds
 
-  async search(queries: string[], icp: ICP): Promise<SearchWorkerResult> {
+  async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
     console.log("[v0] [LinkedIn] Starting search")
 
@@ -22,7 +22,7 @@ Focus ONLY on LinkedIn as your source. Simulate what you would find by searching
 
 Return specialized companies, startups, and focused providers - NOT large generic corporations unless they're the primary players in this specific niche.`
 
-      const userPrompt = `Find 10 companies on LinkedIn that match: "${query}"
+      const userPrompt = `Find ${desiredCount} companies on LinkedIn that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}

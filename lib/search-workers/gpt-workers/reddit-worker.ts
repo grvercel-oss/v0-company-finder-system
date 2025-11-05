@@ -4,7 +4,7 @@ export class RedditSearchWorker implements SearchWorker {
   name = "Reddit"
   timeout = 15000 // 15 seconds
 
-  async search(queries: string[], icp: ICP): Promise<SearchWorkerResult> {
+  async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
     console.log("[v0] [Reddit] Starting search")
 
@@ -22,7 +22,7 @@ Focus ONLY on Reddit as your source. Think about what companies would be mention
 
 Return companies that have active Reddit presence or are frequently recommended by Reddit users.`
 
-      const userPrompt = `Find 10 companies frequently mentioned on Reddit that match: "${query}"
+      const userPrompt = `Find ${desiredCount} companies frequently mentioned on Reddit that match: "${query}"
 
 Based on the ICP:
 - Industries: ${icp.industries.join(", ")}

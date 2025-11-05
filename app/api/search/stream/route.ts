@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     return new Response("Query required", { status: 400 })
   }
 
-  console.log("[v0] Starting search for query:", query)
+  console.log("[v0] Starting search for query:", query, "with desired count:", desiredCount)
 
   // Create SSE stream
   const encoder = new TextEncoder()
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
 
           try {
             const result = await Promise.race([
-              worker.search(searchQueries, icp),
+              worker.search(searchQueries, icp, desiredCount),
               new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), worker.timeout)),
             ])
 

@@ -8,6 +8,7 @@ import { checkRateLimit, getCachedSearchResults, cacheSearchResults } from "@/li
 import { formatCost } from "@/lib/cost-calculator"
 import { generateQueryVariants } from "@/lib/search-workers/query-variant-generator"
 import { MultiSourceWorker } from "@/lib/search-workers/multi-source-worker"
+import { verifyDomain } from "@/lib/domain-verifier"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -49,23 +50,6 @@ export async function GET(request: NextRequest) {
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
       }
 
-      const eventBatch: Array<{ event: string; data: any }> = []
-      const flushEvents = () => {
-        if (eventBatch.length > 0) {
-          for (const { event, data } of eventBatch) {
-            controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
-          }
-          eventBatch.length = 0
-        }
-      }
-
-      const batchSend = (event: string, data: any) => {
-        eventBatch.push({ event, data })
-        if (eventBatch.length >= 5) {
-          flushEvents()
-        }
-      }
-
       try {
         send("status", { message: "Starting search..." })
 
@@ -92,9 +76,8 @@ export async function GET(request: NextRequest) {
           `
 
           for (const company of cachedCompanies) {
-            batchSend("new_company", { company, is_new: false, source: "cache" })
+            send("new_company", { company, is_new: false, source: "cache" })
           }
-          flushEvents()
 
           send("status", { message: "Cached results loaded. Searching for new companies..." })
         }
@@ -124,64 +107,6 @@ export async function GET(request: NextRequest) {
         let searchRound = 0
         const maxSearchRounds = 5
 
-        const pendingMerges: Array<{ companyResult: any; workerName: string }> = []
-        const processBatch = async () => {
-          if (pendingMerges.length === 0) return
-
-          const batch = pendingMerges.splice(0, pendingMerges.length)
-          console.log(`[v0] Processing batch of ${batch.length} companies`)
-
-          const mergeResults = await Promise.allSettled(
-            batch.map(async ({ companyResult, workerName }) => {
-              try {
-                const merged = await mergeAndSaveCompany(companyResult, accountId)
-                await linkSearchResult(searchId, merged.company_id, workerName, companyResult.confidence_score || 0)
-
-                foundCompanyIds.push(merged.company_id)
-                totalCompaniesFound++
-
-                if (companyResult.tokenUsage) {
-                  totalInputTokens += companyResult.tokenUsage.prompt_tokens
-                  totalOutputTokens += companyResult.tokenUsage.completion_tokens
-                  totalCost += companyResult.tokenUsage.cost
-                }
-
-                return { merged, companyResult, workerName }
-              } catch (error: any) {
-                console.error("[v0] Error merging company:", error.message)
-                return null
-              }
-            }),
-          )
-
-          for (const result of mergeResults) {
-            if (result.status === "fulfilled" && result.value) {
-              const { merged, companyResult, workerName } = result.value
-
-              batchSend("new_company", {
-                company: merged.company,
-                is_new: merged.is_new,
-                source: workerName,
-              })
-
-              if (companyResult.tokenUsage) {
-                batchSend("cost_update", {
-                  total_cost: totalCost,
-                  formatted_total: formatCost(totalCost),
-                  companies_found: totalCompaniesFound,
-                })
-              }
-
-              batchSend("progress", {
-                total: totalCompaniesFound,
-                target: desiredCount,
-              })
-            }
-          }
-
-          flushEvents()
-        }
-
         while (totalCompaniesFound < desiredCount && searchRound < maxSearchRounds) {
           searchRound++
           const remainingNeeded = desiredCount - totalCompaniesFound
@@ -205,24 +130,68 @@ export async function GET(request: NextRequest) {
               for await (const batch of searchGenerator) {
                 if (signal.aborted) break
 
-                for (const companyResult of batch) {
-                  if (signal.aborted) break
-                  pendingMerges.push({ companyResult, workerName: worker.name })
+                const processPromises = batch.map(async (companyResult) => {
+                  if (signal.aborted) return null
 
-                  if (pendingMerges.length >= 10) {
-                    await processBatch()
-                  }
+                  try {
+                    const isDomainValid = companyResult.domain ? await verifyDomain(companyResult.domain) : false
 
-                  if (totalCompaniesFound >= desiredCount) {
-                    abortController.abort()
-                    break
+                    if (!isDomainValid) {
+                      console.log(`[v0] Rejected company ${companyResult.name} - invalid domain`)
+                      return null
+                    }
+
+                    const merged = await mergeAndSaveCompany(companyResult, accountId)
+                    await linkSearchResult(
+                      searchId,
+                      merged.company_id,
+                      worker.name,
+                      companyResult.confidence_score || 0,
+                    )
+
+                    foundCompanyIds.push(merged.company_id)
+                    totalCompaniesFound++
+
+                    if (companyResult.tokenUsage) {
+                      totalInputTokens += companyResult.tokenUsage.prompt_tokens
+                      totalOutputTokens += companyResult.tokenUsage.completion_tokens
+                      totalCost += companyResult.tokenUsage.cost
+                    }
+
+                    send("new_company", {
+                      company: merged.company,
+                      is_new: merged.is_new,
+                      source: worker.name,
+                    })
+
+                    if (companyResult.tokenUsage) {
+                      send("cost_update", {
+                        total_cost: totalCost,
+                        formatted_total: formatCost(totalCost),
+                        companies_found: totalCompaniesFound,
+                      })
+                    }
+
+                    send("progress", {
+                      total: totalCompaniesFound,
+                      target: desiredCount,
+                    })
+
+                    if (totalCompaniesFound >= desiredCount) {
+                      abortController.abort()
+                    }
+
+                    return merged
+                  } catch (error: any) {
+                    console.error("[v0] Error processing company:", error.message)
+                    return null
                   }
-                }
+                })
+
+                await Promise.allSettled(processPromises)
 
                 if (signal.aborted) break
               }
-
-              await processBatch()
 
               if (searchRound === 1) {
                 send("worker_completed", { worker: worker.name, count: totalCompaniesFound })
@@ -237,8 +206,6 @@ export async function GET(request: NextRequest) {
           })
 
           await Promise.allSettled(workerPromises)
-
-          await processBatch()
 
           if (totalCompaniesFound >= desiredCount) {
             break

@@ -2,7 +2,7 @@ import type { SearchWorker, SearchWorkerResult, ICP, CompanyResult } from "../ty
 
 export class CrunchbaseSearchWorker implements SearchWorker {
   name = "Crunchbase"
-  timeout = 15000 // 15 seconds
+  timeout = 30000 // 30 seconds
 
   async search(queries: string[], icp: ICP, desiredCount = 10): Promise<SearchWorkerResult> {
     const startTime = Date.now()
@@ -52,7 +52,7 @@ Return ONLY the JSON array, no other text.`
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4.1",
+          model: "gpt-4o",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },

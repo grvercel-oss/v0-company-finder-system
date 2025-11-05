@@ -53,7 +53,7 @@ Return JSON with this structure:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-nano", // Updated model
+        model: "gpt-5-nano-2025-08-07", // Updated model
         messages: [
           {
             role: "system",
@@ -150,7 +150,7 @@ Return JSON with this exact structure:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5-nano", // Updated model
+        model: "gpt-5-nano-2025-08-07", // Updated model
         messages: [
           {
             role: "system",

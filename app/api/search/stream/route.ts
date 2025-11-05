@@ -5,6 +5,7 @@ import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
 import { PerplexityWorker } from "@/lib/search-workers/perplexity-worker"
+import { ClutchScraperWorker } from "@/lib/search-workers/clutch-worker"
 import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
 import {
   checkRateLimit,
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
 
         // Run workers
         send("status", { message: "Searching multiple sources..." })
-        const workers = [new PerplexityWorker()]
+        const workers = [new PerplexityWorker(), new ClutchScraperWorker()]
         console.log(
           "[v0] Starting workers:",
           workers.map((w) => w.name),

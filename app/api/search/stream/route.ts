@@ -106,12 +106,13 @@ export async function GET(request: NextRequest) {
 
             try {
               const domain = company.domain || company.name
+
               if (foundDomains.has(domain)) {
-                console.log(`[v0] Already found ${domain} in this search, skipping`)
+                console.log(`[v0] Stream route: Already processed ${domain}, skipping`)
                 continue
               }
 
-              console.log(`[v0] Saving company: ${company.name}`)
+              console.log(`[v0] Saving company: ${company.name} (${domain})`)
 
               const inserted = await sql`
                 INSERT INTO companies (
@@ -182,8 +183,9 @@ export async function GET(request: NextRequest) {
               })
 
               if (totalCompaniesFound >= desiredCount) {
-                console.log(`[v0] Reached desired count of ${desiredCount} companies, stopping search`)
+                console.log(`[v0] Reached desired count of ${desiredCount} unique companies, stopping search`)
                 abortController.abort()
+                break
               }
             } catch (error: any) {
               console.error("[v0] Error saving company:", error.message)

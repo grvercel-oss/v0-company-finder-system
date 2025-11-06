@@ -30,6 +30,7 @@ export class MultiSourceWorker {
       const companiesPerCall = 5
       const parallelCalls = 4
       let batchIndex = 0
+      const allFoundDomains = new Set<string>(excludeDomains)
 
       console.log(
         `[v0] [${this.name}] Will make ${parallelCalls} parallel API calls per batch, ${companiesPerCall} companies each`,
@@ -39,15 +40,17 @@ export class MultiSourceWorker {
         batchIndex++
 
         console.log(`[v0] [${this.name}] Batch ${batchIndex}: Starting ${parallelCalls} parallel API calls`)
-        if (excludeDomains.size > 0) {
-          console.log(`[v0] [${this.name}] Excluding ${excludeDomains.size} already-found companies`)
+        if (allFoundDomains.size > 0) {
+          console.log(`[v0] [${this.name}] Excluding ${allFoundDomains.size} already-found companies`)
         }
 
         const apiCallPromises = Array.from({ length: parallelCalls }, (_, i) =>
-          this.makeApiCall(apiKey, companiesPerCall, batchIndex * parallelCalls + i + 1, excludeDomains, signal),
+          this.makeApiCall(apiKey, companiesPerCall, batchIndex * parallelCalls + i + 1, allFoundDomains, signal),
         )
 
         const results = await Promise.allSettled(apiCallPromises)
+
+        const batchCompanies: Array<{ company: CompanyResult; callNumber: number; cost: number; tokenUsage: any }> = []
 
         for (const result of results) {
           if (signal?.aborted) break
@@ -63,22 +66,55 @@ export class MultiSourceWorker {
             const costPerCompany = cost / companies.length
 
             for (const company of companies) {
-              if (signal?.aborted) break
-
-              const companyWithCost = {
-                ...company,
+              batchCompanies.push({
+                company,
+                callNumber,
+                cost: costPerCompany,
                 tokenUsage: {
                   prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
                   completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
-                  cost: costPerCompany,
                 },
-              }
-
-              yield [companyWithCost]
+              })
             }
           } else if (result.status === "rejected") {
             console.error(`[v0] [${this.name}] API call failed:`, result.reason)
           }
+        }
+
+        const uniqueCompanies: typeof batchCompanies = []
+        const batchDomains = new Set<string>()
+
+        for (const item of batchCompanies) {
+          const domain = item.company.domain
+
+          // Skip if we've already found this domain in any previous batch or in this batch
+          if (allFoundDomains.has(domain) || batchDomains.has(domain)) {
+            console.log(`[v0] [${this.name}] Skipping duplicate: ${domain}`)
+            continue
+          }
+
+          batchDomains.add(domain)
+          allFoundDomains.add(domain)
+          uniqueCompanies.push(item)
+        }
+
+        console.log(
+          `[v0] [${this.name}] Batch ${batchIndex}: Found ${batchCompanies.length} companies, ${uniqueCompanies.length} unique after deduplication`,
+        )
+
+        for (const item of uniqueCompanies) {
+          if (signal?.aborted) break
+
+          const companyWithCost = {
+            ...item.company,
+            tokenUsage: {
+              prompt_tokens: item.tokenUsage.prompt_tokens,
+              completion_tokens: item.tokenUsage.completion_tokens,
+              cost: item.cost,
+            },
+          }
+
+          yield [companyWithCost]
         }
 
         if (signal?.aborted) {
@@ -109,16 +145,31 @@ export class MultiSourceWorker {
   ): Promise<{ companies: CompanyResult[]; callNumber: number; cost: number; tokenUsage: any }> {
     const systemPrompt = `You are Perplexity, a helpful search assistant trained by Perplexity AI. Your goal is to identify and provide accurate, detailed, and comprehensive information about companies requested in the user query.
 
-You must adopt an expert, unbiased, and journalistic tone. Your primary task is to identify precisely the companies requested and provide their OFFICIAL website along with essential verified information.
+You must adopt an expert, unbiased, and journalistic tone. Your primary task is to identify precisely the companies requested and provide their OFFICIAL PRIMARY website along with essential verified information.
 
 CORE SEARCH AND DATA EXTRACTION PROCESS:
 
 1. IDENTIFY TARGETS: Determine the specific company names or criteria requested by the user.
 
-2. LOCATE OFFICIAL WEBSITES: Execute thorough searches to find the OFFICIAL company website for each target. This is your primary output requirement.
-   - Verify the website is the company's official domain (not a review site, directory listing, or social media page)
-   - Cross-reference multiple sources to confirm authenticity
-   - Prefer .com, country-specific TLDs, or well-established domains
+2. LOCATE OFFICIAL PRIMARY WEBSITES: Execute thorough searches to find the OFFICIAL PRIMARY company website for each target. This is your most critical output requirement.
+   
+   DOMAIN VERIFICATION REQUIREMENTS:
+   - The website MUST be the company's PRIMARY official domain (not a subsidiary, regional variant, or alternative domain)
+   - Cross-reference the domain across AT LEAST 3 different reliable sources to confirm authenticity
+   - Verify the domain is currently active and accessible
+   - Prefer the simplest, most direct domain (e.g., "company.com" over "company-global.com" or "company-usa.com")
+   - DO NOT include:
+     * Review sites (g2.com, trustpilot.com, etc.)
+     * Directory listings (yelp.com, yellowpages.com, etc.)
+     * Social media pages (linkedin.com, facebook.com, etc.)
+     * Subsidiary or regional domains unless that's the only official domain
+     * Alternative domains when a primary domain exists
+   
+   CONFIDENCE SCORING FOR DOMAINS:
+   - If you find the domain on 3+ reliable sources with consistent information: confidence >= 0.85
+   - If you find the domain on 2 reliable sources: confidence = 0.75-0.84
+   - If you find the domain on only 1 source or sources conflict: confidence < 0.7 (DO NOT INCLUDE)
+   - If you're uncertain whether it's the PRIMARY domain vs a subsidiary: confidence < 0.7 (DO NOT INCLUDE)
 
 3. VERIFY INFORMATION: Use multiple reliable sources to verify and cross-check company information:
    - Professional networks (LinkedIn, Crunchbase)
@@ -139,12 +190,14 @@ CORE SEARCH AND DATA EXTRACTION PROCESS:
 
 CRITICAL QUALITY RULES:
 - Only return companies you are CONFIDENT exist and are currently ACTIVE
-- All websites must be OFFICIAL, VERIFIED, working domains (no made-up URLs, no directory listings)
+- All websites must be OFFICIAL, PRIMARY, VERIFIED, working domains (no made-up URLs, no directory listings, no subsidiary domains)
+- Each domain must be cross-referenced across at least 3 sources before inclusion
 - Prefer well-known, verifiable companies with strong online presence
-- If unsure about a company's existence or website authenticity, DO NOT include it
-- Cross-reference information from multiple sources before including
+- If unsure about a company's existence, website authenticity, or whether it's the PRIMARY domain, DO NOT include it
+- If you find conflicting domains for the same company, DO NOT include it (set confidence < 0.7)
 - Return DIFFERENT companies each time (avoid duplicates from previous calls)
-- Minimum confidence threshold: 0.7 (only include companies meeting this standard)`
+- Minimum confidence threshold: 0.7 (only include companies meeting this standard)
+- When in doubt about domain accuracy, EXCLUDE the company rather than risk including wrong information`
 
     let exclusionText = ""
     if (excludeDomains.size > 0) {
@@ -158,7 +211,7 @@ Search approach: ${this.focus}
 ${callNumber > 1 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callNumber}.` : ""}${exclusionText}
 
 REQUIRED FOR EACH COMPANY:
-1. **Official Website**: The company's verified official website URL (not a directory listing or review site)
+1. **Official Website**: The company's verified official PRIMARY website URL (not a directory listing, review site, or subsidiary domain)
 2. **Verification**: Cross-check information from at least 2 reliable sources
 3. **Source Attribution**: Indicate where you found and verified this company
 4. **Confidence Score**: Rate your certainty (0.0-1.0) about the company's existence and data accuracy
@@ -178,7 +231,7 @@ Return a JSON array with this exact structure:
 ]
 
 QUALITY CHECKLIST:
-✓ Website is the OFFICIAL company domain (verified)
+✓ Website is the OFFICIAL PRIMARY company domain (verified)
 ✓ Company is currently ACTIVE (not defunct)
 ✓ Information cross-referenced from multiple sources
 ✓ Confidence score >= 0.7

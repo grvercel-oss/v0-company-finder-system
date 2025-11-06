@@ -40,6 +40,7 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
 
   useEffect(() => {
     const fetchContacts = async () => {
+      console.log(`[v0] [TABLE] Fetching contacts for ${companies.length} companies`)
       const contactsMap: Record<number, CompanyContact[]> = {}
 
       await Promise.all(
@@ -48,10 +49,19 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
             const response = await fetch(`/api/companies/${company.id}/contacts`)
             if (response.ok) {
               const contacts = await response.json()
+              console.log(`[v0] [TABLE] Company "${company.name}" has ${contacts.length} contacts`)
+              console.log(
+                `[v0] [TABLE] Contact statuses for "${company.name}":`,
+                contacts.map((c: CompanyContact) => ({
+                  name: c.name,
+                  email: c.email,
+                  status: c.email_verification_status,
+                })),
+              )
               contactsMap[company.id] = contacts
             }
           } catch (error) {
-            console.error(`Failed to fetch contacts for company ${company.id}:`, error)
+            console.error(`[v0] [TABLE] Failed to fetch contacts for company ${company.id}:`, error)
           }
         }),
       )
@@ -63,8 +73,12 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
         .filter((c) => c.email_verification_status === "pending")
         .map((c) => c.id)
 
+      console.log(`[v0] [TABLE] Found ${allContactIds.length} contacts with 'pending' status to verify`)
+
       if (allContactIds.length > 0) {
         verifyEmails(allContactIds)
+      } else {
+        console.log(`[v0] [TABLE] No pending contacts to verify. All contacts are already processed.`)
       }
     }
 
@@ -75,7 +89,7 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
 
   const verifyEmails = async (contactIds: number[]) => {
     setIsVerifying(true)
-    console.log(`[v0] Starting verification for ${contactIds.length} contacts`)
+    console.log(`[v0] [TABLE] Starting verification for ${contactIds.length} contacts`)
 
     try {
       const response = await fetch("/api/contacts/verify", {
@@ -86,7 +100,7 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
 
       if (response.ok) {
         const { results } = await response.json()
-        console.log(`[v0] Verification complete:`, results)
+        console.log(`[v0] [TABLE] Verification complete. Results:`, results)
 
         const contactsMap: Record<number, CompanyContact[]> = {}
         await Promise.all(
@@ -95,10 +109,11 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
               const response = await fetch(`/api/companies/${company.id}/contacts`)
               if (response.ok) {
                 const contacts = await response.json()
+                console.log(`[v0] [TABLE] Refreshed contacts for "${company.name}": ${contacts.length} total`)
                 contactsMap[company.id] = contacts
               }
             } catch (error) {
-              console.error(`Failed to refresh contacts for company ${company.id}:`, error)
+              console.error(`[v0] [TABLE] Failed to refresh contacts for company ${company.id}:`, error)
             }
           }),
         )
@@ -110,7 +125,7 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
         })
       }
     } catch (error) {
-      console.error("[v0] Email verification failed:", error)
+      console.error("[v0] [TABLE] Email verification failed:", error)
       toast({
         title: "Verification failed",
         description: "Failed to verify email addresses",
@@ -214,9 +229,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
           </TableHeader>
           <TableBody>
             {companies.map((company) => {
-              const contacts = (companyContacts[company.id] || []).filter(
-                (c) => c.email_verification_status !== "invalid",
-              )
+              const allContacts = companyContacts[company.id] || []
+              const contacts = allContacts.filter((c) => c.email_verification_status !== "invalid")
+
+              if (allContacts.length !== contacts.length) {
+                console.log(
+                  `[v0] [TABLE] Filtered out ${allContacts.length - contacts.length} invalid contacts for "${company.name}"`,
+                )
+              }
 
               return (
                 <TableRow key={company.id}>

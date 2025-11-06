@@ -16,32 +16,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid contact IDs" }, { status: 400 })
     }
 
-    console.log(`[v0] [VERIFY] Starting verification for ${contactIds.length} contacts`)
-
-    // First, check if contacts exist at all
-    const allContacts = await sql`
-      SELECT id, email, email_verification_status, company_id
-      FROM company_contacts 
-      WHERE id = ANY(${contactIds})
-    `
-    console.log(`[v0] [VERIFY] Total contacts found in DB: ${allContacts.length}`)
-    console.log(
-      `[v0] [VERIFY] Contact statuses:`,
-      allContacts.map((c) => ({ id: c.id, email: c.email, status: c.email_verification_status })),
-    )
+    console.log(`[v0] [VERIFY] Starting verification for ${contactIds.length} contact IDs`)
 
     // Fetch contacts with pending status
     const contacts = await sql`
-      SELECT id, email 
+      SELECT id, email, email_verification_status
       FROM company_contacts 
       WHERE id = ANY(${contactIds})
-      AND email_verification_status = 'pending'
+      AND (email_verification_status = 'pending' OR email_verification_status IS NULL)
     `
 
-    console.log(`[v0] [VERIFY] Found ${contacts.length} contacts with 'pending' status to verify`)
+    console.log(`[v0] [VERIFY] Found ${contacts.length} contacts to verify`)
 
     if (contacts.length === 0) {
-      console.log(`[v0] [VERIFY] No pending contacts to verify. All contacts might already be verified or invalid.`)
+      console.log(`[v0] [VERIFY] No pending contacts found`)
       return NextResponse.json({
         success: true,
         results: [],
@@ -52,9 +40,7 @@ export async function POST(request: NextRequest) {
     // Verify each email
     const verificationResults = []
     for (const contact of contacts) {
-      console.log(`[v0] [VERIFY] Verifying email: ${contact.email}`)
       const result = await verifyEmail(contact.email)
-      console.log(`[v0] [VERIFY] Result for ${contact.email}: ${result.status} (${result.reason})`)
 
       // Update database
       await sql`
@@ -71,17 +57,23 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    console.log(`[v0] [VERIFY] Verification complete. Summary:`)
-    console.log(`[v0] [VERIFY] - Verified: ${verificationResults.filter((r) => r.status === "verified").length}`)
-    console.log(`[v0] [VERIFY] - Unverified: ${verificationResults.filter((r) => r.status === "unverified").length}`)
-    console.log(`[v0] [VERIFY] - Invalid: ${verificationResults.filter((r) => r.status === "invalid").length}`)
+    const summary = {
+      verified: verificationResults.filter((r) => r.status === "verified").length,
+      unverified: verificationResults.filter((r) => r.status === "unverified").length,
+      invalid: verificationResults.filter((r) => r.status === "invalid").length,
+    }
+
+    console.log(
+      `[v0] [VERIFY] Complete - Verified: ${summary.verified}, Unverified: ${summary.unverified}, Invalid: ${summary.invalid}`,
+    )
 
     return NextResponse.json({
       success: true,
       results: verificationResults,
+      summary,
     })
   } catch (error) {
-    console.error("[v0] [VERIFY] Email verification error:", error)
+    console.error("[v0] [VERIFY] Error:", error)
     return NextResponse.json({ error: "Failed to verify emails" }, { status: 500 })
   }
 }

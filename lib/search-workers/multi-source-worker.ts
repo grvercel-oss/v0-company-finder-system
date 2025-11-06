@@ -208,40 +208,67 @@ CORE SEARCH AND DATA EXTRACTION PROCESS:
    - Brief, factual description of what they do
    - Source where you found this information
 
-5. FIND KEY PERSONNEL CONTACTS: Search for decision-makers and key personnel at the company:
-   - Focus on: Directors, C-level executives, Sales Managers, Business Development, Marketing Heads, Department Heads
-   - DO NOT include: Generic support emails (support@, info@, hello@, contact@)
-   - DO NOT include: Personal assistants or administrative staff unless they're decision-makers
-   - LIMIT: Find only 1-2 key contacts per company (not more to reduce token usage)
-   - For each contact, find:
-     * Full name
-     * Job title/role
-     * Professional email (preferably company email, not personal)
-     * LinkedIn profile URL (if available)
-   - Verify contacts from:
-     * LinkedIn profiles
-     * Company "About Us" or "Team" pages
-     * Professional directories
-     * News articles and press releases
-     * Conference speaker lists
-   - Only include contacts you can verify from at least 2 sources
-   - Confidence scoring for contacts:
-     * 0.9+: Found on company website + LinkedIn with matching details
-     * 0.8-0.89: Found on LinkedIn + one other professional source
-     * 0.7-0.79: Found on one reliable source with complete information
+5. **CRITICAL: FIND KEY CONTACT INFORMATION** - THIS IS MANDATORY:
+   
+   FOR EACH COMPANY, YOU MUST FIND AT LEAST 1 KEY CONTACT:
+   
+   **WHERE TO SEARCH FOR CONTACTS:**
+   - Company website "About Us", "Team", "Leadership", "Contact" pages
+   - LinkedIn company page → "People" tab → Filter by current employees
+   - LinkedIn individual profiles (search "Company Name CEO" or "Company Name founder")
+   - Crunchbase company profile (shows founders and key executives)
+   - Company press releases and news articles (often mention executives)
+   - Conference speaker lists and event pages
+   - Company blog posts (check author bios)
+   - GitHub profiles (for tech companies)
+   - Twitter/X company account (check who runs it)
+   - AngelList/Wellfound profiles
+   
+   **WHO TO FIND (in order of priority):**
+   1. CEO, Founder, Co-founder
+   2. President, Managing Director
+   3. VP of Sales, Head of Business Development
+   4. VP of Marketing, CMO
+   5. Head of Partnerships, Director of Growth
+   
+   **WHAT INFORMATION TO COLLECT:**
+   - Full name (required)
+   - Job title/role (required)
+   - Professional email address (required - use company domain, not personal gmail/yahoo)
+   - LinkedIn profile URL (highly preferred)
+   - Phone number (optional)
+   
+   **EMAIL FORMAT PATTERNS TO TRY:**
+   If you can't find the exact email, construct it using common patterns:
+   - firstname@company.com
+   - firstname.lastname@company.com
+   - f.lastname@company.com
+   - firstnamelastname@company.com
+   
+   **IMPORTANT CONTACT RULES:**
+   - DO NOT use generic emails: support@, info@, hello@, contact@, sales@
+   - DO NOT include personal assistants unless they're decision-makers
+   - ONLY include if you find their name and role on a reliable source
+   - If you find a name but no email, construct one using the company domain
+   - Confidence scoring:
+     * 0.9+: Email found on company website or LinkedIn
+     * 0.8-0.89: Name and role verified, email constructed using company pattern
+     * 0.7-0.79: Name and role found on one source, email constructed
      * < 0.7: DO NOT INCLUDE
+   
+   **YOU MUST INCLUDE AT LEAST 1 CONTACT PER COMPANY. IF YOU CANNOT FIND ANY CONTACT, DO NOT INCLUDE THAT COMPANY.**
 
 CRITICAL QUALITY RULES:
 - Only return companies you are CONFIDENT exist and are currently ACTIVE
 - All websites must be OFFICIAL, PRIMARY, VERIFIED, working domains (no made-up URLs, no directory listings, no subsidiary domains)
 - Each domain must be cross-referenced across at least 3 sources before inclusion
+- **EACH COMPANY MUST HAVE AT LEAST 1 KEY CONTACT - NO EXCEPTIONS**
 - Prefer well-known, verifiable companies with strong online presence
 - If unsure about a company's existence, website authenticity, or whether it's the PRIMARY domain, DO NOT include it
 - If you find conflicting domains for the same company, DO NOT include it (set confidence < 0.7)
 - Return DIFFERENT companies each time (avoid duplicates from previous calls)
 - Minimum confidence threshold: 0.7 (only include companies meeting this standard)
-- When in doubt about domain accuracy, EXCLUDE the company rather than risk including wrong information
-- For contacts: Only include verified decision-makers, not generic support emails`
+- When in doubt about domain accuracy, EXCLUDE the company rather than risk including wrong information`
 
     let exclusionText = ""
     if (excludeDomains.size > 0) {
@@ -252,14 +279,16 @@ CRITICAL QUALITY RULES:
     const userPrompt = `Find ${companiesPerCall} REAL, ACTIVE companies that match: "${this.queryVariant}"
 
 Search approach: ${this.focus}
-${callNumber > 1 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callNumber}.` : ""}${exclusionText}
+${callNumber > 1 ? `\n**IMPORTANT**: Find DIFFERENT companies than previous results. This is call ${callNumber}.` : ""}${exclusionText}
 
-REQUIRED FOR EACH COMPANY:
+**MANDATORY REQUIREMENTS FOR EACH COMPANY:**
 1. **Official Website**: The company's verified official PRIMARY website URL (not a directory listing, review site, or subsidiary domain)
 2. **Verification**: Cross-check information from at least 2 reliable sources
 3. **Source Attribution**: Indicate where you found and verified this company
 4. **Confidence Score**: Rate your certainty (0.0-1.0) about the company's existence and data accuracy
-5. **Key Personnel Contacts**: Find 1-2 decision-makers with their professional emails (NOT generic support emails, LIMIT to 2 contacts max)
+5. **AT LEAST 1 KEY CONTACT**: You MUST find at least one decision-maker with their professional email. Search LinkedIn, company website, Crunchbase, news articles, etc.
+
+**CONTACT FINDING IS MANDATORY - DO NOT SKIP THIS STEP**
 
 Return a JSON array with this exact structure:
 [
@@ -278,29 +307,22 @@ Return a JSON array with this exact structure:
         "role": "CEO & Founder",
         "email": "john.smith@company.com",
         "linkedin_url": "https://linkedin.com/in/johnsmith",
-        "source": "Company website + LinkedIn",
-        "confidence": 0.95
-      },
-      {
-        "name": "Jane Doe",
-        "role": "Head of Sales",
-        "email": "jane.doe@company.com",
-        "linkedin_url": "https://linkedin.com/in/janedoe",
-        "source": "LinkedIn + Company team page",
+        "source": "LinkedIn profile",
         "confidence": 0.90
       }
     ]
   }
 ]
 
-QUALITY CHECKLIST:
+**CRITICAL REMINDERS:**
 ✓ Website is the OFFICIAL PRIMARY company domain (verified)
 ✓ Company is currently ACTIVE (not defunct)
 ✓ Information cross-referenced from multiple sources
 ✓ Confidence score >= 0.7
 ✓ Company is DIFFERENT from previous results
-✓ Contacts are decision-makers with professional emails (NOT support@, info@, etc.)
-✓ Each contact verified from at least 2 sources
+✓ **CONTACTS ARRAY MUST HAVE AT LEAST 1 CONTACT - THIS IS REQUIRED**
+✓ Contact must be a decision-maker with professional email (NOT support@, info@, etc.)
+✓ If you cannot find a contact, DO NOT include that company in the results
 
 Return ONLY the JSON array, no other text or explanation.`
 

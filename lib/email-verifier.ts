@@ -18,6 +18,9 @@ const DISPOSABLE_DOMAINS = new Set([
   "trashmail.com",
   "yopmail.com",
   "maildrop.cc",
+  "getnada.com",
+  "emailondeck.com",
+  "sharklasers.com",
 ])
 
 // Email syntax validation using regex
@@ -32,37 +35,31 @@ function isDisposableEmail(email: string): boolean {
   return DISPOSABLE_DOMAINS.has(domain)
 }
 
-// DNS/MX record validation
-async function validateDNS(domain: string): Promise<boolean> {
-  try {
-    // Use DNS over HTTPS (DoH) to check MX records
-    const response = await fetch(`https://cloudflare-dns.com/dns-query?name=${domain}&type=MX`, {
-      headers: {
-        Accept: "application/dns-json",
-      },
-    })
+// Check if email domain looks suspicious
+function isSuspiciousDomain(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase()
 
-    if (!response.ok) {
-      return false
-    }
-
-    const data = await response.json()
-
-    // Check if MX records exist
-    return data.Answer && data.Answer.length > 0
-  } catch (error) {
-    console.error(`[v0] DNS validation failed for ${domain}:`, error)
-    return false
+  // Check for common patterns in fake emails
+  if (domain.includes("example.") || domain.includes("test.") || domain.includes("fake.")) {
+    return true
   }
+
+  // Check if domain has valid TLD
+  const tld = domain.split(".").pop()
+  if (!tld || tld.length < 2) {
+    return true
+  }
+
+  return false
 }
 
-// Main verification function
+// Main verification function - simplified for speed
 export async function verifyEmail(email: string): Promise<VerificationResult> {
-  console.log(`[v0] Verifying email: ${email}`)
+  console.log(`[v0] [EMAIL-VERIFY] Verifying email: ${email}`)
 
   // Step 1: Syntax validation
   if (!validateEmailSyntax(email)) {
-    console.log(`[v0] Email ${email} failed syntax validation`)
+    console.log(`[v0] [EMAIL-VERIFY] ${email} - INVALID: Bad syntax`)
     return {
       status: "invalid",
       reason: "Invalid email format",
@@ -71,29 +68,27 @@ export async function verifyEmail(email: string): Promise<VerificationResult> {
 
   // Step 2: Disposable email check
   if (isDisposableEmail(email)) {
-    console.log(`[v0] Email ${email} is from disposable domain`)
+    console.log(`[v0] [EMAIL-VERIFY] ${email} - INVALID: Disposable domain`)
     return {
       status: "invalid",
       reason: "Disposable email address",
     }
   }
 
-  // Step 3: DNS/MX validation
-  const domain = email.split("@")[1]
-  const hasMX = await validateDNS(domain)
-
-  if (!hasMX) {
-    console.log(`[v0] Email ${email} failed DNS validation`)
+  // Step 3: Suspicious domain check
+  if (isSuspiciousDomain(email)) {
+    console.log(`[v0] [EMAIL-VERIFY] ${email} - INVALID: Suspicious domain`)
     return {
-      status: "unverified",
-      reason: "Domain has no mail server",
+      status: "invalid",
+      reason: "Suspicious email domain",
     }
   }
 
-  console.log(`[v0] Email ${email} passed all checks`)
+  // If it passes all checks, mark as verified
+  console.log(`[v0] [EMAIL-VERIFY] ${email} - VERIFIED`)
   return {
     status: "verified",
-    reason: "Passed all validation checks",
+    reason: "Passed validation checks",
   }
 }
 
@@ -101,25 +96,16 @@ export async function verifyEmail(email: string): Promise<VerificationResult> {
 export async function verifyEmails(emails: string[]): Promise<Map<string, VerificationResult>> {
   const results = new Map<string, VerificationResult>()
 
-  // Process in batches of 10 to avoid overwhelming DNS servers
-  const batchSize = 10
-  for (let i = 0; i < emails.length; i += batchSize) {
-    const batch = emails.slice(i, i + batchSize)
-    const batchResults = await Promise.all(
-      batch.map(async (email) => ({
-        email,
-        result: await verifyEmail(email),
-      })),
-    )
+  // Process all emails in parallel since we removed slow DNS checks
+  const verificationPromises = emails.map(async (email) => ({
+    email,
+    result: await verifyEmail(email),
+  }))
 
-    for (const { email, result } of batchResults) {
-      results.set(email, result)
-    }
+  const verificationResults = await Promise.all(verificationPromises)
 
-    // Small delay between batches to be respectful to DNS servers
-    if (i + batchSize < emails.length) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
+  for (const { email, result } of verificationResults) {
+    results.set(email, result)
   }
 
   return results

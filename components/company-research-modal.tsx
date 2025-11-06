@@ -67,13 +67,22 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
     }
   }
 
-  // Fetch research when modal opens
   useEffect(() => {
-    if (open && !research && !loading) {
-      console.log("[v0] Modal opened, triggering research fetch")
-      fetchResearch()
+    if (!open) {
+      // Clear state when modal closes
+      setResearch(null)
+      setError(null)
+      setCached(false)
+      setFetchedAt(null)
     }
   }, [open])
+
+  useEffect(() => {
+    if (open) {
+      console.log("[v0] Modal opened for company:", companyId, companyName)
+      fetchResearch()
+    }
+  }, [open, companyId])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

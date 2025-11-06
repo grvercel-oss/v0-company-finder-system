@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, ExternalLink, Calendar, Sparkles } from "lucide-react"
+import { Loader2, ExternalLink, Calendar, Sparkles, AlertCircle } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface TavilySearchResult {
@@ -36,37 +36,47 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
   const [error, setError] = useState<string | null>(null)
 
   const fetchResearch = async () => {
+    console.log("[v0] Fetching research for company:", companyId, companyName)
     setLoading(true)
     setError(null)
 
     try {
+      console.log("[v0] Making API call to /api/companies/" + companyId + "/research")
       const response = await fetch(`/api/companies/${companyId}/research`)
 
+      console.log("[v0] API response status:", response.status)
+
       if (!response.ok) {
-        throw new Error("Failed to fetch company research")
+        const errorText = await response.text()
+        console.error("[v0] API error response:", errorText)
+        throw new Error(`Failed to fetch company research: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log("[v0] Research data received:", data)
+
       setResearch(data.data)
       setCached(data.cached)
       setFetchedAt(data.fetchedAt)
     } catch (err) {
+      console.error("[v0] Error fetching research:", err)
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
       setLoading(false)
+      console.log("[v0] Research fetch completed")
     }
   }
 
   // Fetch research when modal opens
-  const handleOpenChange = (newOpen: boolean) => {
-    onOpenChange(newOpen)
-    if (newOpen && !research) {
+  useEffect(() => {
+    if (open && !research && !loading) {
+      console.log("[v0] Modal opened, triggering research fetch")
       fetchResearch()
     }
-  }
+  }, [open])
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[80vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -79,19 +89,30 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
         </DialogHeader>
 
         {loading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-3 text-muted-foreground">Fetching latest company information...</span>
+          <div className="flex flex-col items-center justify-center py-12 space-y-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <div className="text-center space-y-2">
+              <p className="text-lg font-medium">Researching {companyName}...</p>
+              <p className="text-sm text-muted-foreground">
+                Tavily is gathering the latest information from across the web
+              </p>
+              <p className="text-xs text-muted-foreground">This may take 10-30 seconds</p>
+            </div>
           </div>
         )}
 
         {error && (
-          <div className="rounded-lg bg-destructive/10 p-4 text-destructive">
-            <p className="font-medium">Error loading research</p>
-            <p className="text-sm mt-1">{error}</p>
-            <Button variant="outline" size="sm" onClick={fetchResearch} className="mt-3 bg-transparent">
-              Try Again
-            </Button>
+          <div className="rounded-lg bg-destructive/10 p-6 border border-destructive/20">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-medium text-destructive">Error loading research</p>
+                <p className="text-sm mt-1 text-destructive/80">{error}</p>
+                <Button variant="outline" size="sm" onClick={fetchResearch} className="mt-3 bg-transparent">
+                  Try Again
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -112,7 +133,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                     <Sparkles className="h-4 w-4 text-primary" />
                     AI Summary
                   </h3>
-                  <p className="text-sm leading-relaxed">{research.answer}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{research.answer}</p>
                 </div>
               )}
 
@@ -139,6 +160,13 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* No results message */}
+              {research.results && research.results.length === 0 && !research.answer && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No research results found for this company.</p>
                 </div>
               )}
             </div>

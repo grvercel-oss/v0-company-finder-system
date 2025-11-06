@@ -95,12 +95,10 @@ export async function GET(request: NextRequest) {
         const abortController = new AbortController()
         const { signal } = abortController
 
-        const requestCount = desiredCount
-
         send("worker_started", { worker: worker.name })
 
         try {
-          const searchGenerator = worker.searchProgressive(requestCount)
+          const searchGenerator = worker.searchProgressive(signal)
 
           for await (const batch of searchGenerator) {
             if (signal.aborted) break
@@ -154,6 +152,7 @@ export async function GET(request: NextRequest) {
               })
 
               if (totalCompaniesFound >= desiredCount) {
+                console.log(`[v0] Reached desired count of ${desiredCount} verified companies, stopping search`)
                 abortController.abort()
               }
             } catch (error: any) {

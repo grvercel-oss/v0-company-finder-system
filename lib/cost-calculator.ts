@@ -12,6 +12,10 @@ const GPT_4O_OUTPUT_COST = 10.0 // $10.00 per 1M output tokens
 const GPT_41_MINI_INPUT_COST = 0.4 // $0.40 per 1M input tokens
 const GPT_41_MINI_OUTPUT_COST = 1.6 // $1.60 per 1M output tokens
 
+// Perplexity Sonar Pro pricing (per 1M tokens)
+const PERPLEXITY_SONAR_PRO_INPUT_COST = 3.0 // $3.00 per 1M input tokens
+const PERPLEXITY_SONAR_PRO_OUTPUT_COST = 15.0 // $15.00 per 1M output tokens
+
 export interface TokenUsage {
   input_tokens: number
   output_tokens: number
@@ -48,6 +52,20 @@ export function calculateGPT4oCost(usage: TokenUsage): CostBreakdown {
 export function calculateGPT41MiniCost(usage: TokenUsage): CostBreakdown {
   const input_cost = (usage.input_tokens / 1_000_000) * GPT_41_MINI_INPUT_COST
   const output_cost = (usage.output_tokens / 1_000_000) * GPT_41_MINI_OUTPUT_COST
+  const total_cost = input_cost + output_cost
+
+  return {
+    input_cost,
+    output_cost,
+    total_cost,
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+  }
+}
+
+export function calculatePerplexitySonarProCost(usage: TokenUsage): CostBreakdown {
+  const input_cost = (usage.input_tokens / 1_000_000) * PERPLEXITY_SONAR_PRO_INPUT_COST
+  const output_cost = (usage.output_tokens / 1_000_000) * PERPLEXITY_SONAR_PRO_OUTPUT_COST
   const total_cost = input_cost + output_cost
 
   return {

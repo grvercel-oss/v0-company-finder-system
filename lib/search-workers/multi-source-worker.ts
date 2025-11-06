@@ -1,7 +1,7 @@
-// Multi-source worker that searches the open internet
+// Multi-source worker that searches the open internet using Perplexity
 
 import type { CompanyResult } from "./types"
-import { calculateGPT41MiniCost } from "@/lib/cost-calculator"
+import { calculatePerplexitySonarProCost } from "@/lib/cost-calculator"
 
 export class MultiSourceWorker {
   name: string
@@ -15,32 +15,26 @@ export class MultiSourceWorker {
     this.focus = focus
   }
 
-  async *searchProgressive(desiredCount = 10): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(signal?: AbortSignal): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [${this.name}] Starting search: "${this.queryVariant}" (focus: ${this.focus})`)
 
     try {
-      const apiKey = process.env.OPENAI_API_KEY
+      const apiKey = process.env.PERPLEXITY_API_KEY
       if (!apiKey) {
-        throw new Error("OPENAI_API_KEY not configured")
+        throw new Error("PERPLEXITY_API_KEY not configured")
       }
 
       const companiesPerCall = 5
-      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
-      let totalCompaniesFound = 0
+      let callIndex = 0
 
-      console.log(`[v0] [${this.name}] Will make up to ${maxCalls} calls, ${companiesPerCall} companies each`)
+      console.log(`[v0] [${this.name}] Will search in batches of ${companiesPerCall} companies until stopped`)
 
-      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
-        if (totalCompaniesFound >= desiredCount) {
-          console.log(`[v0] [${this.name}] Reached desired count (${desiredCount}), stopping`)
-          break
-        }
+      while (!signal?.aborted) {
+        callIndex++
 
-        console.log(
-          `[v0] [${this.name}] API call ${callIndex + 1}/${maxCalls}: Requesting ${companiesPerCall} companies`,
-        )
+        console.log(`[v0] [${this.name}] API call ${callIndex}: Requesting ${companiesPerCall} companies`)
 
-        const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base.
+        const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base and web search.
 
 Your task is to find REAL, ACTIVE companies that match the search criteria. You can use information from:
 - Professional networks (LinkedIn, etc.)
@@ -63,7 +57,7 @@ CRITICAL RULES:
         const userPrompt = `Find ${companiesPerCall} REAL, ACTIVE companies that match: "${this.queryVariant}"
 
 Search approach: ${this.focus}
-${callIndex > 0 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callIndex + 1}.` : ""}
+${callIndex > 1 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callIndex}.` : ""}
 
 For each company, include:
 - Where you found information about it (any source)
@@ -85,20 +79,22 @@ Return a JSON array:
 
 Only include companies with confidence >= 0.7. Return ONLY the JSON array, no other text.`
 
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        const response = await fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "gpt-4.1-mini",
+            model: "sonar-pro",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
             temperature: 0.7,
+            return_citations: true,
           }),
+          signal, // Pass abort signal to fetch
         })
 
         if (!response.ok) {
@@ -110,29 +106,30 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
         const data = await response.json()
         const answer = data.choices[0].message.content
 
-        const tokenUsage = data.usage
-        const costBreakdown = calculateGPT41MiniCost({
-          input_tokens: tokenUsage.prompt_tokens,
-          output_tokens: tokenUsage.completion_tokens,
+        const tokenUsage = data.usage || {}
+        const costBreakdown = calculatePerplexitySonarProCost({
+          input_tokens: tokenUsage.prompt_tokens || 0,
+          output_tokens: tokenUsage.completion_tokens || 0,
         })
 
         console.log(
-          `[v0] [${this.name}] Call ${callIndex + 1} cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens} in, ${tokenUsage.completion_tokens} out)`,
+          `[v0] [${this.name}] Call ${callIndex} cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens || 0} in, ${tokenUsage.completion_tokens || 0} out)`,
         )
 
         const companies = this.parseCompanies(answer)
-        console.log(`[v0] [${this.name}] Call ${callIndex + 1} found ${companies.length} companies`)
+        console.log(`[v0] [${this.name}] Call ${callIndex} found ${companies.length} companies`)
 
         if (companies.length > 0) {
           const costPerCompany = costBreakdown.total_cost / companies.length
-          totalCompaniesFound += companies.length
 
           for (const company of companies) {
+            if (signal?.aborted) break
+
             const companyWithCost = {
               ...company,
               tokenUsage: {
-                prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
-                completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
+                prompt_tokens: Math.floor((tokenUsage.prompt_tokens || 0) / companies.length),
+                completion_tokens: Math.floor((tokenUsage.completion_tokens || 0) / companies.length),
                 cost: costPerCompany,
               },
             }
@@ -140,12 +137,21 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
             yield [companyWithCost]
           }
         }
+
+        if (signal?.aborted) {
+          console.log(`[v0] [${this.name}] Search aborted by stream route`)
+          break
+        }
       }
 
-      console.log(`[v0] [${this.name}] Search completed, total companies: ${totalCompaniesFound}`)
+      console.log(`[v0] [${this.name}] Search completed after ${callIndex} calls`)
     } catch (error: any) {
-      console.error(`[v0] [${this.name}] Error:`, error.message)
-      throw error
+      if (error.name === "AbortError") {
+        console.log(`[v0] [${this.name}] Search aborted`)
+      } else {
+        console.error(`[v0] [${this.name}] Error:`, error.message)
+        throw error
+      }
     }
   }
 

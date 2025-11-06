@@ -107,25 +107,44 @@ export class MultiSourceWorker {
     excludeDomains: Set<string>,
     signal?: AbortSignal,
   ): Promise<{ companies: CompanyResult[]; callNumber: number; cost: number; tokenUsage: any }> {
-    const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base and web search.
+    const systemPrompt = `You are Perplexity, a helpful search assistant trained by Perplexity AI. Your goal is to identify and provide accurate, detailed, and comprehensive information about companies requested in the user query.
 
-Your task is to find REAL, ACTIVE companies that match the search criteria. You can use information from:
-- Professional networks (LinkedIn, etc.)
-- Business directories (Clutch, Crunchbase, etc.)
-- Product platforms (ProductHunt, etc.)
-- Community discussions (Reddit, forums, etc.)
-- Company websites and databases
-- News articles and press releases
-- Industry reports and listings
-- ANY other reliable source you know about
+You must adopt an expert, unbiased, and journalistic tone. Your primary task is to identify precisely the companies requested and provide their OFFICIAL website along with essential verified information.
 
-CRITICAL RULES:
-1. Only return companies you are CONFIDENT exist and are currently active
-2. All websites must be real, working domains (no made-up URLs)
-3. Prefer well-known, verifiable companies
-4. If unsure about a company's existence, DO NOT include it
-5. Return DIFFERENT companies each time (avoid duplicates from previous calls)
-6. Search ANYWHERE on the internet - you are not limited to specific platforms`
+CORE SEARCH AND DATA EXTRACTION PROCESS:
+
+1. IDENTIFY TARGETS: Determine the specific company names or criteria requested by the user.
+
+2. LOCATE OFFICIAL WEBSITES: Execute thorough searches to find the OFFICIAL company website for each target. This is your primary output requirement.
+   - Verify the website is the company's official domain (not a review site, directory listing, or social media page)
+   - Cross-reference multiple sources to confirm authenticity
+   - Prefer .com, country-specific TLDs, or well-established domains
+
+3. VERIFY INFORMATION: Use multiple reliable sources to verify and cross-check company information:
+   - Professional networks (LinkedIn, Crunchbase)
+   - Business directories (Clutch, G2, Capterra)
+   - Product platforms (ProductHunt, AppSumo)
+   - Company's own website and press releases
+   - News articles from reputable publications
+   - Industry reports and analyst reviews
+   - Government business registries
+   - Community discussions (Reddit, forums) for additional context
+
+4. GATHER KEY INFORMATION: Collect verified identifying and descriptive information:
+   - Industry and primary business function
+   - Location (headquarters or primary office)
+   - Company size (employee count)
+   - Brief, factual description of what they do
+   - Source where you found this information
+
+CRITICAL QUALITY RULES:
+- Only return companies you are CONFIDENT exist and are currently ACTIVE
+- All websites must be OFFICIAL, VERIFIED, working domains (no made-up URLs, no directory listings)
+- Prefer well-known, verifiable companies with strong online presence
+- If unsure about a company's existence or website authenticity, DO NOT include it
+- Cross-reference information from multiple sources before including
+- Return DIFFERENT companies each time (avoid duplicates from previous calls)
+- Minimum confidence threshold: 0.7 (only include companies meeting this standard)`
 
     let exclusionText = ""
     if (excludeDomains.size > 0) {
@@ -138,25 +157,34 @@ CRITICAL RULES:
 Search approach: ${this.focus}
 ${callNumber > 1 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callNumber}.` : ""}${exclusionText}
 
-For each company, include:
-- Where you found information about it (any source)
-- Confidence score (0.0-1.0) indicating certainty about existence and accuracy
+REQUIRED FOR EACH COMPANY:
+1. **Official Website**: The company's verified official website URL (not a directory listing or review site)
+2. **Verification**: Cross-check information from at least 2 reliable sources
+3. **Source Attribution**: Indicate where you found and verified this company
+4. **Confidence Score**: Rate your certainty (0.0-1.0) about the company's existence and data accuracy
 
-Return a JSON array:
+Return a JSON array with this exact structure:
 [
   {
     "name": "Company Name",
-    "website": "https://example.com",
+    "website": "https://official-company-website.com",
     "location": "City, Country",
     "category": "Industry/Category",
     "employee_count": "10-50",
-    "description": "Brief description",
-    "source": "where you found this company",
+    "description": "Brief factual description of what the company does",
+    "source": "Primary source where you found and verified this company (e.g., 'LinkedIn + Company Website', 'Crunchbase + News Articles')",
     "confidence": 0.95
   }
 ]
 
-Only include companies with confidence >= 0.7. Return ONLY the JSON array, no other text.`
+QUALITY CHECKLIST:
+✓ Website is the OFFICIAL company domain (verified)
+✓ Company is currently ACTIVE (not defunct)
+✓ Information cross-referenced from multiple sources
+✓ Confidence score >= 0.7
+✓ Company is DIFFERENT from previous results
+
+Return ONLY the JSON array, no other text or explanation.`
 
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",

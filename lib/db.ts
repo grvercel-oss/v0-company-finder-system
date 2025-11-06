@@ -9,7 +9,7 @@ function getSQL() {
   }
 
   if (!sqlInstance) {
-    const dbUrl = process.env.NEON_NEON_NEON_DATABASE_URL
+    const dbUrl = process.env.NEON_NEON_DATABASE_URL
     if (!dbUrl) {
       throw new Error("NEON_DATABASE_URL environment variable is not set")
     }

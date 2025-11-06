@@ -70,10 +70,10 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
 
       const allContactIds = Object.values(contactsMap)
         .flat()
-        .filter((c) => c.email_verification_status === "pending")
+        .filter((c) => !c.email_verification_status || c.email_verification_status === "pending")
         .map((c) => c.id)
 
-      console.log(`[v0] [TABLE] Found ${allContactIds.length} contacts with 'pending' status to verify`)
+      console.log(`[v0] [TABLE] Found ${allContactIds.length} contacts with 'pending' or NULL status to verify`)
 
       if (allContactIds.length > 0) {
         verifyEmails(allContactIds)

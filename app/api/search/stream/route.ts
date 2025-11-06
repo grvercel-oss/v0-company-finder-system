@@ -120,18 +120,22 @@ export async function GET(request: NextRequest) {
               let finalWebsite = company.website || company.domain
               let finalDomain = domain
               let isDeadDomain = false
-              let alternative: any = null // Declare alternative variable
-              let savedCompany: any = null // Declare savedCompany variable
+              let alternative: any = null
+              let savedCompany: any = null
 
-              if (finalWebsite) {
-                console.log(`[v0] Validating domain for ${company.name}:`, finalWebsite)
+              const shouldValidate = (company.confidence_score || 0) < 0.85
+
+              if (finalWebsite && shouldValidate) {
+                console.log(
+                  `[v0] Validating domain for ${company.name} (confidence: ${company.confidence_score}):`,
+                  finalWebsite,
+                )
                 const validation = await validateDomain(finalWebsite)
 
                 if (!validation.isAlive) {
                   console.log(`[v0] Domain is dead for ${company.name}, searching for alternative source...`)
                   isDeadDomain = true
 
-                  // Try to find alternative source
                   alternative = await findAlternativeSource(company.name, finalWebsite)
 
                   if (alternative) {
@@ -144,7 +148,6 @@ export async function GET(request: NextRequest) {
                     finalWebsite = alternative.url
                     finalDomain = extractDomain(alternative.url)
 
-                    // Update company description with note about alternative source
                     if (!company.description && alternative.description) {
                       company.description = alternative.description
                     }
@@ -199,6 +202,10 @@ export async function GET(request: NextRequest) {
                 } else {
                   console.log(`[v0] Domain is alive for ${company.name}`)
                 }
+              } else if (finalWebsite && !shouldValidate) {
+                console.log(
+                  `[v0] Skipping validation for high-confidence company ${company.name} (confidence: ${company.confidence_score})`,
+                )
               }
 
               const faviconUrl = getFaviconUrl(finalWebsite || finalDomain)

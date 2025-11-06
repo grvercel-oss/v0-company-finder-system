@@ -2,6 +2,7 @@
 
 import type { CompanyResult } from "./types"
 import { calculatePerplexitySonarProCost } from "@/lib/cost-calculator"
+import { findSimilarCompany } from "@/lib/fuzzy-matcher"
 
 export class MultiSourceWorker {
   name: string
@@ -31,6 +32,7 @@ export class MultiSourceWorker {
       const parallelCalls = 4
       let batchIndex = 0
       const allFoundDomains = new Set<string>(excludeDomains)
+      const allFoundNames: string[] = []
 
       console.log(
         `[v0] [${this.name}] Will make ${parallelCalls} parallel API calls per batch, ${companiesPerCall} companies each`,
@@ -83,18 +85,35 @@ export class MultiSourceWorker {
 
         const uniqueCompanies: typeof batchCompanies = []
         const batchDomains = new Set<string>()
+        const batchNames: string[] = []
 
         for (const item of batchCompanies) {
           const domain = item.company.domain
+          const companyName = item.company.name
 
-          // Skip if we've already found this domain in any previous batch or in this batch
           if (allFoundDomains.has(domain) || batchDomains.has(domain)) {
-            console.log(`[v0] [${this.name}] Skipping duplicate: ${domain}`)
+            console.log(`[v0] [${this.name}] Skipping duplicate domain: ${domain}`)
+            continue
+          }
+
+          const similarInBatch = findSimilarCompany(companyName, batchNames, 0.85)
+          if (similarInBatch) {
+            console.log(
+              `[v0] [${this.name}] Skipping similar company in batch: "${companyName}" (similar to "${similarInBatch}")`,
+            )
+            continue
+          }
+
+          const similarInAll = findSimilarCompany(companyName, allFoundNames, 0.85)
+          if (similarInAll) {
+            console.log(`[v0] [${this.name}] Skipping similar company: "${companyName}" (similar to "${similarInAll}")`)
             continue
           }
 
           batchDomains.add(domain)
+          batchNames.push(companyName)
           allFoundDomains.add(domain)
+          allFoundNames.push(companyName)
           uniqueCompanies.push(item)
         }
 
@@ -192,6 +211,7 @@ CORE SEARCH AND DATA EXTRACTION PROCESS:
    - Focus on: Directors, C-level executives, Sales Managers, Business Development, Marketing Heads, Department Heads
    - DO NOT include: Generic support emails (support@, info@, hello@, contact@)
    - DO NOT include: Personal assistants or administrative staff unless they're decision-makers
+   - LIMIT: Find only 1-2 key contacts per company (not more to reduce token usage)
    - For each contact, find:
      * Full name
      * Job title/role
@@ -238,7 +258,7 @@ REQUIRED FOR EACH COMPANY:
 2. **Verification**: Cross-check information from at least 2 reliable sources
 3. **Source Attribution**: Indicate where you found and verified this company
 4. **Confidence Score**: Rate your certainty (0.0-1.0) about the company's existence and data accuracy
-5. **Key Personnel Contacts**: Find 1-3 decision-makers with their professional emails (NOT generic support emails)
+5. **Key Personnel Contacts**: Find 1-2 decision-makers with their professional emails (NOT generic support emails, LIMIT to 2 contacts max)
 
 Return a JSON array with this exact structure:
 [

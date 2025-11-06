@@ -3,11 +3,9 @@
 import type { NextRequest } from "next/server"
 import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
-import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
 import { checkRateLimit, getCachedSearchResults, cacheSearchResults } from "@/lib/search-cache"
 import { formatCost } from "@/lib/cost-calculator"
 import { MultiSourceWorker } from "@/lib/search-workers/multi-source-worker"
-import { verifyDomain } from "@/lib/domain-verifier"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -103,27 +101,44 @@ export async function GET(request: NextRequest) {
           for await (const batch of searchGenerator) {
             if (signal.aborted) break
 
-            // batch will now contain only 1 company at a time
-            console.log(`[v0] Processing company from ${worker.name}...`)
-
             const company = batch[0] // Get the single company from the batch
 
-            // Verify domain for this single company
-            const isValidDomain = company.domain ? await verifyDomain(company.domain) : false
-
-            if (!isValidDomain) {
-              console.log(`[v0] Rejected company "${company.name}" - invalid domain: ${company.domain}`)
-              continue // Skip this company and move to the next one
-            }
-
-            // Process the verified company
             try {
-              console.log(`[v0] Processing company: ${company.name}`)
+              console.log(`[v0] Saving company: ${company.name}`)
 
-              const merged = await mergeAndSaveCompany(company, accountId)
-              await linkSearchResult(searchId, merged.company_id, worker.name, company.confidence_score || 0)
+              // Insert company directly into database
+              const inserted = await sql`
+                INSERT INTO companies (
+                  name, domain, description, industry, location, website,
+                  employee_count, revenue_range, funding_stage,
+                  technologies, sources, data_quality_score
+                ) VALUES (
+                  ${company.name},
+                  ${company.domain || null},
+                  ${company.description || null},
+                  ${company.industry || null},
+                  ${company.location || null},
+                  ${company.website || null},
+                  ${company.employee_count || null},
+                  ${company.revenue_range || null},
+                  ${company.funding_stage || null},
+                  ${company.technologies || []},
+                  ${JSON.stringify([company.source])},
+                  ${company.confidence_score ? Math.round(company.confidence_score * 100) : 50}
+                )
+                RETURNING *
+              `
 
-              foundCompanyIds.push(merged.company_id)
+              const savedCompany = inserted[0]
+
+              // Link search result
+              await sql`
+                INSERT INTO search_results (search_id, company_id, source, score)
+                VALUES (${searchId}, ${savedCompany.id}, ${worker.name}, ${company.confidence_score || 0})
+                ON CONFLICT (search_id, company_id) DO NOTHING
+              `
+
+              foundCompanyIds.push(savedCompany.id)
               totalCompaniesFound++
 
               if (company.tokenUsage) {
@@ -133,8 +148,8 @@ export async function GET(request: NextRequest) {
               }
 
               send("new_company", {
-                company: merged.company,
-                is_new: merged.is_new,
+                company: savedCompany,
+                is_new: true,
                 source: worker.name,
               })
 
@@ -152,11 +167,11 @@ export async function GET(request: NextRequest) {
               })
 
               if (totalCompaniesFound >= desiredCount) {
-                console.log(`[v0] Reached desired count of ${desiredCount} verified companies, stopping search`)
+                console.log(`[v0] Reached desired count of ${desiredCount} companies, stopping search`)
                 abortController.abort()
               }
             } catch (error: any) {
-              console.error("[v0] Error processing company:", error.message)
+              console.error("[v0] Error saving company:", error.message)
             }
 
             if (signal.aborted) break

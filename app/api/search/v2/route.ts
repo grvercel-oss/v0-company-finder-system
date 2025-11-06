@@ -5,7 +5,6 @@ import { sql } from "@/lib/db"
 import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { extractICP, generateSearchQueries } from "@/lib/search-workers/icp-extractor"
 import { PerplexityWorker } from "@/lib/search-workers/perplexity-worker"
-import { mergeAndSaveCompany, linkSearchResult } from "@/lib/search-workers/merger"
 
 export async function POST(request: NextRequest) {
   console.log("[v0] Search V2 API called")
@@ -58,8 +57,7 @@ export async function POST(request: NextRequest) {
       ),
     )
 
-    // Step 5: Merge and save companies
-    console.log("[v0] Step 5: Merging and saving companies...")
+    console.log("[v0] Step 5: Saving companies...")
     const allCompanies: any[] = []
 
     for (const result of workerResults) {
@@ -69,17 +67,41 @@ export async function POST(request: NextRequest) {
 
         for (const companyResult of workerResult.companies) {
           try {
-            const merged = await mergeAndSaveCompany(companyResult, accountId)
-            await linkSearchResult(
-              searchId,
-              merged.company_id,
-              workerResult.source,
-              companyResult.confidence_score || 0,
-            )
+            // Insert company directly into database
+            const inserted = await sql`
+              INSERT INTO companies (
+                name, domain, description, industry, location, website,
+                employee_count, revenue_range, funding_stage,
+                technologies, sources, data_quality_score
+              ) VALUES (
+                ${companyResult.name},
+                ${companyResult.domain || null},
+                ${companyResult.description || null},
+                ${companyResult.industry || null},
+                ${companyResult.location || null},
+                ${companyResult.website || null},
+                ${companyResult.employee_count || null},
+                ${companyResult.revenue_range || null},
+                ${companyResult.funding_stage || null},
+                ${companyResult.technologies || []},
+                ${JSON.stringify([companyResult.source])},
+                ${companyResult.confidence_score ? Math.round(companyResult.confidence_score * 100) : 50}
+              )
+              RETURNING *
+            `
 
-            allCompanies.push(merged.company)
+            const savedCompany = inserted[0]
+
+            // Link search result
+            await sql`
+              INSERT INTO search_results (search_id, company_id, source, score)
+              VALUES (${searchId}, ${savedCompany.id}, ${workerResult.source}, ${companyResult.confidence_score || 0})
+              ON CONFLICT (search_id, company_id) DO NOTHING
+            `
+
+            allCompanies.push(savedCompany)
           } catch (error: any) {
-            console.error("[v0] Error merging company:", error.message)
+            console.error("[v0] Error saving company:", error.message)
           }
         }
       } else {

@@ -188,6 +188,28 @@ CORE SEARCH AND DATA EXTRACTION PROCESS:
    - Brief, factual description of what they do
    - Source where you found this information
 
+5. FIND KEY PERSONNEL CONTACTS: Search for decision-makers and key personnel at the company:
+   - Focus on: Directors, C-level executives, Sales Managers, Business Development, Marketing Heads, Department Heads
+   - DO NOT include: Generic support emails (support@, info@, hello@, contact@)
+   - DO NOT include: Personal assistants or administrative staff unless they're decision-makers
+   - For each contact, find:
+     * Full name
+     * Job title/role
+     * Professional email (preferably company email, not personal)
+     * LinkedIn profile URL (if available)
+   - Verify contacts from:
+     * LinkedIn profiles
+     * Company "About Us" or "Team" pages
+     * Professional directories
+     * News articles and press releases
+     * Conference speaker lists
+   - Only include contacts you can verify from at least 2 sources
+   - Confidence scoring for contacts:
+     * 0.9+: Found on company website + LinkedIn with matching details
+     * 0.8-0.89: Found on LinkedIn + one other professional source
+     * 0.7-0.79: Found on one reliable source with complete information
+     * < 0.7: DO NOT INCLUDE
+
 CRITICAL QUALITY RULES:
 - Only return companies you are CONFIDENT exist and are currently ACTIVE
 - All websites must be OFFICIAL, PRIMARY, VERIFIED, working domains (no made-up URLs, no directory listings, no subsidiary domains)
@@ -197,7 +219,8 @@ CRITICAL QUALITY RULES:
 - If you find conflicting domains for the same company, DO NOT include it (set confidence < 0.7)
 - Return DIFFERENT companies each time (avoid duplicates from previous calls)
 - Minimum confidence threshold: 0.7 (only include companies meeting this standard)
-- When in doubt about domain accuracy, EXCLUDE the company rather than risk including wrong information`
+- When in doubt about domain accuracy, EXCLUDE the company rather than risk including wrong information
+- For contacts: Only include verified decision-makers, not generic support emails`
 
     let exclusionText = ""
     if (excludeDomains.size > 0) {
@@ -215,6 +238,7 @@ REQUIRED FOR EACH COMPANY:
 2. **Verification**: Cross-check information from at least 2 reliable sources
 3. **Source Attribution**: Indicate where you found and verified this company
 4. **Confidence Score**: Rate your certainty (0.0-1.0) about the company's existence and data accuracy
+5. **Key Personnel Contacts**: Find 1-3 decision-makers with their professional emails (NOT generic support emails)
 
 Return a JSON array with this exact structure:
 [
@@ -226,7 +250,25 @@ Return a JSON array with this exact structure:
     "employee_count": "10-50",
     "description": "Brief factual description of what the company does",
     "source": "Primary source where you found and verified this company (e.g., 'LinkedIn + Company Website', 'Crunchbase + News Articles')",
-    "confidence": 0.95
+    "confidence": 0.95,
+    "contacts": [
+      {
+        "name": "John Smith",
+        "role": "CEO & Founder",
+        "email": "john.smith@company.com",
+        "linkedin_url": "https://linkedin.com/in/johnsmith",
+        "source": "Company website + LinkedIn",
+        "confidence": 0.95
+      },
+      {
+        "name": "Jane Doe",
+        "role": "Head of Sales",
+        "email": "jane.doe@company.com",
+        "linkedin_url": "https://linkedin.com/in/janedoe",
+        "source": "LinkedIn + Company team page",
+        "confidence": 0.90
+      }
+    ]
   }
 ]
 
@@ -236,6 +278,8 @@ QUALITY CHECKLIST:
 ✓ Information cross-referenced from multiple sources
 ✓ Confidence score >= 0.7
 ✓ Company is DIFFERENT from previous results
+✓ Contacts are decision-makers with professional emails (NOT support@, info@, etc.)
+✓ Each contact verified from at least 2 sources
 
 Return ONLY the JSON array, no other text or explanation.`
 
@@ -312,6 +356,17 @@ Return ONLY the JSON array, no other text or explanation.`
           employee_count: c.employee_count || "",
           source: c.source || this.name,
           confidence_score: c.confidence || 0.75,
+          contacts: Array.isArray(c.contacts)
+            ? c.contacts.map((contact: any) => ({
+                name: contact.name || "",
+                role: contact.role || "",
+                email: contact.email || "",
+                phone: contact.phone,
+                linkedin_url: contact.linkedin_url,
+                source: contact.source,
+                confidence_score: contact.confidence || 0.75,
+              }))
+            : [],
         }))
       }
 

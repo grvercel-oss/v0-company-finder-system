@@ -6,6 +6,9 @@ import { getAccountIdFromRequest } from "@/lib/rls-helper"
 import { checkRateLimit, getCachedSearchResults, cacheSearchResults } from "@/lib/search-cache"
 import { formatCost } from "@/lib/cost-calculator"
 import { MultiSourceWorker } from "@/lib/search-workers/multi-source-worker"
+import { getFaviconUrl } from "@/lib/favicon"
+import { validateDomain, extractDomain } from "@/lib/domain-validator"
+import { findAlternativeSource } from "@/lib/alternative-source-finder"
 
 export async function GET(request: NextRequest) {
   console.log("[v0] Stream endpoint called")
@@ -114,38 +117,163 @@ export async function GET(request: NextRequest) {
 
               console.log(`[v0] Saving company: ${company.name} (${domain})`)
 
-              const inserted = await sql`
-                INSERT INTO companies (
-                  name, domain, description, industry, location, website,
-                  employee_count, revenue_range, funding_stage,
-                  technologies, sources, data_quality_score
-                ) VALUES (
-                  ${company.name},
-                  ${domain},
-                  ${company.description || null},
-                  ${company.industry || null},
-                  ${company.location || null},
-                  ${company.website || null},
-                  ${company.employee_count || null},
-                  ${company.revenue_range || null},
-                  ${company.funding_stage || null},
-                  ${company.technologies || []},
-                  ${JSON.stringify([company.source])},
-                  ${company.confidence_score ? Math.round(company.confidence_score * 100) : 50}
-                )
-                ON CONFLICT (domain) DO UPDATE SET
-                  name = EXCLUDED.name,
-                  description = COALESCE(EXCLUDED.description, companies.description),
-                  industry = COALESCE(EXCLUDED.industry, companies.industry),
-                  location = COALESCE(EXCLUDED.location, companies.location),
-                  website = COALESCE(EXCLUDED.website, companies.website),
-                  employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
-                  last_updated = now()
-                RETURNING *
-              `
-              const savedCompany = inserted[0]
+              let finalWebsite = company.website || company.domain
+              let finalDomain = domain
+              let isDeadDomain = false
+              let alternative: any = null // Declare alternative variable
+              let savedCompany: any = null // Declare savedCompany variable
 
-              foundDomains.add(domain)
+              if (finalWebsite) {
+                console.log(`[v0] Validating domain for ${company.name}:`, finalWebsite)
+                const validation = await validateDomain(finalWebsite)
+
+                if (!validation.isAlive) {
+                  console.log(`[v0] Domain is dead for ${company.name}, searching for alternative source...`)
+                  isDeadDomain = true
+
+                  // Try to find alternative source
+                  alternative = await findAlternativeSource(company.name, finalWebsite)
+
+                  if (alternative) {
+                    console.log(
+                      `[v0] Found alternative source for ${company.name}:`,
+                      alternative.type,
+                      "-",
+                      alternative.url,
+                    )
+                    finalWebsite = alternative.url
+                    finalDomain = extractDomain(alternative.url)
+
+                    // Update company description with note about alternative source
+                    if (!company.description && alternative.description) {
+                      company.description = alternative.description
+                    }
+
+                    if (alternative.researchData) {
+                      console.log(`[v0] Caching Tavily research for ${company.name}`)
+                      try {
+                        await sql`
+                          INSERT INTO companies (
+                            name, domain, description, industry, location, website,
+                            employee_count, revenue_range, funding_stage,
+                            technologies, sources, data_quality_score, logo_url,
+                            tavily_research, tavily_research_fetched_at
+                          ) VALUES (
+                            ${company.name},
+                            ${finalDomain},
+                            ${company.description || null},
+                            ${company.industry || null},
+                            ${company.location || null},
+                            ${finalWebsite || null},
+                            ${company.employee_count || null},
+                            ${company.revenue_range || null},
+                            ${company.funding_stage || null},
+                            ${company.technologies || []},
+                            ${JSON.stringify([company.source])},
+                            ${company.confidence_score ? Math.round(company.confidence_score * 100) : 50},
+                            ${getFaviconUrl(finalWebsite || finalDomain)},
+                            ${JSON.stringify(alternative.researchData)},
+                            CURRENT_TIMESTAMP
+                          )
+                          ON CONFLICT (domain) DO UPDATE SET
+                            name = EXCLUDED.name,
+                            description = COALESCE(EXCLUDED.description, companies.description),
+                            industry = COALESCE(EXCLUDED.industry, companies.industry),
+                            location = COALESCE(EXCLUDED.location, companies.location),
+                            website = COALESCE(EXCLUDED.website, companies.website),
+                            employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
+                            logo_url = COALESCE(EXCLUDED.logo_url, companies.logo_url),
+                            tavily_research = EXCLUDED.tavily_research,
+                            tavily_research_fetched_at = EXCLUDED.tavily_research_fetched_at,
+                            last_updated = now()
+                          RETURNING *
+                        `
+                        console.log(`[v0] Successfully cached Tavily research for ${company.name}`)
+                      } catch (error: any) {
+                        console.error(`[v0] Error caching Tavily research for ${company.name}:`, error.message)
+                      }
+                    }
+                  } else {
+                    console.log(`[v0] No alternative source found for ${company.name}, keeping original domain`)
+                  }
+                } else {
+                  console.log(`[v0] Domain is alive for ${company.name}`)
+                }
+              }
+
+              const faviconUrl = getFaviconUrl(finalWebsite || finalDomain)
+
+              if (!isDeadDomain || !alternative?.researchData) {
+                const inserted = await sql`
+                  INSERT INTO companies (
+                    name, domain, description, industry, location, website,
+                    employee_count, revenue_range, funding_stage,
+                    technologies, sources, data_quality_score, logo_url
+                  ) VALUES (
+                    ${company.name},
+                    ${finalDomain},
+                    ${company.description || null},
+                    ${company.industry || null},
+                    ${company.location || null},
+                    ${finalWebsite || null},
+                    ${company.employee_count || null},
+                    ${company.revenue_range || null},
+                    ${company.funding_stage || null},
+                    ${company.technologies || []},
+                    ${JSON.stringify([company.source])},
+                    ${company.confidence_score ? Math.round(company.confidence_score * 100) : 50},
+                    ${faviconUrl}
+                  )
+                  ON CONFLICT (domain) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = COALESCE(EXCLUDED.description, companies.description),
+                    industry = COALESCE(EXCLUDED.industry, companies.industry),
+                    location = COALESCE(EXCLUDED.location, companies.location),
+                    website = COALESCE(EXCLUDED.website, companies.website),
+                    employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
+                    logo_url = COALESCE(EXCLUDED.logo_url, companies.logo_url),
+                    last_updated = now()
+                  RETURNING *
+                `
+                savedCompany = inserted[0]
+              } else {
+                const fetched = await sql`
+                  SELECT * FROM companies WHERE domain = ${finalDomain}
+                `
+                savedCompany = fetched[0]
+              }
+
+              foundDomains.add(finalDomain)
+
+              if (company.contacts && company.contacts.length > 0) {
+                console.log(`[v0] Saving ${company.contacts.length} contacts for ${company.name}`)
+
+                for (const contact of company.contacts) {
+                  try {
+                    await sql`
+                      INSERT INTO company_contacts (
+                        company_id, name, role, email, phone, linkedin_url, source, confidence_score
+                      )
+                      VALUES (
+                        ${savedCompany.id}, ${contact.name}, ${contact.role}, ${contact.email},
+                        ${contact.phone || null}, ${contact.linkedin_url || null},
+                        ${contact.source || "Perplexity"}, ${contact.confidence_score || 0.75}
+                      )
+                      ON CONFLICT (company_id, email) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        role = EXCLUDED.role,
+                        phone = EXCLUDED.phone,
+                        linkedin_url = EXCLUDED.linkedin_url,
+                        source = EXCLUDED.source,
+                        confidence_score = EXCLUDED.confidence_score,
+                        updated_at = CURRENT_TIMESTAMP
+                    `
+                    console.log(`[v0] Saved contact: ${contact.name} (${contact.role})`)
+                  } catch (contactError) {
+                    console.error(`[v0] Error saving contact ${contact.name}:`, contactError)
+                  }
+                }
+              }
 
               // Link search result
               await sql`

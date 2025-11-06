@@ -77,8 +77,20 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {company.logo_url ? (
+                        <img
+                          src={company.logo_url || "/placeholder.svg"}
+                          alt={`${company.name} logo`}
+                          className="w-6 h-6 object-contain"
+                          onError={(e) => {
+                            // Fallback to icon if image fails to load
+                            e.currentTarget.style.display = "none"
+                            e.currentTarget.nextElementSibling?.classList.remove("hidden")
+                          }}
+                        />
+                      ) : null}
+                      <Building2 className={`h-5 w-5 text-muted-foreground ${company.logo_url ? "hidden" : ""}`} />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">

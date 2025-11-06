@@ -31,11 +31,21 @@ export function CompanyCard({ company, showAddToList = false }: CompanyCardProps
                 {company.ai_summary || company.description || "No description available"}
               </CardDescription>
             </div>
-            {company.logo_url && (
-              <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                <Building2 className="h-6 w-6 text-muted-foreground" />
-              </div>
-            )}
+            <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+              {company.logo_url ? (
+                <img
+                  src={company.logo_url || "/placeholder.svg"}
+                  alt={`${company.name} logo`}
+                  className="w-8 h-8 object-contain"
+                  onError={(e) => {
+                    // Fallback to icon if image fails to load
+                    e.currentTarget.style.display = "none"
+                    e.currentTarget.nextElementSibling?.classList.remove("hidden")
+                  }}
+                />
+              ) : null}
+              <Building2 className={`h-6 w-6 text-muted-foreground ${company.logo_url ? "hidden" : ""}`} />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

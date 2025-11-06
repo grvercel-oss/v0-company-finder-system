@@ -2,6 +2,7 @@ import { sql } from "@/lib/db"
 import { CompanyHeader } from "@/components/company-header"
 import { CompanyOverview } from "@/components/company-overview"
 import { CompanyUpdates } from "@/components/company-updates"
+import { CompanyContacts } from "@/components/company-contacts"
 import { EditCompanyDialog } from "@/components/edit-company-dialog"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -32,6 +33,12 @@ export default async function CompanyPage({ params }: { params: { id: string } }
     LIMIT 10
   `
 
+  const contacts = await sql`
+    SELECT * FROM company_contacts
+    WHERE company_id = ${id}
+    ORDER BY confidence_score DESC, created_at DESC
+  `
+
   return (
     <div className="min-h-screen bg-background">
       <CompanyHeader company={company} />
@@ -49,6 +56,7 @@ export default async function CompanyPage({ params }: { params: { id: string } }
 
         <div className="space-y-6">
           <CompanyOverview company={company} />
+          <CompanyContacts contacts={contacts} />
           <CompanyUpdates updates={updates} />
         </div>
       </div>

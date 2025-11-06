@@ -11,6 +11,16 @@ export interface ICP {
   description: string
 }
 
+export interface CompanyContact {
+  name: string
+  role: string
+  email: string
+  phone?: string
+  linkedin_url?: string
+  source?: string
+  confidence_score?: number
+}
+
 export interface CompanyResult {
   name: string
   domain?: string
@@ -24,6 +34,7 @@ export interface CompanyResult {
   technologies?: string[]
   source: string
   confidence_score?: number
+  contacts?: CompanyContact[]
   tokenUsage?: {
     prompt_tokens: number
     completion_tokens: number

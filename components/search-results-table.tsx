@@ -4,10 +4,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Building2, MapPin, Users, CheckCircle2 } from "lucide-react"
+import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail } from "lucide-react"
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useToast } from "@/hooks/use-toast"
 
 interface SearchResultsTableProps {
   companies: Company[]
@@ -15,9 +16,51 @@ interface SearchResultsTableProps {
   onSelectionChange: (companyIds: number[]) => void
 }
 
+interface CompanyContact {
+  id: number
+  company_id: number
+  name: string
+  role: string
+  email: string
+  phone?: string
+  linkedin_url?: string
+  confidence_score: number
+  source?: string
+  verified: boolean
+  created_at: Date
+}
+
 export function SearchResultsTable({ companies, selectedCompanies, onSelectionChange }: SearchResultsTableProps) {
   const [researchModalOpen, setResearchModalOpen] = useState(false)
   const [selectedCompanyForResearch, setSelectedCompanyForResearch] = useState<Company | null>(null)
+  const [companyContacts, setCompanyContacts] = useState<Record<number, CompanyContact[]>>({})
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const fetchContacts = async () => {
+      const contactsMap: Record<number, CompanyContact[]> = {}
+
+      await Promise.all(
+        companies.map(async (company) => {
+          try {
+            const response = await fetch(`/api/companies/${company.id}/contacts`)
+            if (response.ok) {
+              const contacts = await response.json()
+              contactsMap[company.id] = contacts
+            }
+          } catch (error) {
+            console.error(`Failed to fetch contacts for company ${company.id}:`, error)
+          }
+        }),
+      )
+
+      setCompanyContacts(contactsMap)
+    }
+
+    if (companies.length > 0) {
+      fetchContacts()
+    }
+  }, [companies])
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -38,6 +81,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const handleGetMoreInfo = (company: Company) => {
     setSelectedCompanyForResearch(company)
     setResearchModalOpen(true)
+  }
+
+  const copyEmail = (email: string) => {
+    navigator.clipboard.writeText(email)
+    toast({
+      title: "Email copied",
+      description: "Email address copied to clipboard",
+    })
   }
 
   const allSelected = companies.length > 0 && selectedCompanies.length === companies.length
@@ -61,101 +112,135 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
               <TableHead>Industry</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Employees</TableHead>
+              <TableHead>Contacts</TableHead>
               <TableHead>Quality</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {companies.map((company) => (
-              <TableRow key={company.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={selectedCompanies.includes(company.id)}
-                    onCheckedChange={(checked) => handleSelectOne(company.id, checked as boolean)}
-                    aria-label={`Select ${company.name}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {company.logo_url ? (
-                        <img
-                          src={company.logo_url || "/placeholder.svg"}
-                          alt={`${company.name} logo`}
-                          className="w-6 h-6 object-contain"
-                          onError={(e) => {
-                            // Fallback to icon if image fails to load
-                            e.currentTarget.style.display = "none"
-                            e.currentTarget.nextElementSibling?.classList.remove("hidden")
-                          }}
-                        />
-                      ) : null}
-                      <Building2 className={`h-5 w-5 text-muted-foreground ${company.logo_url ? "hidden" : ""}`} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Link href={`/companies/${company.id}`} className="font-medium hover:underline truncate">
-                          {company.name}
-                        </Link>
-                        {company.verified && <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />}
+            {companies.map((company) => {
+              const contacts = companyContacts[company.id] || []
+
+              return (
+                <TableRow key={company.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedCompanies.includes(company.id)}
+                      onCheckedChange={(checked) => handleSelectOne(company.id, checked as boolean)}
+                      aria-label={`Select ${company.name}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {company.logo_url ? (
+                          <img
+                            src={company.logo_url || "/placeholder.svg"}
+                            alt={`${company.name} logo`}
+                            className="w-6 h-6 object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none"
+                              e.currentTarget.nextElementSibling?.classList.remove("hidden")
+                            }}
+                          />
+                        ) : null}
+                        <Building2 className={`h-5 w-5 text-muted-foreground ${company.logo_url ? "hidden" : ""}`} />
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {company.ai_summary || company.description || "No description"}
-                      </p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Link href={`/companies/${company.id}`} className="font-medium hover:underline truncate">
+                            {company.name}
+                          </Link>
+                          {company.verified && <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />}
+                        </div>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {company.ai_summary || company.description || "No description"}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {company.industry ? (
-                    <Badge variant="secondary" className="whitespace-nowrap">
-                      {company.industry}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {company.location ? (
-                    <div className="flex items-center gap-1 text-sm">
-                      <MapPin className="h-3 w-3 text-muted-foreground" />
-                      <span className="truncate">{company.location}</span>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {company.employee_count ? (
-                    <div className="flex items-center gap-1 text-sm">
-                      <Users className="h-3 w-3 text-muted-foreground" />
-                      <span>{company.employee_count}</span>
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-green-500" />
-                    <span className="text-sm">{company.data_quality_score}%</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    {company.website && (
-                      <Button variant="ghost" size="sm" asChild>
-                        <a href={company.website} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </Button>
+                  </TableCell>
+                  <TableCell>
+                    {company.industry ? (
+                      <Badge variant="secondary" className="whitespace-nowrap">
+                        {company.industry}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
                     )}
-                    <Button variant="default" size="sm" onClick={() => handleGetMoreInfo(company)}>
-                      Get more info
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell>
+                    {company.location ? (
+                      <div className="flex items-center gap-1 text-sm">
+                        <MapPin className="h-3 w-3 text-muted-foreground" />
+                        <span className="truncate">{company.location}</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {company.employee_count ? (
+                      <div className="flex items-center gap-1 text-sm">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        <span>{company.employee_count}</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {contacts.length > 0 ? (
+                      <div className="space-y-1 min-w-[200px]">
+                        {contacts.slice(0, 2).map((contact) => (
+                          <div key={contact.id} className="flex items-center gap-2 text-sm">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">{contact.name}</div>
+                              <div className="text-xs text-muted-foreground truncate">{contact.role}</div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 flex-shrink-0"
+                              onClick={() => copyEmail(contact.email)}
+                              title={contact.email}
+                            >
+                              <Mail className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                        {contacts.length > 2 && (
+                          <Link href={`/companies/${company.id}`} className="text-xs text-primary hover:underline">
+                            +{contacts.length - 2} more
+                          </Link>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">No contacts</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                      <span className="text-sm">{company.data_quality_score}%</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {company.website && (
+                        <Button variant="ghost" size="sm" asChild>
+                          <a href={company.website} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                      <Button variant="default" size="sm" onClick={() => handleGetMoreInfo(company)}>
+                        Get more info
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>

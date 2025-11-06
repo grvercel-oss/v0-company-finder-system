@@ -9,7 +9,7 @@ function getSQL() {
   }
 
   if (!sqlInstance) {
-    const dbUrl = process.env.NEON_NEON_DATABASE_URL
+    const dbUrl = process.env.NEON_NEON_NEON_DATABASE_URL
     if (!dbUrl) {
       throw new Error("NEON_DATABASE_URL environment variable is not set")
     }
@@ -64,4 +64,18 @@ export interface CompanyUpdate {
   update_type: string
   changes?: any
   updated_at: Date
+}
+
+export interface CompanyContact {
+  id: number
+  company_id: number
+  name: string
+  role: string
+  email: string
+  phone?: string
+  linkedin_url?: string
+  confidence_score: number
+  source?: string
+  verified: boolean
+  created_at: Date
 }

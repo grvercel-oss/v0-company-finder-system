@@ -1,4 +1,5 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import { filterCompaniesByDomain } from "@/lib/domain-verifier"
 import { calculateGPT4oCost } from "@/lib/cost-calculator"
 
 export class RedditSearchWorker implements ProgressiveSearchWorker {
@@ -90,18 +91,23 @@ Return ONLY the JSON array, no other text.`
         console.log(`[v0] [Reddit] Call ${callIndex + 1} returned ${companies.length} companies`)
 
         if (companies.length > 0) {
-          const costPerCompany = costBreakdown.total_cost / companies.length
-          const companiesWithCost = companies.map((company) => ({
-            ...company,
-            tokenUsage: {
-              prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
-              completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
-              cost: costPerCompany,
-            },
-          }))
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [Reddit] Verified ${verified.length}/${companies.length} companies`)
 
-          allCompanies.push(...companiesWithCost)
-          yield companiesWithCost
+          if (verified.length > 0) {
+            const costPerCompany = costBreakdown.total_cost / verified.length
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: {
+                prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                cost: costPerCompany,
+              },
+            }))
+
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
+          }
         }
 
         if (allCompanies.length >= desiredCount) {
@@ -210,17 +216,10 @@ Return ONLY the JSON array, no other text.`
         console.log(`[v0] [Reddit] Call ${callIndex + 1} returned ${companies.length} companies`)
 
         if (companies.length > 0) {
-          const costPerCompany = costBreakdown.total_cost / companies.length
-          const companiesWithCost = companies.map((company) => ({
-            ...company,
-            tokenUsage: {
-              prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
-              completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
-              cost: costPerCompany,
-            },
-          }))
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [Reddit] Verified ${verified.length}/${companies.length} companies`)
 
-          allCompanies.push(...companiesWithCost)
+          allCompanies.push(...verified)
         }
 
         if (allCompanies.length >= desiredCount) {

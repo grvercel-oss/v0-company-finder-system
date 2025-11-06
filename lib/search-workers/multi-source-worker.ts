@@ -110,18 +110,21 @@ Only include companies with confidence >= 0.7. Return ONLY the JSON array, no ot
       console.log(`[v0] [${this.name}] Found ${companies.length} companies`)
 
       if (companies.length > 0) {
-        // Domain verification will happen asynchronously in the stream route
         const costPerCompany = costBreakdown.total_cost / companies.length
-        const companiesWithCost = companies.map((company) => ({
-          ...company,
-          tokenUsage: {
-            prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
-            completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
-            cost: costPerCompany,
-          },
-        }))
 
-        yield companiesWithCost
+        for (const company of companies) {
+          const companyWithCost = {
+            ...company,
+            tokenUsage: {
+              prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
+              completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
+              cost: costPerCompany,
+            },
+          }
+
+          // Yield each company individually for immediate processing
+          yield [companyWithCost]
+        }
       }
 
       console.log(`[v0] [${this.name}] Search completed`)

@@ -1,4 +1,5 @@
 import type { SearchWorkerResult, ICP, CompanyResult, ProgressiveSearchWorker } from "../types"
+import { filterCompaniesByDomain } from "@/lib/domain-verifier"
 import { calculateGPT4oCost } from "@/lib/cost-calculator"
 
 export class ClutchSearchWorker implements ProgressiveSearchWorker {
@@ -91,18 +92,23 @@ Return ONLY the JSON array, no other text.`
         console.log(`[v0] [Clutch] Call ${callIndex + 1} returned ${companies.length} companies`)
 
         if (companies.length > 0) {
-          const costPerCompany = costBreakdown.total_cost / companies.length
-          const companiesWithCost = companies.map((company) => ({
-            ...company,
-            tokenUsage: {
-              prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
-              completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
-              cost: costPerCompany,
-            },
-          }))
+          const { verified, rejected } = await filterCompaniesByDomain(companies)
+          console.log(`[v0] [Clutch] Verified ${verified.length}/${companies.length} companies`)
 
-          allCompanies.push(...companiesWithCost)
-          yield companiesWithCost
+          if (verified.length > 0) {
+            const costPerCompany = costBreakdown.total_cost / verified.length
+            const companiesWithCost = verified.map((company) => ({
+              ...company,
+              tokenUsage: {
+                prompt_tokens: Math.floor(tokenUsage.prompt_tokens / verified.length),
+                completion_tokens: Math.floor(tokenUsage.completion_tokens / verified.length),
+                cost: costPerCompany,
+              },
+            }))
+
+            allCompanies.push(...companiesWithCost)
+            yield companiesWithCost
+          }
         }
 
         if (allCompanies.length >= desiredCount) {
@@ -214,11 +220,15 @@ Return ONLY the JSON array, no other text.`
         }
       }
 
+      // Verify domains before returning
+      const { verified, rejected } = await filterCompaniesByDomain(allCompanies)
+      console.log(`[v0] [Clutch] Verified ${verified.length}/${allCompanies.length} companies`)
+
       const duration = Date.now() - startTime
-      console.log(`[v0] [Clutch] Found ${allCompanies.length} total companies in ${duration} ms`)
+      console.log(`[v0] [Clutch] Found ${verified.length} total companies in ${duration} ms`)
 
       return {
-        companies: allCompanies.slice(0, desiredCount),
+        companies: verified.slice(0, desiredCount),
         source: this.name,
         duration_ms: duration,
       }

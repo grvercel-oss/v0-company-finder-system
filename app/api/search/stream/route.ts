@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
                   location = COALESCE(EXCLUDED.location, companies.location),
                   website = COALESCE(EXCLUDED.website, companies.website),
                   employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
-                  updated_at = now()
+                  last_updated = now()
                 RETURNING *
               `
               const savedCompany = inserted[0]

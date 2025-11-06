@@ -367,17 +367,10 @@ Return ONLY the JSON array, no other text or explanation.`
       const parsed = JSON.parse(jsonText)
 
       if (Array.isArray(parsed)) {
-        return parsed.map((c: any) => ({
-          name: c.name || "",
-          domain: this.extractDomain(c.website || ""),
-          description: c.description || "",
-          industry: c.category || "",
-          location: c.location || "",
-          website: c.website || "",
-          employee_count: c.employee_count || "",
-          source: c.source || this.name,
-          confidence_score: c.confidence || 0.75,
-          contacts: Array.isArray(c.contacts)
+        console.log(`[v0] [${this.name}] Parsing ${parsed.length} companies from Perplexity response`)
+
+        return parsed.map((c: any) => {
+          const contacts = Array.isArray(c.contacts)
             ? c.contacts.map((contact: any) => ({
                 name: contact.name || "",
                 role: contact.role || "",
@@ -387,8 +380,30 @@ Return ONLY the JSON array, no other text or explanation.`
                 source: contact.source,
                 confidence_score: contact.confidence || 0.75,
               }))
-            : [],
-        }))
+            : []
+
+          if (contacts.length > 0) {
+            console.log(
+              `[v0] [${this.name}] Company "${c.name}" has ${contacts.length} contacts:`,
+              contacts.map((ct) => `${ct.name} (${ct.role})`),
+            )
+          } else {
+            console.log(`[v0] [${this.name}] Company "${c.name}" has NO contacts in response`)
+          }
+
+          return {
+            name: c.name || "",
+            domain: this.extractDomain(c.website || ""),
+            description: c.description || "",
+            industry: c.category || "",
+            location: c.location || "",
+            website: c.website || "",
+            employee_count: c.employee_count || "",
+            source: c.source || this.name,
+            confidence_score: c.confidence || 0.75,
+            contacts,
+          }
+        })
       }
 
       return []

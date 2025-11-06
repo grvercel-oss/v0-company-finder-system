@@ -77,5 +77,6 @@ export interface CompanyContact {
   confidence_score: number
   source?: string
   verified: boolean
+  email_verification_status?: "pending" | "verified" | "unverified" | "invalid"
   created_at: Date
 }

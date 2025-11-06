@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail } from "lucide-react"
+import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, AlertCircle, Clock } from "lucide-react"
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
 import { useState, useEffect } from "react"
@@ -28,12 +28,14 @@ interface CompanyContact {
   source?: string
   verified: boolean
   created_at: Date
+  email_verification_status?: string
 }
 
 export function SearchResultsTable({ companies, selectedCompanies, onSelectionChange }: SearchResultsTableProps) {
   const [researchModalOpen, setResearchModalOpen] = useState(false)
   const [selectedCompanyForResearch, setSelectedCompanyForResearch] = useState<Company | null>(null)
   const [companyContacts, setCompanyContacts] = useState<Record<number, CompanyContact[]>>({})
+  const [isVerifying, setIsVerifying] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -55,12 +57,69 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
       )
 
       setCompanyContacts(contactsMap)
+
+      const allContactIds = Object.values(contactsMap)
+        .flat()
+        .filter((c) => c.email_verification_status === "pending")
+        .map((c) => c.id)
+
+      if (allContactIds.length > 0) {
+        verifyEmails(allContactIds)
+      }
     }
 
     if (companies.length > 0) {
       fetchContacts()
     }
   }, [companies])
+
+  const verifyEmails = async (contactIds: number[]) => {
+    setIsVerifying(true)
+    console.log(`[v0] Starting verification for ${contactIds.length} contacts`)
+
+    try {
+      const response = await fetch("/api/contacts/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contactIds }),
+      })
+
+      if (response.ok) {
+        const { results } = await response.json()
+        console.log(`[v0] Verification complete:`, results)
+
+        const contactsMap: Record<number, CompanyContact[]> = {}
+        await Promise.all(
+          companies.map(async (company) => {
+            try {
+              const response = await fetch(`/api/companies/${company.id}/contacts`)
+              if (response.ok) {
+                const contacts = await response.json()
+                contactsMap[company.id] = contacts
+              }
+            } catch (error) {
+              console.error(`Failed to refresh contacts for company ${company.id}:`, error)
+            }
+          }),
+        )
+        setCompanyContacts(contactsMap)
+
+        toast({
+          title: "Email verification complete",
+          description: `Verified ${results.length} email addresses`,
+        })
+      }
+    } catch (error) {
+      console.error("[v0] Email verification failed:", error)
+      toast({
+        title: "Verification failed",
+        description: "Failed to verify email addresses",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVerifying(false)
+    }
+  }
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -94,6 +153,37 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const allSelected = companies.length > 0 && selectedCompanies.length === companies.length
   const someSelected = selectedCompanies.length > 0 && selectedCompanies.length < companies.length
 
+  const renderVerificationBadge = (status?: string) => {
+    if (!status || status === "pending") {
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Clock className="h-3 w-3" />
+          Pending
+        </Badge>
+      )
+    }
+
+    if (status === "verified") {
+      return (
+        <Badge variant="default" className="gap-1 bg-green-600">
+          <CheckCircle2 className="h-3 w-3" />
+          Verified
+        </Badge>
+      )
+    }
+
+    if (status === "unverified") {
+      return (
+        <Badge variant="secondary" className="gap-1">
+          <AlertCircle className="h-3 w-3" />
+          Unverified
+        </Badge>
+      )
+    }
+
+    return null
+  }
+
   return (
     <>
       <div className="border rounded-lg">
@@ -112,14 +202,21 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
               <TableHead>Industry</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Employees</TableHead>
-              <TableHead>Contacts</TableHead>
+              <TableHead>
+                <div className="flex items-center gap-2">
+                  Contacts
+                  {isVerifying && <Clock className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </div>
+              </TableHead>
               <TableHead>Quality</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {companies.map((company) => {
-              const contacts = companyContacts[company.id] || []
+              const contacts = (companyContacts[company.id] || []).filter(
+                (c) => c.email_verification_status !== "invalid",
+              )
 
               return (
                 <TableRow key={company.id}>
@@ -190,13 +287,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                   </TableCell>
                   <TableCell>
                     {contacts.length > 0 ? (
-                      <div className="space-y-1 min-w-[200px]">
+                      <div className="space-y-2 min-w-[250px]">
                         {contacts.slice(0, 2).map((contact) => (
                           <div key={contact.id} className="flex items-center gap-2 text-sm">
                             <div className="flex-1 min-w-0">
                               <div className="font-medium truncate">{contact.name}</div>
                               <div className="text-xs text-muted-foreground truncate">{contact.role}</div>
                             </div>
+                            {renderVerificationBadge(contact.email_verification_status)}
                             <Button
                               variant="ghost"
                               size="sm"

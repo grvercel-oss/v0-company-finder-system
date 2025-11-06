@@ -24,10 +24,23 @@ export class MultiSourceWorker {
         throw new Error("OPENAI_API_KEY not configured")
       }
 
-      const requestCount = Math.ceil(desiredCount * 2.5) // Request 2.5x to account for filtering
-      console.log(`[v0] [${this.name}] Requesting ${requestCount} companies in single call`)
+      const companiesPerCall = 5
+      const maxCalls = Math.ceil(desiredCount / companiesPerCall)
+      let totalCompaniesFound = 0
 
-      const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base.
+      console.log(`[v0] [${this.name}] Will make up to ${maxCalls} calls, ${companiesPerCall} companies each`)
+
+      for (let callIndex = 0; callIndex < maxCalls; callIndex++) {
+        if (totalCompaniesFound >= desiredCount) {
+          console.log(`[v0] [${this.name}] Reached desired count (${desiredCount}), stopping`)
+          break
+        }
+
+        console.log(
+          `[v0] [${this.name}] API call ${callIndex + 1}/${maxCalls}: Requesting ${companiesPerCall} companies`,
+        )
+
+        const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base.
 
 Your task is to find REAL, ACTIVE companies that match the search criteria. You can use information from:
 - Professional networks (LinkedIn, etc.)
@@ -44,12 +57,13 @@ CRITICAL RULES:
 2. All websites must be real, working domains (no made-up URLs)
 3. Prefer well-known, verifiable companies
 4. If unsure about a company's existence, DO NOT include it
-5. Return as many unique companies as possible
+5. Return DIFFERENT companies each time (avoid duplicates from previous calls)
 6. Search ANYWHERE on the internet - you are not limited to specific platforms`
 
-      const userPrompt = `Find ${requestCount} REAL, ACTIVE companies that match: "${this.queryVariant}"
+        const userPrompt = `Find ${companiesPerCall} REAL, ACTIVE companies that match: "${this.queryVariant}"
 
 Search approach: ${this.focus}
+${callIndex > 0 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callIndex + 1}.` : ""}
 
 For each company, include:
 - Where you found information about it (any source)
@@ -71,63 +85,64 @@ Return a JSON array:
 
 Only include companies with confidence >= 0.7. Return ONLY the JSON array, no other text.`
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          temperature: 0.7,
-        }),
-      })
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            temperature: 0.7,
+          }),
+        })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error(`[v0] [${this.name}] API error:`, response.status, errorText)
-        return
-      }
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`[v0] [${this.name}] API error:`, response.status, errorText)
+          continue // Try next call
+        }
 
-      const data = await response.json()
-      const answer = data.choices[0].message.content
+        const data = await response.json()
+        const answer = data.choices[0].message.content
 
-      const tokenUsage = data.usage
-      const costBreakdown = calculateGPT41MiniCost({
-        input_tokens: tokenUsage.prompt_tokens,
-        output_tokens: tokenUsage.completion_tokens,
-      })
+        const tokenUsage = data.usage
+        const costBreakdown = calculateGPT41MiniCost({
+          input_tokens: tokenUsage.prompt_tokens,
+          output_tokens: tokenUsage.completion_tokens,
+        })
 
-      console.log(
-        `[v0] [${this.name}] Search cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens} in, ${tokenUsage.completion_tokens} out)`,
-      )
+        console.log(
+          `[v0] [${this.name}] Call ${callIndex + 1} cost: $${costBreakdown.total_cost.toFixed(4)} (${tokenUsage.prompt_tokens} in, ${tokenUsage.completion_tokens} out)`,
+        )
 
-      const companies = this.parseCompanies(answer)
-      console.log(`[v0] [${this.name}] Found ${companies.length} companies`)
+        const companies = this.parseCompanies(answer)
+        console.log(`[v0] [${this.name}] Call ${callIndex + 1} found ${companies.length} companies`)
 
-      if (companies.length > 0) {
-        const costPerCompany = costBreakdown.total_cost / companies.length
+        if (companies.length > 0) {
+          const costPerCompany = costBreakdown.total_cost / companies.length
+          totalCompaniesFound += companies.length
 
-        for (const company of companies) {
-          const companyWithCost = {
-            ...company,
-            tokenUsage: {
-              prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
-              completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
-              cost: costPerCompany,
-            },
+          for (const company of companies) {
+            const companyWithCost = {
+              ...company,
+              tokenUsage: {
+                prompt_tokens: Math.floor(tokenUsage.prompt_tokens / companies.length),
+                completion_tokens: Math.floor(tokenUsage.completion_tokens / companies.length),
+                cost: costPerCompany,
+              },
+            }
+
+            yield [companyWithCost]
           }
-
-          // Yield each company individually for immediate processing
-          yield [companyWithCost]
         }
       }
 
-      console.log(`[v0] [${this.name}] Search completed`)
+      console.log(`[v0] [${this.name}] Search completed, total companies: ${totalCompaniesFound}`)
     } catch (error: any) {
       console.error(`[v0] [${this.name}] Error:`, error.message)
       throw error

@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
         const abortController = new AbortController()
         const { signal } = abortController
 
-        const requestCount = Math.ceil(desiredCount * 2.5) // Request 2.5x to account for filtering
+        const requestCount = desiredCount
 
         send("worker_started", { worker: worker.name })
 

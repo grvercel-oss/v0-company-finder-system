@@ -184,12 +184,12 @@ export async function GET(request: NextRequest) {
                   try {
                     await sql`
                       INSERT INTO company_contacts (
-                        company_id, name, role, email, phone, linkedin_url, source, confidence_score
+                        company_id, name, role, email, phone, linkedin_url, source, confidence_score, email_verification_status
                       )
                       VALUES (
                         ${savedCompany.id}, ${contact.name}, ${contact.role}, ${contact.email},
                         ${contact.phone || null}, ${contact.linkedin_url || null},
-                        ${contact.source || "Perplexity"}, ${contact.confidence_score || 0.75}
+                        ${contact.source || "Perplexity"}, ${contact.confidence_score || 0.75}, 'pending'
                       )
                       ON CONFLICT (company_id, email) DO UPDATE SET
                         name = EXCLUDED.name,
@@ -198,9 +198,12 @@ export async function GET(request: NextRequest) {
                         linkedin_url = EXCLUDED.linkedin_url,
                         source = EXCLUDED.source,
                         confidence_score = EXCLUDED.confidence_score,
+                        email_verification_status = 'pending',
                         updated_at = CURRENT_TIMESTAMP
                     `
-                    console.log(`[v0] Saved contact: ${contact.name} (${contact.role})`)
+                    console.log(
+                      `[v0] Saved contact: ${contact.name} (${contact.role}) with pending verification status`,
+                    )
                   } catch (contactError) {
                     console.error(`[v0] Error saving contact ${contact.name}:`, contactError)
                   }

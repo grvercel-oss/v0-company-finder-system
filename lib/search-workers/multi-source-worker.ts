@@ -311,7 +311,7 @@ Return ONLY the JSON array, no other text or explanation.`
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "sonar-pro",
+        model: "sonar", // Changed from sonar-pro to sonar (base model)
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

@@ -59,7 +59,7 @@ export async function searchCompaniesWithPerplexity(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "sonar-pro",
+        model: "sonar", // Changed from sonar-pro to sonar (base model)
         messages: [
           {
             role: "system",

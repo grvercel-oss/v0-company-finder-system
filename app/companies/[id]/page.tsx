@@ -9,8 +9,9 @@ import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-export default async function CompanyPage({ params }: { params: { id: string } }) {
-  const id = Number.parseInt(params.id)
+export default async function CompanyPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: idString } = await params
+  const id = Number.parseInt(idString)
 
   if (isNaN(id)) {
     notFound()

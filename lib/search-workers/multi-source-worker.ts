@@ -19,6 +19,7 @@ export class MultiSourceWorker {
   async *searchProgressive(
     signal?: AbortSignal,
     excludeDomains: Set<string> = new Set(),
+    remainingNeeded?: number, // Added parameter to track how many companies are still needed
   ): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [${this.name}] Starting search: "${this.queryVariant}" (focus: ${this.focus})`)
 
@@ -28,20 +29,22 @@ export class MultiSourceWorker {
         throw new Error("PERPLEXITY_API_KEY not configured")
       }
 
-      const companiesPerCall = 5
-      const parallelCalls = 4
+      const companiesPerCall = 10
       let batchIndex = 0
       const allFoundDomains = new Set<string>(excludeDomains)
       const allFoundNames: string[] = []
 
-      console.log(
-        `[v0] [${this.name}] Will make ${parallelCalls} parallel API calls per batch, ${companiesPerCall} companies each`,
-      )
-
       while (!signal?.aborted) {
         batchIndex++
 
-        console.log(`[v0] [${this.name}] Batch ${batchIndex}: Starting ${parallelCalls} parallel API calls`)
+        const parallelCalls = remainingNeeded ? Math.min(4, Math.ceil(remainingNeeded / companiesPerCall)) : 4
+
+        console.log(
+          `[v0] [${this.name}] Batch ${batchIndex}: Starting ${parallelCalls} parallel API calls, ${companiesPerCall} companies each`,
+        )
+        if (remainingNeeded) {
+          console.log(`[v0] [${this.name}] Still need ${remainingNeeded} companies`)
+        }
         if (allFoundDomains.size > 0) {
           console.log(`[v0] [${this.name}] Excluding ${allFoundDomains.size} already-found companies`)
         }
@@ -142,9 +145,7 @@ export class MultiSourceWorker {
         }
       }
 
-      console.log(
-        `[v0] [${this.name}] Search completed after ${batchIndex} batches (${batchIndex * parallelCalls} total calls)`,
-      )
+      console.log(`[v0] [${this.name}] Search completed after ${batchIndex} batches (${batchIndex * 4} total calls)`)
     } catch (error: any) {
       if (error.name === "AbortError") {
         console.log(`[v0] [${this.name}] Search aborted`)

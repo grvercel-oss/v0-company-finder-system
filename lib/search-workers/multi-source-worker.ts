@@ -15,7 +15,10 @@ export class MultiSourceWorker {
     this.focus = focus
   }
 
-  async *searchProgressive(signal?: AbortSignal): AsyncGenerator<CompanyResult[], void, unknown> {
+  async *searchProgressive(
+    signal?: AbortSignal,
+    excludeDomains: Set<string> = new Set(),
+  ): AsyncGenerator<CompanyResult[], void, unknown> {
     console.log(`[v0] [${this.name}] Starting search: "${this.queryVariant}" (focus: ${this.focus})`)
 
     try {
@@ -33,6 +36,9 @@ export class MultiSourceWorker {
         callIndex++
 
         console.log(`[v0] [${this.name}] API call ${callIndex}: Requesting ${companiesPerCall} companies`)
+        if (excludeDomains.size > 0) {
+          console.log(`[v0] [${this.name}] Excluding ${excludeDomains.size} already-found companies`)
+        }
 
         const systemPrompt = `You are an expert at finding companies from across the entire internet using your knowledge base and web search.
 
@@ -54,10 +60,16 @@ CRITICAL RULES:
 5. Return DIFFERENT companies each time (avoid duplicates from previous calls)
 6. Search ANYWHERE on the internet - you are not limited to specific platforms`
 
+        let exclusionText = ""
+        if (excludeDomains.size > 0) {
+          const excludeList = Array.from(excludeDomains).slice(0, 20) // Limit to 20 to avoid prompt bloat
+          exclusionText = `\n\nDO NOT include these companies (already found):\n${excludeList.map((d) => `- ${d}`).join("\n")}`
+        }
+
         const userPrompt = `Find ${companiesPerCall} REAL, ACTIVE companies that match: "${this.queryVariant}"
 
 Search approach: ${this.focus}
-${callIndex > 1 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callIndex}.` : ""}
+${callIndex > 1 ? `\nIMPORTANT: Find DIFFERENT companies than previous results. This is call ${callIndex}.` : ""}${exclusionText}
 
 For each company, include:
 - Where you found information about it (any source)

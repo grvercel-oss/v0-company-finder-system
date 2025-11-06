@@ -85,6 +85,7 @@ export async function GET(request: NextRequest) {
         const worker = new MultiSourceWorker(query, "comprehensive search", 0)
 
         const foundCompanyIds: number[] = []
+        const foundDomains = new Set<string>()
         let totalCompaniesFound = 0
         let totalCost = 0
         let totalInputTokens = 0
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
         send("worker_started", { worker: worker.name })
 
         try {
-          const searchGenerator = worker.searchProgressive(signal)
+          const searchGenerator = worker.searchProgressive(signal, foundDomains)
 
           for await (const batch of searchGenerator) {
             if (signal.aborted) break
@@ -104,9 +105,14 @@ export async function GET(request: NextRequest) {
             const company = batch[0] // Get the single company from the batch
 
             try {
+              const domain = company.domain || company.name
+              if (foundDomains.has(domain)) {
+                console.log(`[v0] Already found ${domain} in this search, skipping`)
+                continue
+              }
+
               console.log(`[v0] Saving company: ${company.name}`)
 
-              // Insert company directly into database
               const inserted = await sql`
                 INSERT INTO companies (
                   name, domain, description, industry, location, website,
@@ -114,7 +120,7 @@ export async function GET(request: NextRequest) {
                   technologies, sources, data_quality_score
                 ) VALUES (
                   ${company.name},
-                  ${company.domain || null},
+                  ${domain},
                   ${company.description || null},
                   ${company.industry || null},
                   ${company.location || null},
@@ -126,10 +132,19 @@ export async function GET(request: NextRequest) {
                   ${JSON.stringify([company.source])},
                   ${company.confidence_score ? Math.round(company.confidence_score * 100) : 50}
                 )
+                ON CONFLICT (domain) DO UPDATE SET
+                  name = EXCLUDED.name,
+                  description = COALESCE(EXCLUDED.description, companies.description),
+                  industry = COALESCE(EXCLUDED.industry, companies.industry),
+                  location = COALESCE(EXCLUDED.location, companies.location),
+                  website = COALESCE(EXCLUDED.website, companies.website),
+                  employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
+                  updated_at = now()
                 RETURNING *
               `
-
               const savedCompany = inserted[0]
+
+              foundDomains.add(domain)
 
               // Link search result
               await sql`

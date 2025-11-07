@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Mail,
   Loader2,
@@ -17,6 +18,7 @@ import {
   Building2,
   X,
   Send,
+  Rocket,
 } from "lucide-react"
 
 interface Executive {
@@ -32,6 +34,12 @@ interface Executive {
   verification: {
     status: string
   } | null
+}
+
+interface Campaign {
+  id: number
+  name: string
+  status: string
 }
 
 interface HunterEmailModalProps {
@@ -57,7 +65,22 @@ export function HunterEmailModal({
   const [revealingEmail, setRevealingEmail] = useState<string | null>(null)
   const [totalFound, setTotalFound] = useState(0)
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set())
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [selectedCampaign, setSelectedCampaign] = useState<string>("")
+  const [sendingToCampaign, setSendingToCampaign] = useState<string | null>(null)
   const { toast } = useToast()
+
+  const fetchCampaigns = async () => {
+    try {
+      const response = await fetch("/api/campaigns")
+      if (response.ok) {
+        const data = await response.json()
+        setCampaigns(data.campaigns || [])
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch campaigns:", error)
+    }
+  }
 
   const searchExecutives = async () => {
     setLoading(true)
@@ -149,6 +172,60 @@ export function HunterEmailModal({
     }
   }
 
+  const sendToCampaign = async (executive: Executive) => {
+    if (!selectedCampaign) {
+      toast({
+        title: "No campaign selected",
+        description: "Please select a campaign first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const key = `${executive.first_name}-${executive.last_name}`
+    setSendingToCampaign(key)
+
+    try {
+      const response = await fetch("/api/hunter/add-to-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId: Number.parseInt(selectedCampaign),
+          companyId,
+          companyName,
+          email: executive.value,
+          firstName: executive.first_name,
+          lastName: executive.last_name,
+          position: executive.position,
+          department: executive.department,
+          linkedin: executive.linkedin,
+          twitter: executive.twitter,
+          source: "hunter.io",
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to add to campaign")
+      }
+
+      const campaignName = campaigns.find((c) => c.id === Number.parseInt(selectedCampaign))?.name
+
+      toast({
+        title: "Added to campaign",
+        description: `${executive.first_name} ${executive.last_name} added to "${campaignName}"`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Failed to add to campaign",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setSendingToCampaign(null)
+    }
+  }
+
   const copyEmail = (email: string, name: string) => {
     navigator.clipboard.writeText(email)
     toast({
@@ -182,26 +259,21 @@ export function HunterEmailModal({
     const selectedExecs = executives.filter((exec) => selectedEmails.has(exec.value))
     const emailList = Array.from(selectedEmails)
 
-    // Pass to email sending function (you can customize this based on your needs)
     console.log("[v0] Sending emails to:", emailList)
     console.log("[v0] Selected executives:", selectedExecs)
 
-    // Here you would integrate with your email sending system
-    // For now, show a toast with the selected emails
     toast({
       title: "Ready to send",
       description: `Selected ${selectedEmails.size} email${selectedEmails.size !== 1 ? "s" : ""} to send to`,
     })
-
-    // You can add your sendEmail function call here
-    // sendEmail(emailList)
   }
 
-  useState(() => {
+  useEffect(() => {
     if (open && executives.length === 0) {
       searchExecutives()
+      fetchCampaigns()
     }
-  })
+  }, [open])
 
   if (!open) return null
 
@@ -250,6 +322,25 @@ export function HunterEmailModal({
                 </Badge>
               </div>
 
+              {campaigns.length > 0 && (
+                <div className="flex items-center gap-3 p-3 bg-muted/50 border rounded-lg">
+                  <Rocket className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Send to campaign:</span>
+                  <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
+                    <SelectTrigger className="w-[250px]">
+                      <SelectValue placeholder="Select a campaign" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaigns.map((campaign) => (
+                        <SelectItem key={campaign.id} value={campaign.id.toString()}>
+                          {campaign.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {selectedEmails.size > 0 && (
                 <div className="flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
                   <p className="text-sm font-medium">
@@ -268,6 +359,7 @@ export function HunterEmailModal({
                   const isRevealed = revealedEmails.has(key)
                   const isRevealing = revealingEmail === key
                   const isSelected = selectedEmails.has(exec.value)
+                  const isSending = sendingToCampaign === key
 
                   return (
                     <div key={key} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
@@ -308,31 +400,54 @@ export function HunterEmailModal({
                           </div>
 
                           {isRevealed ? (
-                            <div className="flex items-center gap-2">
-                              <code className="px-2 py-1 bg-muted rounded text-sm font-mono">{exec.value}</code>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => copyEmail(exec.value, `${exec.first_name} ${exec.last_name}`)}
-                              >
-                                <Mail className="h-3 w-3 mr-1" />
-                                Copy
-                              </Button>
-                              {exec.verification && (
-                                <Badge
-                                  variant={
-                                    exec.verification.status === "valid"
-                                      ? "default"
-                                      : exec.verification.status === "invalid"
-                                        ? "destructive"
-                                        : "secondary"
-                                  }
-                                  className="gap-1"
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <code className="px-2 py-1 bg-muted rounded text-sm font-mono">{exec.value}</code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyEmail(exec.value, `${exec.first_name} ${exec.last_name}`)}
                                 >
-                                  {exec.verification.status === "valid" && <CheckCircle2 className="h-3 w-3" />}
-                                  {exec.verification.status === "invalid" && <AlertCircle className="h-3 w-3" />}
-                                  {exec.verification.status}
-                                </Badge>
+                                  <Mail className="h-3 w-3 mr-1" />
+                                  Copy
+                                </Button>
+                                {exec.verification && (
+                                  <Badge
+                                    variant={
+                                      exec.verification.status === "valid"
+                                        ? "default"
+                                        : exec.verification.status === "invalid"
+                                          ? "destructive"
+                                          : "secondary"
+                                    }
+                                    className="gap-1"
+                                  >
+                                    {exec.verification.status === "valid" && <CheckCircle2 className="h-3 w-3" />}
+                                    {exec.verification.status === "invalid" && <AlertCircle className="h-3 w-3" />}
+                                    {exec.verification.status}
+                                  </Badge>
+                                )}
+                              </div>
+                              {selectedCampaign && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => sendToCampaign(exec)}
+                                  disabled={isSending}
+                                  className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                                >
+                                  {isSending ? (
+                                    <>
+                                      <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                      Adding to campaign...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Rocket className="h-3 w-3 mr-2" />
+                                      Send to Campaign
+                                    </>
+                                  )}
+                                </Button>
                               )}
                             </div>
                           ) : (

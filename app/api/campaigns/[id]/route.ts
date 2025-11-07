@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 })
     }
 
-    const contacts = await sql`
+    const contactsFromDb = await sql`
       SELECT 
         cc.id,
         cc.email,
@@ -33,13 +33,41 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         c.website as company_website,
         c.industry as company_industry,
         c.size as company_size,
-        camp_cont.added_at
+        camp_cont.added_at as created_at
       FROM campaign_contacts camp_cont
       JOIN company_contacts cc ON camp_cont.contact_id = cc.id
       JOIN companies c ON cc.company_id = c.id
       WHERE camp_cont.campaign_id = ${id}
       ORDER BY camp_cont.added_at DESC
     `
+
+    const contacts = contactsFromDb.map((contact: any) => {
+      // Split full name into first and last name
+      const nameParts = (contact.name || "").trim().split(" ")
+      const first_name = nameParts[0] || ""
+      const last_name = nameParts.slice(1).join(" ") || ""
+
+      return {
+        id: contact.id,
+        email: contact.email,
+        first_name,
+        last_name,
+        company_name: contact.company_name,
+        job_title: contact.job_title,
+        linkedin_url: contact.linkedin_url,
+        phone: contact.phone,
+        source: contact.source,
+        hunter_confidence: contact.hunter_confidence,
+        email_verification_status: contact.email_verification_status,
+        company_id: contact.company_id,
+        company_description: contact.company_description,
+        company_website: contact.company_website,
+        company_industry: contact.company_industry,
+        company_size: contact.company_size,
+        created_at: contact.created_at,
+        status: contact.email_verification_status || "pending",
+      }
+    })
 
     return NextResponse.json({
       campaign: campaigns[0],

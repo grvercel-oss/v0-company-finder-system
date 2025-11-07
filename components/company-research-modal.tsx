@@ -92,7 +92,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
             Latest Research: {companyName}
           </DialogTitle>
           <DialogDescription>
-            AI-powered research using Groq + DuckDuckGo with the latest information about this company
+            AI-powered research using Groq + Brave Search with the latest information about this company
           </DialogDescription>
         </DialogHeader>
 
@@ -101,7 +101,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <div className="text-center space-y-2">
               <p className="text-lg font-medium">Researching {companyName}...</p>
-              <p className="text-sm text-muted-foreground">Groq is analyzing multiple sources from across the web</p>
+              <p className="text-sm text-muted-foreground">Groq is analyzing multiple sources from Brave Search</p>
               <p className="text-xs text-muted-foreground">This may take 20-40 seconds</p>
             </div>
           </div>

@@ -1,20 +1,20 @@
-// New research system using Groq AI + DuckDuckGo API
-// Replaces expensive Tavily with cost-effective alternative
+// New research system using Groq AI + Brave Search API
+// Replaces expensive Tavily and limited DuckDuckGo with comprehensive Brave Search
 
-interface DuckDuckGoResult {
-  FirstURL?: string
-  Text?: string
-  Icon?: {
-    URL: string
+interface BraveSearchResult {
+  title: string
+  url: string
+  description: string
+  page_age?: string
+  page_fetched?: string
+}
+
+interface BraveWebResult {
+  type: string
+  results: BraveSearchResult[]
+  query: {
+    original: string
   }
-  Result?: string
-  RelatedTopics?: Array<{
-    FirstURL?: string
-    Text?: string
-    Icon?: {
-      URL: string
-    }
-  }>
 }
 
 interface QueryCategory {
@@ -179,33 +179,44 @@ Return ONLY a JSON array of query strings, no explanation. Example format:
 }
 
 /**
- * Search DuckDuckGo Instant Answer API
+ * Search Brave Search API
  */
-async function searchDuckDuckGo(query: string): Promise<DuckDuckGoResult> {
-  console.log("[v0] [DDG] Searching:", query)
+async function searchBrave(query: string): Promise<BraveSearchResult[]> {
+  console.log("[v0] [BRAVE] Searching:", query)
+
+  const apiKey = process.env.BRAVE_API_KEY
+
+  if (!apiKey) {
+    console.error("[v0] BRAVE_API_KEY environment variable is not set")
+    throw new Error("BRAVE_API_KEY environment variable is not set")
+  }
 
   try {
     const encodedQuery = encodeURIComponent(query)
-    const url = `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1&skip_disambig=1`
+    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodedQuery}&count=5`
 
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "CompanyResearchBot/1.0",
+        Accept: "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": apiKey,
       },
     })
 
     if (!response.ok) {
-      throw new Error(`DuckDuckGo API error: ${response.status}`)
+      const errorText = await response.text()
+      console.error("[v0] [BRAVE] API error:", response.status, errorText)
+      throw new Error(`Brave Search API error: ${response.status}`)
     }
 
-    const data = (await response.json()) as DuckDuckGoResult
+    const data = (await response.json()) as BraveWebResult
 
-    console.log("[v0] [DDG] Search completed for:", query)
+    console.log("[v0] [BRAVE] Search completed for:", query, "- Found", data.results?.length || 0, "results")
 
-    return data
+    return data.results || []
   } catch (error) {
-    console.error("[v0] [DDG] Error searching:", error)
-    return {}
+    console.error("[v0] [BRAVE] Error searching:", error)
+    return []
   }
 }
 
@@ -214,7 +225,7 @@ async function searchDuckDuckGo(query: string): Promise<DuckDuckGoResult> {
  */
 async function analyzeWithGroq(
   companyName: string,
-  searchResults: Array<{ query: string; data: DuckDuckGoResult }>,
+  searchResults: Array<{ query: string; results: BraveSearchResult[] }>,
 ): Promise<CompanyResearchData> {
   console.log("[v0] [GROQ] Analyzing", searchResults.length, "search results")
 
@@ -227,20 +238,18 @@ async function analyzeWithGroq(
   // Prepare the data for analysis
   const resultsText = searchResults
     .map((result) => {
-      const { query, data } = result
+      const { query, results } = result
       let text = `\n### Query: ${query}\n`
 
-      if (data.AbstractText) {
-        text += `Abstract: ${data.AbstractText}\n`
-      }
-
-      if (data.RelatedTopics && data.RelatedTopics.length > 0) {
-        text += "Related Topics:\n"
-        data.RelatedTopics.slice(0, 5).forEach((topic) => {
-          if (topic.Text) {
-            text += `- ${topic.Text}\n`
-          }
+      if (results && results.length > 0) {
+        text += "Results:\n"
+        results.slice(0, 5).forEach((item, index) => {
+          text += `${index + 1}. ${item.title}\n`
+          text += `   URL: ${item.url}\n`
+          text += `   Description: ${item.description}\n\n`
         })
+      } else {
+        text += "No results found\n"
       }
 
       return text
@@ -342,22 +351,22 @@ Focus on factual information from the search results. If information is limited,
 }
 
 /**
- * Main research function: Generate queries → Search DuckDuckGo → Analyze with Groq
+ * Main research function: Generate queries → Search Brave → Analyze with Groq
  */
-export async function researchCompanyWithGroqDuckDuckGo(
+export async function researchCompanyWithGroqBrave(
   companyName: string,
   companyDomain?: string,
 ): Promise<CompanyResearchData> {
-  console.log("[v0] Starting Groq+DuckDuckGo research for:", companyName)
+  console.log("[v0] Starting Groq+Brave research for:", companyName)
 
   try {
     // Step 1: Generate search queries using Groq
     const queries = await generateSearchQueries(companyName)
 
-    // Step 2: Search DuckDuckGo for each query (limit to 10 to avoid rate limits)
+    // Step 2: Search Brave for each query (limit to 10)
     const searchPromises = queries.slice(0, 10).map(async (query) => ({
       query,
-      data: await searchDuckDuckGo(query),
+      results: await searchBrave(query),
     }))
 
     const searchResults = await Promise.all(searchPromises)

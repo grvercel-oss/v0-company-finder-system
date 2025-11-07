@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithGroqDuckDuckGo } from "@/lib/groq-duckduckgo-research"
+import { researchCompanyWithGroqBrave } from "@/lib/groq-brave-research"
 import { auth } from "@clerk/nextjs/server"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     }
 
-    console.log(`[v0] Fetching fresh Groq+DuckDuckGo research for company: ${company.name}`)
-    const research = await researchCompanyWithGroqDuckDuckGo(company.name, company.domain || company.website)
+    console.log(`[v0] Fetching fresh Groq+Brave research for company: ${company.name}`)
+    const research = await researchCompanyWithGroqBrave(company.name, company.domain || company.website)
 
     // Save research to database (reusing tavily_research column)
     await sql`

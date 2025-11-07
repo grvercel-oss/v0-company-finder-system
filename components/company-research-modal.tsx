@@ -16,7 +16,6 @@ import {
   Building2,
   NewspaperIcon,
 } from "lucide-react"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ResearchCategory {
   category: string
@@ -109,10 +108,10 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
       <div className="fixed inset-0 bg-black/50 z-50" onClick={() => onOpenChange(false)} />
 
       {/* Modal */}
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-6xl max-h-[85vh] bg-background border rounded-lg shadow-lg">
-        <div className="flex flex-col h-full">
+      <div className="fixed inset-4 md:inset-8 lg:inset-12 z-50 flex items-center justify-center">
+        <div className="w-full max-w-6xl h-full bg-background border rounded-lg shadow-lg flex flex-col">
           {/* Header */}
-          <div className="flex items-start justify-between p-6 border-b bg-muted/30">
+          <div className="flex items-start justify-between p-6 border-b bg-muted/30 flex-shrink-0">
             <div className="flex-1">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-primary/10">
@@ -132,9 +131,9 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {loading && (
-              <div className="flex flex-col items-center justify-center h-full space-y-4">
+              <div className="flex flex-col items-center justify-center h-full space-y-4 p-6">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium">Researching {companyName}...</p>
@@ -162,117 +161,115 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
             )}
 
             {research && !loading && (
-              <ScrollArea className="h-full">
-                <div className="p-6 space-y-6">
-                  {/* Timestamp Badge */}
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="gap-2">
-                      <Calendar className="h-3 w-3" />
-                      {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
-                    </Badge>
-                  </div>
-
-                  {/* Key Metrics Dashboard */}
-                  {research && extractMetrics(research).length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">KEY METRICS</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {extractMetrics(research).map((metric, idx) => {
-                          const Icon = metric.icon
-                          return (
-                            <div key={idx} className="rounded-lg border bg-card p-4 hover:shadow-md transition-shadow">
-                              <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                                <Icon className="h-4 w-4" />
-                                <span className="text-xs font-medium uppercase">{metric.label}</span>
-                              </div>
-                              <p className="text-2xl font-bold">{metric.value}</p>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Executive Summary */}
-                  {research.summary && (
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">EXECUTIVE SUMMARY</h3>
-                      <div className="rounded-lg bg-gradient-to-br from-primary/10 via-primary/5 to-background p-6 border border-primary/20">
-                        <div className="flex gap-3">
-                          <Sparkles className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
-                          <p className="text-base leading-relaxed">{research.summary}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Detailed Research */}
-                  {research.categories && research.categories.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground mb-3">DETAILED RESEARCH</h3>
-                      <div className="grid gap-4">
-                        {research.categories.map((category, index) => {
-                          let CategoryIcon = Building2
-                          if (category.category.toLowerCase().includes("financial")) CategoryIcon = DollarSign
-                          if (
-                            category.category.toLowerCase().includes("industry") ||
-                            category.category.toLowerCase().includes("market")
-                          )
-                            CategoryIcon = TrendingUp
-                          if (category.category.toLowerCase().includes("news")) CategoryIcon = NewspaperIcon
-
-                          return (
-                            <div key={index} className="rounded-lg border bg-card p-6 hover:shadow-md transition-all">
-                              {/* Category Header */}
-                              <div className="flex items-center gap-3 mb-4 pb-3 border-b">
-                                <div className="p-2 rounded-lg bg-primary/10">
-                                  <CategoryIcon className="h-4 w-4 text-primary" />
-                                </div>
-                                <h4 className="font-semibold text-lg">{category.category}</h4>
-                              </div>
-
-                              {/* Content */}
-                              <div className="prose prose-sm max-w-none">
-                                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                                  {category.content}
-                                </p>
-                              </div>
-
-                              {/* Sources */}
-                              {category.sources && category.sources.length > 0 && (
-                                <div className="mt-4 pt-4 border-t">
-                                  <p className="text-xs font-medium text-muted-foreground mb-2">SOURCES</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {category.sources.map((source, idx) => (
-                                      <a
-                                        key={idx}
-                                        href={source}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 transition-colors border"
-                                      >
-                                        {new URL(source).hostname.replace("www.", "")}
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {research.categories && research.categories.length === 0 && !research.summary && (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <AlertCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p className="font-medium">No research results found</p>
-                      <p className="text-sm mt-1">Try generating new research for this company</p>
-                    </div>
-                  )}
+              <div className="p-6 space-y-6">
+                {/* Timestamp Badge */}
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="gap-2">
+                    <Calendar className="h-3 w-3" />
+                    {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
+                  </Badge>
                 </div>
-              </ScrollArea>
+
+                {/* Key Metrics Dashboard */}
+                {research && extractMetrics(research).length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">KEY METRICS</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {extractMetrics(research).map((metric, idx) => {
+                        const Icon = metric.icon
+                        return (
+                          <div key={idx} className="rounded-lg border bg-card p-4 hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                              <Icon className="h-4 w-4" />
+                              <span className="text-xs font-medium uppercase">{metric.label}</span>
+                            </div>
+                            <p className="text-2xl font-bold">{metric.value}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Executive Summary */}
+                {research.summary && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">EXECUTIVE SUMMARY</h3>
+                    <div className="rounded-lg bg-gradient-to-br from-primary/10 via-primary/5 to-background p-6 border border-primary/20">
+                      <div className="flex gap-3">
+                        <Sparkles className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
+                        <p className="text-base leading-relaxed">{research.summary}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Detailed Research */}
+                {research.categories && research.categories.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">DETAILED RESEARCH</h3>
+                    <div className="grid gap-4">
+                      {research.categories.map((category, index) => {
+                        let CategoryIcon = Building2
+                        if (category.category.toLowerCase().includes("financial")) CategoryIcon = DollarSign
+                        if (
+                          category.category.toLowerCase().includes("industry") ||
+                          category.category.toLowerCase().includes("market")
+                        )
+                          CategoryIcon = TrendingUp
+                        if (category.category.toLowerCase().includes("news")) CategoryIcon = NewspaperIcon
+
+                        return (
+                          <div key={index} className="rounded-lg border bg-card p-6 hover:shadow-md transition-all">
+                            {/* Category Header */}
+                            <div className="flex items-center gap-3 mb-4 pb-3 border-b">
+                              <div className="p-2 rounded-lg bg-primary/10">
+                                <CategoryIcon className="h-4 w-4 text-primary" />
+                              </div>
+                              <h4 className="font-semibold text-lg">{category.category}</h4>
+                            </div>
+
+                            {/* Content */}
+                            <div className="prose prose-sm max-w-none">
+                              <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                                {category.content}
+                              </p>
+                            </div>
+
+                            {/* Sources */}
+                            {category.sources && category.sources.length > 0 && (
+                              <div className="mt-4 pt-4 border-t">
+                                <p className="text-xs font-medium text-muted-foreground mb-2">SOURCES</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {category.sources.map((source, idx) => (
+                                    <a
+                                      key={idx}
+                                      href={source}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 transition-colors border"
+                                    >
+                                      {new URL(source).hostname.replace("www.", "")}
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {research.categories && research.categories.length === 0 && !research.summary && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="font-medium">No research results found</p>
+                    <p className="text-sm mt-1">Try generating new research for this company</p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

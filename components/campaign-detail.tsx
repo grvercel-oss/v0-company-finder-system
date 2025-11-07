@@ -4,11 +4,9 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Users, Mail, MessageSquare, Trash2 } from "lucide-react"
+import { ArrowLeft, Users, Mail, MessageSquare } from "lucide-react"
 import Link from "next/link"
-import { CampaignContactsTable } from "@/components/campaign-contacts-table"
-import { useToast } from "@/hooks/use-toast"
+import { ContactsManager } from "@/components/contacts-manager"
 
 interface Campaign {
   id: number
@@ -20,19 +18,16 @@ interface Campaign {
 
 interface Contact {
   id: number
-  name: string
   email: string
-  job_title: string
+  first_name: string
+  last_name: string
   company_name: string
-  company_description: string
-  company_website?: string
-  company_industry?: string
-  company_size?: string
-  linkedin_url?: string
-  source?: string
-  hunter_confidence?: number
-  email_verification_status?: string
-  added_at: string
+  job_title: string
+  status: string
+  subject: string
+  body: string
+  sent_at: string
+  created_at: string
 }
 
 interface CampaignDetailProps {
@@ -43,8 +38,6 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedContacts, setSelectedContacts] = useState<number[]>([])
-  const { toast } = useToast()
 
   useEffect(() => {
     fetchCampaign()
@@ -52,54 +45,22 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
 
   const fetchCampaign = async () => {
     try {
+      console.log("[v0] Fetching campaign:", campaignId)
       const response = await fetch(`/api/campaigns/${campaignId}`)
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch campaign: ${response.statusText}`)
+      }
+
       const data = await response.json()
+      console.log("[v0] Campaign data:", data)
+
       setCampaign(data.campaign)
       setContacts(data.contacts || [])
     } catch (error) {
-      console.error("Failed to fetch campaign:", error)
+      console.error("Error fetching campaign:", error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleRemoveContacts = async () => {
-    if (selectedContacts.length === 0) {
-      toast({
-        title: "No contacts selected",
-        description: "Please select contacts to remove",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!confirm(`Remove ${selectedContacts.length} contact(s) from this campaign?`)) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/campaigns/${campaignId}/contacts`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds: selectedContacts }),
-      })
-
-      if (!response.ok) throw new Error("Failed to remove contacts")
-
-      toast({
-        title: "Contacts removed",
-        description: `${selectedContacts.length} contact(s) removed from campaign`,
-      })
-
-      setSelectedContacts([])
-      fetchCampaign()
-    } catch (error) {
-      console.error("Error removing contacts:", error)
-      toast({
-        title: "Error",
-        description: "Failed to remove contacts from campaign",
-        variant: "destructive",
-      })
     }
   }
 
@@ -113,9 +74,9 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
 
   const stats = {
     total: contacts.length,
-    pending: contacts.length,
-    sent: 0,
-    replied: 0,
+    pending: contacts.filter((c) => c.status === "pending").length,
+    sent: contacts.filter((c) => c.status === "sent").length,
+    replied: 0, // TODO: Track replies
   }
 
   return (
@@ -179,54 +140,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         </Card>
       </div>
 
-      <Tabs defaultValue="contacts" className="w-full">
-        <TabsList>
-          <TabsTrigger value="contacts">
-            <Users className="h-4 w-4 mr-2" />
-            Contacts ({contacts.length})
-          </TabsTrigger>
-          <TabsTrigger value="emails" disabled>
-            <Mail className="h-4 w-4 mr-2" />
-            Emails (Coming Soon)
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="contacts" className="space-y-4">
-          {selectedContacts.length > 0 && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">{selectedContacts.length} contact(s) selected</p>
-                  <Button variant="destructive" size="sm" onClick={handleRemoveContacts}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Remove from Campaign
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <CampaignContactsTable
-            contacts={contacts}
-            selectedContacts={selectedContacts}
-            onSelectionChange={setSelectedContacts}
-          />
-        </TabsContent>
-
-        <TabsContent value="emails">
-          <Card>
-            <CardHeader>
-              <CardTitle>Email Campaign</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Email generation and sending functionality coming soon. For now, use Hunter.io to find and add contacts
-                to your campaign.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <ContactsManager campaignId={campaignId} contacts={contacts} onUpdate={fetchCampaign} />
     </div>
   )
 }

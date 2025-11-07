@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, AlertCircle, Clock } from "lucide-react"
+import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail } from "lucide-react"
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
 import { HunterEmailModal } from "./hunter-email-modal"
@@ -39,7 +39,6 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const [hunterModalOpen, setHunterModalOpen] = useState(false)
   const [selectedCompanyForHunter, setSelectedCompanyForHunter] = useState<Company | null>(null)
   const [companyContacts, setCompanyContacts] = useState<Record<number, CompanyContact[]>>({})
-  const [isVerifying, setIsVerifying] = useState(false)
   const { toast } = useToast()
 
   const fetchContacts = async (companyIds?: number[]) => {
@@ -63,17 +62,6 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
     )
 
     setCompanyContacts(contactsMap)
-
-    const allContactIds = Object.values(contactsMap)
-      .flat()
-      .filter((c) => !c.email_verification_status || c.email_verification_status === "pending")
-      .map((c) => c.id)
-
-    console.log(`[v0] [TABLE] Found ${allContactIds.length} contacts with 'pending' or NULL status to verify`)
-
-    if (allContactIds.length > 0) {
-      verifyEmails(allContactIds)
-    }
   }
 
   useEffect(() => {
@@ -81,55 +69,6 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
       fetchContacts()
     }
   }, [companies])
-
-  const verifyEmails = async (contactIds: number[]) => {
-    setIsVerifying(true)
-    console.log(`[v0] [TABLE] Starting verification for ${contactIds.length} contacts`)
-
-    try {
-      const response = await fetch("/api/contacts/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds }),
-      })
-
-      if (response.ok) {
-        const { results } = await response.json()
-        console.log(`[v0] [TABLE] Verification complete. Results:`, results)
-
-        const contactsMap: Record<number, CompanyContact[]> = {}
-        await Promise.all(
-          companies.map(async (company) => {
-            try {
-              const response = await fetch(`/api/companies/${company.id}/contacts`)
-              if (response.ok) {
-                const contacts = await response.json()
-                console.log(`[v0] [TABLE] Refreshed contacts for "${company.name}": ${contacts.length} total`)
-                contactsMap[company.id] = contacts
-              }
-            } catch (error) {
-              console.error(`[v0] [TABLE] Failed to refresh contacts for company ${company.id}:`, error)
-            }
-          }),
-        )
-        setCompanyContacts(contactsMap)
-
-        toast({
-          title: "Email verification complete",
-          description: `Verified ${results.length} email addresses`,
-        })
-      }
-    } catch (error) {
-      console.error("[v0] [TABLE] Email verification failed:", error)
-      toast({
-        title: "Verification failed",
-        description: "Failed to verify email addresses",
-        variant: "destructive",
-      })
-    } finally {
-      setIsVerifying(false)
-    }
-  }
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -174,37 +113,6 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const allSelected = companies.length > 0 && selectedCompanies.length === companies.length
   const someSelected = selectedCompanies.length > 0 && selectedCompanies.length < companies.length
 
-  const renderVerificationBadge = (status?: string) => {
-    if (!status || status === "pending") {
-      return (
-        <Badge variant="outline" className="gap-1">
-          <Clock className="h-3 w-3" />
-          Pending
-        </Badge>
-      )
-    }
-
-    if (status === "verified") {
-      return (
-        <Badge variant="default" className="gap-1 bg-green-600">
-          <CheckCircle2 className="h-3 w-3" />
-          Verified
-        </Badge>
-      )
-    }
-
-    if (status === "unverified") {
-      return (
-        <Badge variant="secondary" className="gap-1">
-          <AlertCircle className="h-3 w-3" />
-          Unverified
-        </Badge>
-      )
-    }
-
-    return null
-  }
-
   return (
     <>
       {selectedCompanies.length > 0 && (
@@ -241,26 +149,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
               <TableHead>Industry</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Employees</TableHead>
-              <TableHead>
-                <div className="flex items-center gap-2">
-                  Contacts
-                  {isVerifying && <Clock className="h-4 w-4 animate-spin text-muted-foreground" />}
-                </div>
-              </TableHead>
+              <TableHead>Contacts</TableHead>
               <TableHead>Quality</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {companies.map((company) => {
-              const allContacts = companyContacts[company.id] || []
-              const contacts = allContacts.filter((c) => c.email_verification_status !== "invalid")
-
-              if (allContacts.length !== contacts.length) {
-                console.log(
-                  `[v0] [TABLE] Filtered out ${allContacts.length - contacts.length} invalid contacts for "${company.name}"`,
-                )
-              }
+              const contacts = companyContacts[company.id] || []
 
               return (
                 <TableRow key={company.id}>
@@ -346,7 +242,6 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                                 </Badge>
                               )}
                             </div>
-                            {renderVerificationBadge(contact.email_verification_status)}
                             <Button
                               variant="ghost"
                               size="sm"

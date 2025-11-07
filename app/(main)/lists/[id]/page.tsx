@@ -61,7 +61,7 @@ export default function ListDetailPage() {
       for (const company of companies) {
         const response = await fetch(`/api/companies/${company.id}/contacts`)
         const data = await response.json()
-        const validContacts = data.contacts?.filter((c: any) => c.email_verification_status !== "invalid") || []
+        const validContacts = data.contacts || []
         counts[company.id] = validContacts.length
       }
       setContactCounts(counts)

@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Building2, Mail, Briefcase, Linkedin, ExternalLink } from "lucide-react"
 
 interface Contact {
@@ -23,9 +24,35 @@ interface Contact {
 
 interface CampaignContactsTableProps {
   contacts: Contact[]
+  selectedContacts?: number[]
+  onSelectionChange?: (selected: number[]) => void
 }
 
-export function CampaignContactsTable({ contacts }: CampaignContactsTableProps) {
+export function CampaignContactsTable({
+  contacts,
+  selectedContacts = [],
+  onSelectionChange,
+}: CampaignContactsTableProps) {
+  const handleSelectContact = (contactId: number) => {
+    if (!onSelectionChange) return
+
+    if (selectedContacts.includes(contactId)) {
+      onSelectionChange(selectedContacts.filter((id) => id !== contactId))
+    } else {
+      onSelectionChange([...selectedContacts, contactId])
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (!onSelectionChange) return
+
+    if (selectedContacts.length === contacts.length) {
+      onSelectionChange([])
+    } else {
+      onSelectionChange(contacts.map((c) => c.id))
+    }
+  }
+
   if (contacts.length === 0) {
     return (
       <Card>
@@ -42,31 +69,56 @@ export function CampaignContactsTable({ contacts }: CampaignContactsTableProps) 
 
   return (
     <div className="space-y-4">
+      {onSelectionChange && contacts.length > 0 && (
+        <Card>
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={selectedContacts.length === contacts.length && contacts.length > 0}
+                onCheckedChange={handleSelectAll}
+              />
+              <span className="text-sm text-muted-foreground">
+                Select All ({selectedContacts.length} of {contacts.length} selected)
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {contacts.map((contact) => (
         <Card key={contact.id} className="hover:shadow-md transition-shadow">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  {contact.name}
-                  {contact.linkedin_url && (
-                    <a
-                      href={contact.linkedin_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-700"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Linkedin className="h-4 w-4" />
-                    </a>
-                  )}
-                </CardTitle>
-                {contact.job_title && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Briefcase className="h-3 w-3" />
-                    {contact.job_title}
-                  </div>
+              <div className="flex items-start gap-3 flex-1">
+                {onSelectionChange && (
+                  <Checkbox
+                    checked={selectedContacts.includes(contact.id)}
+                    onCheckedChange={() => handleSelectContact(contact.id)}
+                    className="mt-1"
+                  />
                 )}
+                <div className="space-y-1 flex-1">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    {contact.name}
+                    {contact.linkedin_url && (
+                      <a
+                        href={contact.linkedin_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-700"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Linkedin className="h-4 w-4" />
+                      </a>
+                    )}
+                  </CardTitle>
+                  {contact.job_title && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Briefcase className="h-3 w-3" />
+                      {contact.job_title}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2">
                 {contact.source && (

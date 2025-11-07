@@ -44,6 +44,18 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const listId = Number.parseInt(params.id)
     console.log("[v0] Deleting list:", listId)
 
+    // Check if list exists first
+    const listCheck = await sql`
+      SELECT id FROM company_lists WHERE id = ${listId}
+    `
+
+    if (listCheck.length === 0) {
+      console.log("[v0] List not found:", listId)
+      return NextResponse.json({ error: "List not found" }, { status: 404 })
+    }
+
+    // Delete list items first, then list (cascade should handle this, but being explicit)
+    await sql`DELETE FROM company_list_items WHERE list_id = ${listId}`
     await sql`DELETE FROM company_lists WHERE id = ${listId}`
 
     console.log("[v0] List deleted successfully")

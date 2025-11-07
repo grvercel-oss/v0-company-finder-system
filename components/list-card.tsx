@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { FolderOpen, Trash2 } from "lucide-react"
 import Link from "next/link"
+import { useToast } from "@/hooks/use-toast"
+import { useState } from "react"
 
 interface ListCardProps {
   list: {
@@ -17,19 +19,38 @@ interface ListCardProps {
 }
 
 export function ListCard({ list, onDelete }: ListCardProps) {
+  const { toast } = useToast()
+  const [isDeleting, setIsDeleting] = useState(false)
+
   const handleDelete = async () => {
     if (!confirm(`Are you sure you want to delete "${list.name}"?`)) return
 
+    setIsDeleting(true)
     try {
       const response = await fetch(`/api/lists/${list.id}`, {
         method: "DELETE",
       })
 
-      if (response.ok) {
-        onDelete?.(list.id)
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Failed to delete list")
       }
-    } catch (error) {
+
+      toast({
+        title: "List deleted",
+        description: `"${list.name}" has been deleted successfully.`,
+      })
+
+      onDelete?.(list.id)
+    } catch (error: any) {
       console.error("Failed to delete list:", error)
+      toast({
+        title: "Error deleting list",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -41,7 +62,7 @@ export function ListCard({ list, onDelete }: ListCardProps) {
             <FolderOpen className="h-5 w-5 text-primary" />
             <CardTitle className="text-lg">{list.name}</CardTitle>
           </div>
-          <Button variant="ghost" size="icon" onClick={handleDelete} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={handleDelete} className="h-8 w-8" disabled={isDeleting}>
             <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
           </Button>
         </div>

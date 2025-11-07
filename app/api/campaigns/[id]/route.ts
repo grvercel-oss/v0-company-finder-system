@@ -65,7 +65,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         company_industry: contact.company_industry,
         company_size: contact.company_size,
         created_at: contact.created_at,
-        status: contact.email_verification_status || "pending",
+        status: "pending", // Always set to pending so email generator can process them
+        subject: null,
+        body: null,
+        sent_at: null,
       }
     })
 

@@ -35,47 +35,72 @@ interface Contact {
 interface ContactsListProps {
   contacts: Contact[]
   onUpdate: () => void
+  campaignId?: string
 }
 
-export function ContactsList({ contacts, onUpdate }: ContactsListProps) {
+export function ContactsList({ contacts, onUpdate, campaignId }: ContactsListProps) {
   const [selectedContacts, setSelectedContacts] = useState<Set<number>>(new Set())
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this contact?")) return
+    if (!confirm("Are you sure you want to remove this contact from the campaign?")) return
 
     try {
-      const response = await fetch(`/api/contacts/${id}`, {
-        method: "DELETE",
-      })
+      if (campaignId) {
+        // Remove from campaign only (keeps contact in database)
+        const response = await fetch(`/api/campaigns/${campaignId}/contacts`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contactIds: [id] }),
+        })
 
-      if (!response.ok) throw new Error("Failed to delete contact")
+        if (!response.ok) throw new Error("Failed to remove contact from campaign")
+      } else {
+        // Fallback to deleting from database (for non-campaign contexts)
+        const response = await fetch(`/api/contacts/${id}`, {
+          method: "DELETE",
+        })
+
+        if (!response.ok) throw new Error("Failed to delete contact")
+      }
 
       onUpdate()
     } catch (error) {
       console.error("Delete error:", error)
-      alert("Failed to delete contact")
+      alert("Failed to remove contact")
     }
   }
 
   const handleBulkDelete = async () => {
     setIsDeleting(true)
     try {
-      const response = await fetch("/api/contacts/bulk-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactIds: Array.from(selectedContacts) }),
-      })
+      if (campaignId) {
+        // Remove from campaign only (keeps contacts in database)
+        const response = await fetch(`/api/campaigns/${campaignId}/contacts`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contactIds: Array.from(selectedContacts) }),
+        })
 
-      if (!response.ok) throw new Error("Failed to delete contacts")
+        if (!response.ok) throw new Error("Failed to remove contacts from campaign")
+      } else {
+        // Fallback to deleting from database (for non-campaign contexts)
+        const response = await fetch("/api/contacts/bulk-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contactIds: Array.from(selectedContacts) }),
+        })
+
+        if (!response.ok) throw new Error("Failed to delete contacts")
+      }
 
       setSelectedContacts(new Set())
       setShowBulkDeleteDialog(false)
       onUpdate()
     } catch (error) {
       console.error("Bulk delete error:", error)
-      alert("Failed to delete contacts")
+      alert("Failed to remove contacts")
     } finally {
       setIsDeleting(false)
     }
@@ -132,7 +157,7 @@ export function ContactsList({ contacts, onUpdate }: ContactsListProps) {
           </span>
           <Button variant="destructive" onClick={() => setShowBulkDeleteDialog(true)}>
             <Trash2 className="h-4 w-4 mr-2" />
-            Delete Selected
+            {campaignId ? "Remove from Campaign" : "Delete Selected"}
           </Button>
         </div>
       )}
@@ -202,10 +227,13 @@ export function ContactsList({ contacts, onUpdate }: ContactsListProps) {
       <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Selected Contacts</AlertDialogTitle>
+            <AlertDialogTitle>
+              {campaignId ? "Remove Contacts from Campaign" : "Delete Selected Contacts"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete {selectedContacts.size} contact{selectedContacts.size !== 1 ? "s" : ""}?
-              This action cannot be undone.
+              {campaignId
+                ? `Are you sure you want to remove ${selectedContacts.size} contact${selectedContacts.size !== 1 ? "s" : ""} from this campaign? The contacts will remain in your database.`
+                : `Are you sure you want to delete ${selectedContacts.size} contact${selectedContacts.size !== 1 ? "s" : ""}? This action cannot be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -215,7 +243,7 @@ export function ContactsList({ contacts, onUpdate }: ContactsListProps) {
               disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? (campaignId ? "Removing..." : "Deleting...") : campaignId ? "Remove" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

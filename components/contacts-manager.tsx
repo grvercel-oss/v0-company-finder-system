@@ -37,6 +37,14 @@ export function ContactsManager({ campaignId, contacts, onUpdate }: ContactsMana
   const sentContacts = contacts.filter((c) => c.status === "sent")
   const failedContacts = contacts.filter((c) => c.status === "failed")
 
+  console.log("[v0] ContactsManager - Total contacts:", contacts.length)
+  console.log("[v0] ContactsManager - Pending contacts:", pendingContacts.length)
+  console.log("[v0] ContactsManager - Generated contacts:", generatedContacts.length)
+  console.log(
+    "[v0] ContactsManager - Contact statuses:",
+    contacts.map((c) => ({ name: c.first_name, status: c.status })),
+  )
+
   return (
     <Card>
       <CardHeader>
@@ -54,7 +62,7 @@ export function ContactsManager({ campaignId, contacts, onUpdate }: ContactsMana
               <Upload className="h-4 w-4 mr-2" />
               Upload
             </TabsTrigger>
-            <TabsTrigger value="generate" disabled={pendingContacts.length === 0}>
+            <TabsTrigger value="generate" disabled={contacts.length === 0}>
               <Sparkles className="h-4 w-4 mr-2" />
               Generate ({pendingContacts.length})
             </TabsTrigger>
@@ -65,7 +73,7 @@ export function ContactsManager({ campaignId, contacts, onUpdate }: ContactsMana
           </TabsList>
 
           <TabsContent value="contacts" className="space-y-4">
-            <ContactsList contacts={contacts} onUpdate={onUpdate} />
+            <ContactsList contacts={contacts} onUpdate={onUpdate} campaignId={campaignId} />
           </TabsContent>
 
           <TabsContent value="upload" className="space-y-4">

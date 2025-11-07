@@ -8,20 +8,23 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const campaignId = Number.parseInt(id)
     const { contactIds } = await request.json()
 
+    console.log("[v0] Deleting contacts from campaign:", { campaignId, contactIds })
+
     if (!contactIds || !Array.isArray(contactIds)) {
       return Response.json({ error: "Contact IDs are required" }, { status: 400 })
     }
 
-    // Remove contacts from campaign
-    await sql`
+    const result = await sql`
       DELETE FROM campaign_contacts
       WHERE campaign_id = ${campaignId}
       AND contact_id = ANY(${contactIds})
     `
 
-    return Response.json({ success: true })
+    console.log("[v0] Removed contacts from campaign:", result)
+
+    return Response.json({ success: true, removed: contactIds.length })
   } catch (error) {
-    console.error("Error removing contacts from campaign:", error)
+    console.error("[v0] Error removing contacts from campaign:", error)
     return Response.json({ error: "Failed to remove contacts from campaign" }, { status: 500 })
   }
 }

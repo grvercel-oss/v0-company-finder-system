@@ -3,7 +3,19 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Calendar, Sparkles, AlertCircle, X } from "lucide-react"
+import {
+  Loader2,
+  Calendar,
+  Sparkles,
+  AlertCircle,
+  X,
+  TrendingUp,
+  Users,
+  DollarSign,
+  Globe,
+  Building2,
+  NewspaperIcon,
+} from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ResearchCategory {
@@ -67,6 +79,28 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
     }
   }, [open, companyId])
 
+  const extractMetrics = (research: CompanyResearchData) => {
+    const metrics = []
+
+    research.categories.forEach((cat) => {
+      if (cat.category.toLowerCase().includes("financial")) {
+        const fundingMatch = cat.content.match(/\$[\d.]+[MBK]/gi)
+        const valuationMatch = cat.content.match(/valued at \$[\d.]+[MBK]/gi)
+        if (fundingMatch) metrics.push({ icon: DollarSign, label: "Funding", value: fundingMatch[0] })
+        if (valuationMatch)
+          metrics.push({ icon: TrendingUp, label: "Valuation", value: valuationMatch[0].replace("valued at ", "") })
+      }
+      if (cat.category.toLowerCase().includes("industry") || cat.category.toLowerCase().includes("market")) {
+        const countryMatch = cat.content.match(/(\d+)\s+countries/i)
+        const userMatch = cat.content.match(/(\d+)\s+million/i)
+        if (countryMatch) metrics.push({ icon: Globe, label: "Countries", value: countryMatch[1] })
+        if (userMatch) metrics.push({ icon: Users, label: "Scale", value: `${userMatch[1]}M+` })
+      }
+    })
+
+    return metrics.slice(0, 4) // Max 4 metrics
+  }
+
   if (!open) return null
 
   return (
@@ -75,20 +109,24 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
       <div className="fixed inset-0 bg-black/50 z-50" onClick={() => onOpenChange(false)} />
 
       {/* Modal */}
-      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-4xl max-h-[80vh] bg-background border rounded-lg shadow-lg">
+      <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-6xl max-h-[85vh] bg-background border rounded-lg shadow-lg">
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-start justify-between p-6 border-b">
+          <div className="flex items-start justify-between p-6 border-b bg-muted/30">
             <div className="flex-1">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                Latest Research: {companyName}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                AI-powered research using Groq + Brave Search with the latest information about this company
-              </p>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10">
+                  <Building2 className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">{companyName}</h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    AI-powered research powered by Groq + Brave Search
+                  </p>
+                </div>
+              </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-6 w-6 p-0">
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-8 w-8 p-0">
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -124,56 +162,113 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
             )}
 
             {research && !loading && (
-              <ScrollArea className="h-full p-6">
-                <div className="space-y-6 pr-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    {cached ? "Cached research from" : "Fresh research from"}{" "}
-                    {fetchedAt && new Date(fetchedAt).toLocaleString()}
+              <ScrollArea className="h-full">
+                <div className="p-6 space-y-6">
+                  {/* Timestamp Badge */}
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="gap-2">
+                      <Calendar className="h-3 w-3" />
+                      {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
+                    </Badge>
                   </div>
 
-                  {research.summary && (
-                    <div className="rounded-lg bg-primary/5 p-4 border border-primary/20">
-                      <h3 className="font-semibold mb-2 flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        Executive Summary
-                      </h3>
-                      <p className="text-sm leading-relaxed">{research.summary}</p>
+                  {/* Key Metrics Dashboard */}
+                  {research && extractMetrics(research).length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3">KEY METRICS</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {extractMetrics(research).map((metric, idx) => {
+                          const Icon = metric.icon
+                          return (
+                            <div key={idx} className="rounded-lg border bg-card p-4 hover:shadow-md transition-shadow">
+                              <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                                <Icon className="h-4 w-4" />
+                                <span className="text-xs font-medium uppercase">{metric.label}</span>
+                              </div>
+                              <p className="text-2xl font-bold">{metric.value}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
 
+                  {/* Executive Summary */}
+                  {research.summary && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3">EXECUTIVE SUMMARY</h3>
+                      <div className="rounded-lg bg-gradient-to-br from-primary/10 via-primary/5 to-background p-6 border border-primary/20">
+                        <div className="flex gap-3">
+                          <Sparkles className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
+                          <p className="text-base leading-relaxed">{research.summary}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Detailed Research */}
                   {research.categories && research.categories.length > 0 && (
                     <div>
-                      <h3 className="font-semibold mb-3">Detailed Research</h3>
-                      <div className="space-y-4">
-                        {research.categories.map((category, index) => (
-                          <div key={index} className="rounded-lg border p-4 hover:bg-muted/50 transition-colors">
-                            <h4 className="font-medium text-base mb-3">{category.category}</h4>
-                            <p className="text-sm text-muted-foreground mb-3 leading-relaxed whitespace-pre-wrap">
-                              {category.content}
-                            </p>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3">DETAILED RESEARCH</h3>
+                      <div className="grid gap-4">
+                        {research.categories.map((category, index) => {
+                          let CategoryIcon = Building2
+                          if (category.category.toLowerCase().includes("financial")) CategoryIcon = DollarSign
+                          if (
+                            category.category.toLowerCase().includes("industry") ||
+                            category.category.toLowerCase().includes("market")
+                          )
+                            CategoryIcon = TrendingUp
+                          if (category.category.toLowerCase().includes("news")) CategoryIcon = NewspaperIcon
 
-                            {category.sources && category.sources.length > 0 && (
-                              <div className="pt-2 border-t">
-                                <p className="text-xs text-muted-foreground mb-2">Sources:</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {category.sources.map((source, idx) => (
-                                    <Badge key={idx} variant="secondary" className="text-xs">
-                                      {source}
-                                    </Badge>
-                                  ))}
+                          return (
+                            <div key={index} className="rounded-lg border bg-card p-6 hover:shadow-md transition-all">
+                              {/* Category Header */}
+                              <div className="flex items-center gap-3 mb-4 pb-3 border-b">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                  <CategoryIcon className="h-4 w-4 text-primary" />
                                 </div>
+                                <h4 className="font-semibold text-lg">{category.category}</h4>
                               </div>
-                            )}
-                          </div>
-                        ))}
+
+                              {/* Content */}
+                              <div className="prose prose-sm max-w-none">
+                                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                                  {category.content}
+                                </p>
+                              </div>
+
+                              {/* Sources */}
+                              {category.sources && category.sources.length > 0 && (
+                                <div className="mt-4 pt-4 border-t">
+                                  <p className="text-xs font-medium text-muted-foreground mb-2">SOURCES</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {category.sources.map((source, idx) => (
+                                      <a
+                                        key={idx}
+                                        href={source}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 transition-colors border"
+                                      >
+                                        {new URL(source).hostname.replace("www.", "")}
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}
 
                   {research.categories && research.categories.length === 0 && !research.summary && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <p>No research results found for this company.</p>
+                    <div className="text-center py-12 text-muted-foreground">
+                      <AlertCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p className="font-medium">No research results found</p>
+                      <p className="text-sm mt-1">Try generating new research for this company</p>
                     </div>
                   )}
                 </div>

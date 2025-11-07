@@ -11,8 +11,11 @@ interface BraveSearchResult {
 
 interface BraveWebResult {
   type: string
-  results: BraveSearchResult[]
-  query: {
+  web?: {
+    type: string
+    results: BraveSearchResult[]
+  }
+  query?: {
     original: string
   }
 }
@@ -211,9 +214,11 @@ async function searchBrave(query: string): Promise<BraveSearchResult[]> {
 
     const data = (await response.json()) as BraveWebResult
 
-    console.log("[v0] [BRAVE] Search completed for:", query, "- Found", data.results?.length || 0, "results")
+    const results = data.web?.results || []
 
-    return data.results || []
+    console.log("[v0] [BRAVE] Search completed for:", query, "- Found", results.length, "results")
+
+    return results
   } catch (error) {
     console.error("[v0] [BRAVE] Error searching:", error)
     return []

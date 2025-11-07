@@ -17,9 +17,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const contacts = await sql`
-      SELECT * FROM contacts 
-      WHERE campaign_id = ${id}
-      ORDER BY created_at DESC
+      SELECT 
+        cc.id,
+        cc.email,
+        cc.first_name,
+        cc.last_name,
+        cc.position as job_title,
+        c.name as company_name,
+        cc.linkedin,
+        cc.twitter,
+        cc.phone_number,
+        cc.source,
+        cc.hunter_confidence,
+        cc.email_verification_status,
+        cc.created_at,
+        'pending' as status,
+        '' as subject,
+        '' as body,
+        NULL as sent_at
+      FROM campaign_contacts camp_cont
+      JOIN company_contacts cc ON camp_cont.contact_id = cc.id
+      JOIN companies c ON cc.company_id = c.id
+      WHERE camp_cont.campaign_id = ${id}
+      ORDER BY camp_cont.created_at DESC
     `
 
     return NextResponse.json({

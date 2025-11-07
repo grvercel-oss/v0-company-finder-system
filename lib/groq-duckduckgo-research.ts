@@ -79,6 +79,18 @@ const QUERY_CATEGORIES: QueryCategory[] = [
 ]
 
 /**
+ * Strip markdown code blocks from JSON responses
+ */
+function extractJSON(content: string): string {
+  // Remove markdown code blocks if present
+  const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
+  if (jsonMatch) {
+    return jsonMatch[1].trim()
+  }
+  return content.trim()
+}
+
+/**
  * Generate search queries using Groq AI based on the company
  */
 async function generateSearchQueries(companyName: string): Promise<string[]> {
@@ -153,8 +165,8 @@ Return ONLY a JSON array of query strings, no explanation. Example format:
 
     console.log("[v0] [GROQ] Generated queries response:", content)
 
-    // Parse the JSON array from the response
-    const queries = JSON.parse(content) as string[]
+    const cleanContent = extractJSON(content)
+    const queries = JSON.parse(cleanContent) as string[]
 
     console.log("[v0] [GROQ] Generated", queries.length, "queries")
 
@@ -301,8 +313,8 @@ Focus on factual information from the search results. If information is limited,
 
     console.log("[v0] [GROQ] Analysis completed")
 
-    // Parse the JSON response
-    const analysis = JSON.parse(content)
+    const cleanContent = extractJSON(content)
+    const analysis = JSON.parse(cleanContent)
 
     return {
       companyName,

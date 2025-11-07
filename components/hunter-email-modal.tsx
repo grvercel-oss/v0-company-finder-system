@@ -205,6 +205,8 @@ export function HunterEmailModal({
   }
 
   const sendToCampaign = async (executive: Executive) => {
+    console.log("[v0] sendToCampaign called", { executive, selectedCampaign })
+
     if (!selectedCampaign) {
       toast({
         title: "No campaign selected",
@@ -218,6 +220,13 @@ export function HunterEmailModal({
     setSendingToCampaign(key)
 
     try {
+      console.log("[v0] Sending request to add-to-campaign API", {
+        campaignId: Number.parseInt(selectedCampaign),
+        email: executive.value,
+        firstName: executive.first_name,
+        lastName: executive.last_name,
+      })
+
       const response = await fetch("/api/hunter/add-to-campaign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -236,10 +245,16 @@ export function HunterEmailModal({
         }),
       })
 
+      console.log("[v0] Response status:", response.status)
+
       if (!response.ok) {
         const error = await response.json()
+        console.error("[v0] Error response:", error)
         throw new Error(error.error || "Failed to add to campaign")
       }
+
+      const data = await response.json()
+      console.log("[v0] Success response:", data)
 
       const campaignName = campaigns.find((c) => c.id === Number.parseInt(selectedCampaign))?.name
 
@@ -248,6 +263,7 @@ export function HunterEmailModal({
         description: `${executive.first_name} ${executive.last_name} added to "${campaignName}"`,
       })
     } catch (error: any) {
+      console.error("[v0] Error in sendToCampaign:", error)
       toast({
         title: "Failed to add to campaign",
         description: error.message,
@@ -259,6 +275,12 @@ export function HunterEmailModal({
   }
 
   const sendSelectedToCampaign = async () => {
+    console.log("[v0] sendSelectedToCampaign called", {
+      selectedCampaign,
+      selectedEmailsCount: selectedEmails.size,
+      selectedEmails: Array.from(selectedEmails),
+    })
+
     if (!selectedCampaign) {
       toast({
         title: "No campaign selected",
@@ -278,12 +300,15 @@ export function HunterEmailModal({
     }
 
     const selectedExecs = executives.filter((exec) => selectedEmails.has(exec.value))
+    console.log("[v0] Found executives to send:", selectedExecs.length)
 
     let successCount = 0
     let errorCount = 0
 
     for (const exec of selectedExecs) {
       try {
+        console.log("[v0] Sending exec to campaign:", exec.first_name, exec.last_name)
+
         const response = await fetch("/api/hunter/add-to-campaign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -304,15 +329,21 @@ export function HunterEmailModal({
 
         if (response.ok) {
           successCount++
+          console.log("[v0] Successfully added:", exec.first_name, exec.last_name)
         } else {
           errorCount++
+          const error = await response.json()
+          console.error("[v0] Failed to add:", exec.first_name, exec.last_name, error)
         }
       } catch (error) {
         errorCount++
+        console.error("[v0] Exception adding:", exec.first_name, exec.last_name, error)
       }
     }
 
     const campaignName = campaigns.find((c) => c.id === Number.parseInt(selectedCampaign))?.name
+
+    console.log("[v0] Bulk send complete:", { successCount, errorCount })
 
     toast({
       title: "Contacts added to campaign",

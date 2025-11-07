@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { CompanyCard } from "@/components/company-card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, Trash2, Rocket } from "lucide-react"
+import { ArrowLeft, Rocket, Trash2 } from "lucide-react"
 import Link from "next/link"
 import type { Company } from "@/lib/db"
+import { useToast } from "@/hooks/use-toast"
+import { SearchResultsTable } from "@/components/search-results-table"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +19,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useToast } from "@/hooks/use-toast"
 
 interface ListDetails {
   id: number
@@ -36,10 +36,11 @@ export default function ListDetailPage() {
 
   const [list, setList] = useState<ListDetails | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
-  const [contactCounts, setContactCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
-  const [companyToDelete, setCompanyToDelete] = useState<number | null>(null)
   const [creatingCampaign, setCreatingCampaign] = useState(false)
+  const [selectedCompanies, setSelectedCompanies] = useState<number[]>([])
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [contactCounts, setContactCounts] = useState<Record<number, number>>({})
 
   const fetchListDetails = async () => {
     try {
@@ -54,44 +55,18 @@ export default function ListDetailPage() {
     }
   }
 
-  const fetchCompanies = async () => {
-    try {
-      const response = await fetch(`/api/lists/${listId}/companies`)
-      const data = await response.json()
-      setCompanies(data.companies || [])
-    } catch (error) {
-      console.error("Failed to fetch companies:", error)
-    }
-  }
-
   const fetchContactCounts = async () => {
     try {
       const counts: Record<number, number> = {}
       for (const company of companies) {
         const response = await fetch(`/api/companies/${company.id}/contacts`)
         const data = await response.json()
-        counts[company.id] = data.contacts?.length || 0
+        const validContacts = data.contacts?.filter((c: any) => c.email_verification_status !== "invalid") || []
+        counts[company.id] = validContacts.length
       }
       setContactCounts(counts)
     } catch (error) {
       console.error("Failed to fetch contact counts:", error)
-    }
-  }
-
-  const handleRemoveCompany = async (companyId: number) => {
-    try {
-      const response = await fetch(`/api/lists/${listId}/companies?companyId=${companyId}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        setCompanies((prev) => prev.filter((c) => c.id !== companyId))
-        setList((prev) => (prev ? { ...prev, company_count: prev.company_count - 1 } : null))
-      }
-    } catch (error) {
-      console.error("Failed to remove company:", error)
-    } finally {
-      setCompanyToDelete(null)
     }
   }
 
@@ -154,13 +129,36 @@ export default function ListDetailPage() {
     }
   }
 
-  useEffect(() => {
-    const fetchDetails = async () => {
-      await fetchListDetails()
-      await fetchCompanies()
-    }
+  const handleBulkDelete = async () => {
+    try {
+      await Promise.all(
+        selectedCompanies.map((companyId) =>
+          fetch(`/api/lists/${listId}/companies?companyId=${companyId}`, {
+            method: "DELETE",
+          }),
+        ),
+      )
 
-    fetchDetails()
+      toast({
+        title: "Companies removed",
+        description: `Removed ${selectedCompanies.length} companies from list`,
+      })
+
+      setCompanies((prev) => prev.filter((c) => !selectedCompanies.includes(c.id)))
+      setSelectedCompanies([])
+      setShowDeleteDialog(false)
+    } catch (error) {
+      console.error("Failed to remove companies:", error)
+      toast({
+        title: "Failed to remove companies",
+        description: "An error occurred while removing companies",
+        variant: "destructive",
+      })
+    }
+  }
+
+  useEffect(() => {
+    fetchListDetails()
   }, [listId])
 
   useEffect(() => {
@@ -174,11 +172,7 @@ export default function ListDetailPage() {
       <div className="container mx-auto py-8 px-4">
         <Skeleton className="h-8 w-64 mb-4" />
         <Skeleton className="h-4 w-96 mb-8" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-64" />
-          ))}
-        </div>
+        <Skeleton className="h-96 w-full" />
       </div>
     )
   }
@@ -212,12 +206,20 @@ export default function ListDetailPage() {
             {Object.values(contactCounts).reduce((sum, count) => sum + count, 0)} contacts
           </p>
         </div>
-        {companies.length > 0 && (
-          <Button onClick={handleCreateCampaign} disabled={creatingCampaign} size="lg" className="gap-2">
-            <Rocket className="h-5 w-5" />
-            {creatingCampaign ? "Creating Campaign..." : "Create Campaign"}
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {selectedCompanies.length > 0 && (
+            <Button variant="destructive" onClick={() => setShowDeleteDialog(true)} className="gap-2">
+              <Trash2 className="h-4 w-4" />
+              Remove Selected ({selectedCompanies.length})
+            </Button>
+          )}
+          {companies.length > 0 && (
+            <Button onClick={handleCreateCampaign} disabled={creatingCampaign} size="lg" className="gap-2">
+              <Rocket className="h-5 w-5" />
+              {creatingCampaign ? "Creating Campaign..." : "Create Campaign"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {companies.length === 0 ? (
@@ -228,41 +230,24 @@ export default function ListDetailPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {companies.map((company) => (
-            <div key={company.id} className="relative">
-              <CompanyCard company={company} />
-              {contactCounts[company.id] > 0 && (
-                <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                  {contactCounts[company.id]} {contactCounts[company.id] === 1 ? "contact" : "contacts"}
-                </div>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 h-8 w-8 bg-background/80 backdrop-blur-sm"
-                onClick={() => setCompanyToDelete(company.id)}
-              >
-                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-              </Button>
-            </div>
-          ))}
-        </div>
+        <SearchResultsTable
+          companies={companies}
+          selectedCompanies={selectedCompanies}
+          onSelectionChange={setSelectedCompanies}
+        />
       )}
 
-      <AlertDialog open={companyToDelete !== null} onOpenChange={() => setCompanyToDelete(null)}>
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove company from list?</AlertDialogTitle>
+            <AlertDialogTitle>Remove {selectedCompanies.length} companies from list?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the company from this list. The company data will not be deleted.
+              This will remove the selected companies from this list. The company data will not be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => companyToDelete && handleRemoveCompany(companyToDelete)}>
-              Remove
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleBulkDelete}>Remove</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

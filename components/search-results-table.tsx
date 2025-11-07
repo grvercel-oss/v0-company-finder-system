@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, AlertCircle, Clock } from "lucide-react"
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
+import { HunterEmailModal } from "./hunter-email-modal"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -34,6 +35,8 @@ interface CompanyContact {
 export function SearchResultsTable({ companies, selectedCompanies, onSelectionChange }: SearchResultsTableProps) {
   const [researchModalOpen, setResearchModalOpen] = useState(false)
   const [selectedCompanyForResearch, setSelectedCompanyForResearch] = useState<Company | null>(null)
+  const [hunterModalOpen, setHunterModalOpen] = useState(false)
+  const [selectedCompanyForHunter, setSelectedCompanyForHunter] = useState<Company | null>(null)
   const [companyContacts, setCompanyContacts] = useState<Record<number, CompanyContact[]>>({})
   const [isVerifying, setIsVerifying] = useState(false)
   const { toast } = useToast()
@@ -155,6 +158,11 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const handleGetMoreInfo = (company: Company) => {
     setSelectedCompanyForResearch(company)
     setResearchModalOpen(true)
+  }
+
+  const handleHunterSearch = (company: Company) => {
+    setSelectedCompanyForHunter(company)
+    setHunterModalOpen(true)
   }
 
   const copyEmail = (email: string) => {
@@ -351,6 +359,15 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                           </a>
                         </Button>
                       )}
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleHunterSearch(company)}
+                        className="bg-orange-500 hover:bg-orange-600 text-white"
+                      >
+                        <Mail className="h-4 w-4 mr-1" />
+                        Get email from Hunter.io
+                      </Button>
                       <Button variant="default" size="sm" onClick={() => handleGetMoreInfo(company)}>
                         Get more info
                       </Button>
@@ -369,6 +386,15 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
           companyName={selectedCompanyForResearch.name}
           open={researchModalOpen}
           onOpenChange={setResearchModalOpen}
+        />
+      )}
+
+      {selectedCompanyForHunter && (
+        <HunterEmailModal
+          companyName={selectedCompanyForHunter.name}
+          domain={selectedCompanyForHunter.website?.replace(/^https?:\/\//i, "").split("/")[0] || ""}
+          open={hunterModalOpen}
+          onOpenChange={setHunterModalOpen}
         />
       )}
     </>

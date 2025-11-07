@@ -69,73 +69,8 @@ export function HunterEmailModal({
   const [selectedCampaign, setSelectedCampaign] = useState<string>("")
   const [sendingToCampaign, setSendingToCampaign] = useState<string | null>(null)
   const [savedContacts, setSavedContacts] = useState<Set<string>>(new Set())
+  const [initialized, setInitialized] = useState(false)
   const { toast } = useToast()
-
-  const fetchCampaigns = async () => {
-    try {
-      const response = await fetch("/api/campaigns")
-      if (response.ok) {
-        const data = await response.json()
-        setCampaigns(data.campaigns || [])
-      }
-    } catch (error) {
-      console.error("[v0] Failed to fetch campaigns:", error)
-    }
-  }
-
-  const fetchSavedContacts = async () => {
-    try {
-      const response = await fetch(`/api/companies/${companyId}/contacts`)
-      if (response.ok) {
-        const data = await response.json()
-        const savedEmails = new Set(data.contacts.map((c: any) => c.email.toLowerCase()))
-        setSavedContacts(savedEmails)
-        console.log("[v0] Loaded saved contacts:", savedEmails.size)
-      }
-    } catch (error) {
-      console.error("[v0] Failed to fetch saved contacts:", error)
-    }
-  }
-
-  const searchExecutives = async () => {
-    setLoading(true)
-    try {
-      const response = await fetch("/api/hunter/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain, companyName }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to search")
-      }
-
-      const data = await response.json()
-      setExecutives(data.executives)
-      setTotalFound(data.totalFound)
-
-      if (data.executivesFound === 0) {
-        toast({
-          title: "No executives found",
-          description: `Found ${data.totalFound} total emails, but no executive positions were identified.`,
-        })
-      } else {
-        toast({
-          title: "Executives found",
-          description: `Found ${data.executivesFound} executive contacts at ${companyName}`,
-        })
-      }
-    } catch (error: any) {
-      toast({
-        title: "Search failed",
-        description: error.message,
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const revealEmail = async (executive: Executive) => {
     const key = `${executive.first_name}-${executive.last_name}`
@@ -327,20 +262,102 @@ export function HunterEmailModal({
   }
 
   useEffect(() => {
-    if (open) {
-      console.log("[v0] Opening Hunter.io modal for company:", companyId, companyName)
-      setExecutives([])
-      setRevealedEmails(new Set())
-      setSelectedEmails(new Set())
-      setSavedContacts(new Set())
-      setTotalFound(0)
-      setSelectedCampaign("")
-
-      searchExecutives()
-      fetchCampaigns()
-      fetchSavedContacts()
+    if (!open) {
+      setInitialized(false)
+      return
     }
-  }, [open, companyId])
+
+    console.log("[v0] Opening Hunter.io modal for company:", companyId, companyName)
+
+    // Reset state synchronously
+    setExecutives([])
+    setRevealedEmails(new Set())
+    setSelectedEmails(new Set())
+    setSavedContacts(new Set())
+    setTotalFound(0)
+    setSelectedCampaign("")
+    setLoading(false)
+
+    // Trigger initialization
+    setInitialized(true)
+  }, [open, companyId, companyName])
+
+  useEffect(() => {
+    if (!initialized || !open) return
+
+    let cancelled = false
+    setLoading(true)
+
+    const loadData = async () => {
+      try {
+        // Fetch campaigns
+        const campaignsRes = await fetch("/api/campaigns")
+        if (!cancelled && campaignsRes.ok) {
+          const campaignsData = await campaignsRes.json()
+          setCampaigns(campaignsData.campaigns || [])
+        }
+
+        // Fetch saved contacts
+        const contactsRes = await fetch(`/api/companies/${companyId}/contacts`)
+        if (!cancelled && contactsRes.ok) {
+          const contactsData = await contactsRes.json()
+          const savedEmails = new Set(contactsData.contacts.map((c: any) => c.email.toLowerCase()))
+          setSavedContacts(savedEmails)
+        }
+
+        // Search executives
+        const searchRes = await fetch("/api/hunter/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain, companyName }),
+        })
+
+        if (!cancelled && searchRes.ok) {
+          const searchData = await searchRes.json()
+          setExecutives(searchData.executives)
+          setTotalFound(searchData.totalFound)
+
+          if (searchData.executivesFound === 0) {
+            toast({
+              title: "No executives found",
+              description: `Found ${searchData.totalFound} total emails, but no executive positions were identified.`,
+            })
+          } else {
+            toast({
+              title: "Executives found",
+              description: `Found ${searchData.executivesFound} executive contacts at ${companyName}`,
+            })
+          }
+        } else if (!cancelled && !searchRes.ok) {
+          const error = await searchRes.json()
+          toast({
+            title: "Search failed",
+            description: error.error || "Failed to search",
+            variant: "destructive",
+          })
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          console.error("[v0] Error loading Hunter data:", error)
+          toast({
+            title: "Error",
+            description: "Failed to load data",
+            variant: "destructive",
+          })
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [initialized, open, companyId, domain, companyName, toast])
 
   if (!open) return null
 

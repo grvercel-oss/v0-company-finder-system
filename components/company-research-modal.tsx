@@ -15,6 +15,11 @@ import {
   Globe,
   Building2,
   NewspaperIcon,
+  FileText,
+  CheckCircle,
+  ExternalLink,
+  Shield,
+  UserCheck,
 } from "lucide-react"
 
 interface ResearchCategory {
@@ -23,11 +28,26 @@ interface ResearchCategory {
   sources: string[]
 }
 
+interface CorporateRegistryData {
+  company_name: string
+  registry_name: string
+  registry_url: string
+  registration_id: string
+  date_of_incorporation: string
+  status: string
+  directors: string[]
+  major_shareholders: string[]
+  financials_summary: string
+  source_url: string
+  country: string
+}
+
 interface CompanyResearchData {
   companyName: string
   summary: string
   categories: ResearchCategory[]
   generatedAt: string
+  registryData?: CorporateRegistryData | null
 }
 
 interface CompanyResearchModalProps {
@@ -169,6 +189,135 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                     {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
                   </Badge>
                 </div>
+
+                {/* Corporate Registry Section */}
+                {research.registryData && (
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-3">CORPORATE REGISTRY</h3>
+                    <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-background p-6">
+                      <div className="grid md:grid-cols-2 gap-6">
+                        {/* Left Column - Company Details */}
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 pb-3 border-b">
+                            <div className="p-2 rounded-lg bg-primary/10">
+                              <Shield className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-lg">{research.registryData.company_name}</h4>
+                              <p className="text-xs text-muted-foreground">{research.registryData.registry_name}</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            {research.registryData.registration_id !== "Not available" && (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Registration ID</p>
+                                <p className="text-sm font-mono bg-muted px-3 py-2 rounded">
+                                  {research.registryData.registration_id}
+                                </p>
+                              </div>
+                            )}
+
+                            {research.registryData.date_of_incorporation !== "Not available" && (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Date of Incorporation</p>
+                                <p className="text-sm font-medium">{research.registryData.date_of_incorporation}</p>
+                              </div>
+                            )}
+
+                            {research.registryData.status !== "Not available" && (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-1">Status</p>
+                                <Badge
+                                  variant={
+                                    research.registryData.status.toLowerCase().includes("active")
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                  className="gap-1"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                  {research.registryData.status}
+                                </Badge>
+                              </div>
+                            )}
+
+                            <div className="flex gap-2 pt-2">
+                              <Button variant="outline" size="sm" asChild className="text-xs bg-transparent">
+                                <a href={research.registryData.registry_url} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-3 w-3 mr-1" />
+                                  View Registry
+                                </a>
+                              </Button>
+                              {research.registryData.source_url !== "Not available" && (
+                                <Button variant="outline" size="sm" asChild className="text-xs bg-transparent">
+                                  <a href={research.registryData.source_url} target="_blank" rel="noopener noreferrer">
+                                    <FileText className="h-3 w-3 mr-1" />
+                                    Source
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Right Column - Directors & Shareholders */}
+                        <div className="space-y-4">
+                          {research.registryData.directors && research.registryData.directors.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <UserCheck className="h-4 w-4 text-primary" />
+                                <p className="text-xs font-medium text-muted-foreground">DIRECTORS / OFFICERS</p>
+                              </div>
+                              <div className="space-y-2">
+                                {research.registryData.directors.slice(0, 5).map((director, idx) => (
+                                  <div key={idx} className="text-sm bg-muted/50 px-3 py-2 rounded border">
+                                    {director}
+                                  </div>
+                                ))}
+                                {research.registryData.directors.length > 5 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    +{research.registryData.directors.length - 5} more
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {research.registryData.major_shareholders &&
+                            research.registryData.major_shareholders.length > 0 && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Users className="h-4 w-4 text-primary" />
+                                  <p className="text-xs font-medium text-muted-foreground">MAJOR SHAREHOLDERS</p>
+                                </div>
+                                <div className="space-y-2">
+                                  {research.registryData.major_shareholders.slice(0, 5).map((shareholder, idx) => (
+                                    <div key={idx} className="text-sm bg-muted/50 px-3 py-2 rounded border">
+                                      {shareholder}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                          {research.registryData.financials_summary &&
+                            research.registryData.financials_summary !== "Not publicly available" && (
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <DollarSign className="h-4 w-4 text-primary" />
+                                  <p className="text-xs font-medium text-muted-foreground">FINANCIAL FILINGS</p>
+                                </div>
+                                <p className="text-sm text-muted-foreground leading-relaxed">
+                                  {research.registryData.financials_summary}
+                                </p>
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Key Metrics Dashboard */}
                 {research && extractMetrics(research).length > 0 && (

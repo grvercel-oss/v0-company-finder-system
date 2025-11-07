@@ -34,12 +34,21 @@ interface Executive {
 
 interface HunterEmailModalProps {
   companyName: string
+  companyId: number
   domain: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  onContactSaved?: () => void
 }
 
-export function HunterEmailModal({ companyName, domain, open, onOpenChange }: HunterEmailModalProps) {
+export function HunterEmailModal({
+  companyName,
+  companyId,
+  domain,
+  open,
+  onOpenChange,
+  onContactSaved,
+}: HunterEmailModalProps) {
   const [executives, setExecutives] = useState<Executive[]>([])
   const [loading, setLoading] = useState(false)
   const [revealedEmails, setRevealedEmails] = useState<Set<string>>(new Set())
@@ -99,6 +108,8 @@ export function HunterEmailModal({ companyName, domain, open, onOpenChange }: Hu
           domain,
           firstName: executive.first_name,
           lastName: executive.last_name,
+          companyId,
+          companyName,
         }),
       })
 
@@ -110,7 +121,6 @@ export function HunterEmailModal({ companyName, domain, open, onOpenChange }: Hu
       const data = await response.json()
       setRevealedEmails((prev) => new Set([...prev, key]))
 
-      // Update the executive with revealed email
       setExecutives((prev) =>
         prev.map((exec) =>
           exec.first_name === executive.first_name && exec.last_name === executive.last_name
@@ -120,9 +130,11 @@ export function HunterEmailModal({ companyName, domain, open, onOpenChange }: Hu
       )
 
       toast({
-        title: "Email revealed",
-        description: `Email address for ${executive.first_name} ${executive.last_name} has been revealed (1 credit used)`,
+        title: "Email revealed & saved",
+        description: `${executive.first_name} ${executive.last_name}'s email has been saved to ${companyName}'s contacts`,
       })
+
+      onContactSaved?.()
     } catch (error: any) {
       toast({
         title: "Failed to reveal email",
@@ -142,7 +154,6 @@ export function HunterEmailModal({ companyName, domain, open, onOpenChange }: Hu
     })
   }
 
-  // Auto-search when modal opens
   useState(() => {
     if (open && executives.length === 0) {
       searchExecutives()

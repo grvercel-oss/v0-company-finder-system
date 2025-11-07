@@ -41,50 +41,41 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const [isVerifying, setIsVerifying] = useState(false)
   const { toast } = useToast()
 
-  useEffect(() => {
-    const fetchContacts = async () => {
-      console.log(`[v0] [TABLE] Fetching contacts for ${companies.length} companies`)
-      const contactsMap: Record<number, CompanyContact[]> = {}
+  const fetchContacts = async (companyIds?: number[]) => {
+    const companiesToFetch = companyIds ? companies.filter((c) => companyIds.includes(c.id)) : companies
+    console.log(`[v0] [TABLE] Fetching contacts for ${companiesToFetch.length} companies`)
+    const contactsMap: Record<number, CompanyContact[]> = { ...companyContacts }
 
-      await Promise.all(
-        companies.map(async (company) => {
-          try {
-            const response = await fetch(`/api/companies/${company.id}/contacts`)
-            if (response.ok) {
-              const contacts = await response.json()
-              console.log(`[v0] [TABLE] Company "${company.name}" has ${contacts.length} contacts`)
-              console.log(
-                `[v0] [TABLE] Contact statuses for "${company.name}":`,
-                contacts.map((c: CompanyContact) => ({
-                  name: c.name,
-                  email: c.email,
-                  status: c.email_verification_status,
-                })),
-              )
-              contactsMap[company.id] = contacts
-            }
-          } catch (error) {
-            console.error(`[v0] [TABLE] Failed to fetch contacts for company ${company.id}:`, error)
+    await Promise.all(
+      companiesToFetch.map(async (company) => {
+        try {
+          const response = await fetch(`/api/companies/${company.id}/contacts`)
+          if (response.ok) {
+            const contacts = await response.json()
+            console.log(`[v0] [TABLE] Company "${company.name}" has ${contacts.length} contacts`)
+            contactsMap[company.id] = contacts
           }
-        }),
-      )
+        } catch (error) {
+          console.error(`[v0] [TABLE] Failed to fetch contacts for company ${company.id}:`, error)
+        }
+      }),
+    )
 
-      setCompanyContacts(contactsMap)
+    setCompanyContacts(contactsMap)
 
-      const allContactIds = Object.values(contactsMap)
-        .flat()
-        .filter((c) => !c.email_verification_status || c.email_verification_status === "pending")
-        .map((c) => c.id)
+    const allContactIds = Object.values(contactsMap)
+      .flat()
+      .filter((c) => !c.email_verification_status || c.email_verification_status === "pending")
+      .map((c) => c.id)
 
-      console.log(`[v0] [TABLE] Found ${allContactIds.length} contacts with 'pending' or NULL status to verify`)
+    console.log(`[v0] [TABLE] Found ${allContactIds.length} contacts with 'pending' or NULL status to verify`)
 
-      if (allContactIds.length > 0) {
-        verifyEmails(allContactIds)
-      } else {
-        console.log(`[v0] [TABLE] No pending contacts to verify. All contacts are already processed.`)
-      }
+    if (allContactIds.length > 0) {
+      verifyEmails(allContactIds)
     }
+  }
 
+  useEffect(() => {
     if (companies.length > 0) {
       fetchContacts()
     }
@@ -158,6 +149,12 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
   const handleGetMoreInfo = (company: Company) => {
     setSelectedCompanyForResearch(company)
     setResearchModalOpen(true)
+  }
+
+  const handleHunterContactSaved = async () => {
+    if (selectedCompanyForHunter) {
+      await fetchContacts([selectedCompanyForHunter.id])
+    }
   }
 
   const handleHunterSearch = (company: Company) => {
@@ -321,6 +318,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                             <div className="flex-1 min-w-0">
                               <div className="font-medium truncate">{contact.name}</div>
                               <div className="text-xs text-muted-foreground truncate">{contact.role}</div>
+                              {contact.source === "hunter.io" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4 border-orange-500/50 text-orange-600 mt-0.5"
+                                >
+                                  Hunter.io
+                                </Badge>
+                              )}
                             </div>
                             {renderVerificationBadge(contact.email_verification_status)}
                             <Button
@@ -392,9 +397,11 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
       {selectedCompanyForHunter && (
         <HunterEmailModal
           companyName={selectedCompanyForHunter.name}
+          companyId={selectedCompanyForHunter.id}
           domain={selectedCompanyForHunter.website?.replace(/^https?:\/\//i, "").split("/")[0] || ""}
           open={hunterModalOpen}
           onOpenChange={setHunterModalOpen}
+          onContactSaved={handleHunterContactSaved}
         />
       )}
     </>

@@ -68,43 +68,46 @@ export function HunterEmailModal({
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<string>("")
   const [sendingToCampaign, setSendingToCampaign] = useState<string | null>(null)
-  const [savedContacts, setSavedContacts] = useState<Set<string>>(new Set())
+  const [savedContactsMap, setSavedContactsMap] = useState<Map<string, any>>(new Map())
   const { toast } = useToast()
 
   useEffect(() => {
     if (!open) return
 
-    // Reset all state when opening for a new company
     setExecutives([])
     setRevealedEmails(new Set())
     setSelectedEmails(new Set())
-    setSavedContacts(new Set())
+    setSavedContactsMap(new Map())
     setTotalFound(0)
     setSelectedCampaign("")
     setLoading(true)
 
-    // Load data immediately
     const controller = new AbortController()
 
     Promise.all([
-      // Fetch campaigns
       fetch("/api/campaigns", { signal: controller.signal })
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => data && setCampaigns(data.campaigns || []))
         .catch(() => {}),
 
-      // Fetch saved contacts
       fetch(`/api/companies/${companyId}/contacts`, { signal: controller.signal })
         .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data) {
-            const savedEmails = new Set(data.contacts.map((c: any) => c.email.toLowerCase()))
-            setSavedContacts(savedEmails)
+        .then((contacts) => {
+          if (contacts && Array.isArray(contacts)) {
+            const contactMap = new Map()
+            contacts.forEach((contact: any) => {
+              const firstName = contact.name?.split(" ")[0]?.toLowerCase()
+              const lastName = contact.name?.split(" ").slice(1).join(" ")?.toLowerCase()
+              if (firstName && lastName) {
+                const key = `${firstName}-${lastName}`
+                contactMap.set(key, contact)
+              }
+            })
+            setSavedContactsMap(contactMap)
           }
         })
         .catch(() => {}),
 
-      // Search executives
       fetch("/api/hunter/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -170,7 +173,11 @@ export function HunterEmailModal({
 
       const data = await response.json()
       setRevealedEmails((prev) => new Set([...prev, key]))
-      setSavedContacts((prev) => new Set([...prev, data.email.toLowerCase()]))
+      setSavedContactsMap((prev) => {
+        const newMap = new Map(prev)
+        newMap.set(key, data)
+        return newMap
+      })
 
       setExecutives((prev) =>
         prev.map((exec) =>
@@ -337,6 +344,16 @@ export function HunterEmailModal({
 
   if (!open) return null
 
+  const savedExecutives = executives.filter((exec) => {
+    const key = `${exec.first_name.toLowerCase()}-${exec.last_name.toLowerCase()}`
+    return savedContactsMap.has(key)
+  })
+
+  const unsavedExecutives = executives.filter((exec) => {
+    const key = `${exec.first_name.toLowerCase()}-${exec.last_name.toLowerCase()}`
+    return !savedContactsMap.has(key)
+  })
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
       <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
@@ -369,10 +386,13 @@ export function HunterEmailModal({
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   Found {executives.length} executive{executives.length !== 1 ? "s" : ""} at {domain}
+                  {savedExecutives.length > 0 && (
+                    <span className="text-green-600 ml-2">• {savedExecutives.length} already saved</span>
+                  )}
                 </p>
                 <Badge variant="outline" className="gap-1">
                   <TrendingUp className="h-3 w-3" />
@@ -411,157 +431,286 @@ export function HunterEmailModal({
                 </div>
               )}
 
-              <div className="grid gap-3">
-                {executives.map((exec) => {
-                  const key = `${exec.first_name}-${exec.last_name}`
-                  const isRevealed = revealedEmails.has(key)
-                  const isRevealing = revealingEmail === key
-                  const isSelected = selectedEmails.has(exec.value)
-                  const isSending = sendingToCampaign === key
-                  const isSaved = exec.value && savedContacts.has(exec.value.toLowerCase())
+              {savedExecutives.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-green-600" />
+                    <h3 className="font-semibold text-green-600">Already Saved ({savedExecutives.length})</h3>
+                    <p className="text-xs text-muted-foreground">No credits required</p>
+                  </div>
 
-                  return (
-                    <div key={key} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-start justify-between gap-4">
-                        {(isRevealed || isSaved) && (
-                          <div className="flex items-start pt-1">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleEmailSelection(exec.value)}
-                              className="border-orange-500 data-[state=checked]:bg-orange-500"
-                            />
-                          </div>
-                        )}
+                  <div className="grid gap-3">
+                    {savedExecutives.map((exec) => {
+                      const key = `${exec.first_name.toLowerCase()}-${exec.last_name.toLowerCase()}`
+                      const savedContact = savedContactsMap.get(key)
+                      const email = savedContact?.email || exec.value
+                      const isSelected = selectedEmails.has(email)
+                      const isSending = sendingToCampaign === key
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold">
-                              {exec.first_name} {exec.last_name}
-                            </h3>
-                            {exec.seniority === "executive" && (
-                              <Badge className="bg-orange-500 text-white">Executive</Badge>
-                            )}
-                            {exec.seniority === "senior" && <Badge variant="secondary">Senior</Badge>}
-                            {isSaved && (
-                              <Badge
-                                variant="outline"
-                                className="gap-1 bg-green-500/10 text-green-600 border-green-500/20"
-                              >
-                                <Database className="h-3 w-3" />
-                                Saved
-                              </Badge>
-                            )}
-                          </div>
-
-                          <p className="text-sm text-muted-foreground mb-2">{exec.position}</p>
-
-                          <div className="flex items-center gap-3 mb-3">
-                            {exec.department && (
-                              <Badge variant="outline" className="text-xs">
-                                {exec.department}
-                              </Badge>
-                            )}
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <TrendingUp className="h-3 w-3" />
-                              {exec.confidence}% confidence
+                      return (
+                        <div key={key} className="border border-green-500/20 bg-green-500/5 rounded-lg p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start pt-1">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleEmailSelection(email)}
+                                className="border-green-500 data-[state=checked]:bg-green-500"
+                              />
                             </div>
-                          </div>
 
-                          {isRevealed || isSaved ? (
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <code className="px-2 py-1 bg-muted rounded text-sm font-mono">{exec.value}</code>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => copyEmail(exec.value, `${exec.first_name} ${exec.last_name}`)}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold">
+                                  {exec.first_name} {exec.last_name}
+                                </h3>
+                                {exec.seniority === "executive" && (
+                                  <Badge className="bg-orange-500 text-white">Executive</Badge>
+                                )}
+                                {exec.seniority === "senior" && <Badge variant="secondary">Senior</Badge>}
+                                <Badge
+                                  variant="outline"
+                                  className="gap-1 bg-green-500/10 text-green-600 border-green-500/20"
                                 >
-                                  <Mail className="h-3 w-3 mr-1" />
-                                  Copy
-                                </Button>
-                                {exec.verification && (
-                                  <Badge
-                                    variant={
-                                      exec.verification.status === "valid"
-                                        ? "default"
-                                        : exec.verification.status === "invalid"
-                                          ? "destructive"
-                                          : "secondary"
-                                    }
-                                    className="gap-1"
-                                  >
-                                    {exec.verification.status === "valid" && <CheckCircle2 className="h-3 w-3" />}
-                                    {exec.verification.status === "invalid" && <AlertCircle className="h-3 w-3" />}
-                                    {exec.verification.status}
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Saved
+                                </Badge>
+                              </div>
+
+                              <p className="text-sm text-muted-foreground mb-2">{exec.position}</p>
+
+                              <div className="flex items-center gap-3 mb-3">
+                                {exec.department && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {exec.department}
                                   </Badge>
                                 )}
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <TrendingUp className="h-3 w-3" />
+                                  {exec.confidence}% confidence
+                                </div>
                               </div>
-                              {selectedCampaign && (
+
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <code className="px-2 py-1 bg-muted rounded text-sm font-mono">{email}</code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => copyEmail(email, `${exec.first_name} ${exec.last_name}`)}
+                                  >
+                                    <Mail className="h-3 w-3 mr-1" />
+                                    Copy
+                                  </Button>
+                                </div>
+                                {selectedCampaign && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => sendToCampaign({ ...exec, value: email })}
+                                    disabled={isSending}
+                                    className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                                  >
+                                    {isSending ? (
+                                      <>
+                                        <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                        Adding to campaign...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Rocket className="h-3 w-3 mr-2" />
+                                        Send to Campaign
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2 flex-shrink-0">
+                              {exec.linkedin && (
+                                <Button variant="ghost" size="icon" asChild>
+                                  <a href={exec.linkedin} target="_blank" rel="noopener noreferrer">
+                                    <Linkedin className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              )}
+                              {exec.twitter && (
+                                <Button variant="ghost" size="icon" asChild>
+                                  <a
+                                    href={`https://twitter.com/${exec.twitter}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <Twitter className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {unsavedExecutives.length > 0 && (
+                <div className="space-y-3">
+                  {savedExecutives.length > 0 && (
+                    <div className="flex items-center gap-2 pt-3 border-t">
+                      <Eye className="h-4 w-4 text-orange-500" />
+                      <h3 className="font-semibold text-orange-500">Need to Reveal ({unsavedExecutives.length})</h3>
+                      <p className="text-xs text-muted-foreground">1 credit per email</p>
+                    </div>
+                  )}
+
+                  <div className="grid gap-3">
+                    {unsavedExecutives.map((exec) => {
+                      const key = `${exec.first_name}-${exec.last_name}`
+                      const isRevealed = revealedEmails.has(key)
+                      const isRevealing = revealingEmail === key
+                      const isSelected = selectedEmails.has(exec.value)
+                      const isSending = sendingToCampaign === key
+
+                      return (
+                        <div key={key} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                          <div className="flex items-start justify-between gap-4">
+                            {isRevealed && (
+                              <div className="flex items-start pt-1">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => toggleEmailSelection(exec.value)}
+                                  className="border-orange-500 data-[state=checked]:bg-orange-500"
+                                />
+                              </div>
+                            )}
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold">
+                                  {exec.first_name} {exec.last_name}
+                                </h3>
+                                {exec.seniority === "executive" && (
+                                  <Badge className="bg-orange-500 text-white">Executive</Badge>
+                                )}
+                                {exec.seniority === "senior" && <Badge variant="secondary">Senior</Badge>}
+                              </div>
+
+                              <p className="text-sm text-muted-foreground mb-2">{exec.position}</p>
+
+                              <div className="flex items-center gap-3 mb-3">
+                                {exec.department && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {exec.department}
+                                  </Badge>
+                                )}
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <TrendingUp className="h-3 w-3" />
+                                  {exec.confidence}% confidence
+                                </div>
+                              </div>
+
+                              {isRevealed ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <code className="px-2 py-1 bg-muted rounded text-sm font-mono">{exec.value}</code>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => copyEmail(exec.value, `${exec.first_name} ${exec.last_name}`)}
+                                    >
+                                      <Mail className="h-3 w-3 mr-1" />
+                                      Copy
+                                    </Button>
+                                    {exec.verification && (
+                                      <Badge
+                                        variant={
+                                          exec.verification.status === "valid"
+                                            ? "default"
+                                            : exec.verification.status === "invalid"
+                                              ? "destructive"
+                                              : "secondary"
+                                        }
+                                        className="gap-1"
+                                      >
+                                        {exec.verification.status === "valid" && <CheckCircle2 className="h-3 w-3" />}
+                                        {exec.verification.status === "invalid" && <AlertCircle className="h-3 w-3" />}
+                                        {exec.verification.status}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {selectedCampaign && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => sendToCampaign(exec)}
+                                      disabled={isSending}
+                                      className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                                    >
+                                      {isSending ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                                          Adding to campaign...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Rocket className="h-3 w-3 mr-2" />
+                                          Send to Campaign
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : (
                                 <Button
-                                  variant="outline"
+                                  variant="default"
                                   size="sm"
-                                  onClick={() => sendToCampaign(exec)}
-                                  disabled={isSending}
-                                  className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                                  onClick={() => revealEmail(exec)}
+                                  disabled={isRevealing}
+                                  className="bg-orange-500 hover:bg-orange-600"
                                 >
-                                  {isSending ? (
+                                  {isRevealing ? (
                                     <>
                                       <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                                      Adding to campaign...
+                                      Revealing...
                                     </>
                                   ) : (
                                     <>
-                                      <Rocket className="h-3 w-3 mr-2" />
-                                      Send to Campaign
+                                      <Eye className="h-3 w-3 mr-2" />
+                                      Reveal Email (1 credit)
                                     </>
                                   )}
                                 </Button>
                               )}
                             </div>
-                          ) : (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => revealEmail(exec)}
-                              disabled={isRevealing}
-                              className="bg-orange-500 hover:bg-orange-600"
-                            >
-                              {isRevealing ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                                  Revealing...
-                                </>
-                              ) : (
-                                <>
-                                  <Eye className="h-3 w-3 mr-2" />
-                                  Reveal Email (1 credit)
-                                </>
-                              )}
-                            </Button>
-                          )}
-                        </div>
 
-                        <div className="flex gap-2 flex-shrink-0">
-                          {exec.linkedin && (
-                            <Button variant="ghost" size="icon" asChild>
-                              <a href={exec.linkedin} target="_blank" rel="noopener noreferrer">
-                                <Linkedin className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          )}
-                          {exec.twitter && (
-                            <Button variant="ghost" size="icon" asChild>
-                              <a href={`https://twitter.com/${exec.twitter}`} target="_blank" rel="noopener noreferrer">
-                                <Twitter className="h-4 w-4" />
-                              </a>
-                            </Button>
-                          )}
+                            <div className="flex gap-2 flex-shrink-0">
+                              {exec.linkedin && (
+                                <Button variant="ghost" size="icon" asChild>
+                                  <a href={exec.linkedin} target="_blank" rel="noopener noreferrer">
+                                    <Linkedin className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              )}
+                              {exec.twitter && (
+                                <Button variant="ghost" size="icon" asChild>
+                                  <a
+                                    href={`https://twitter.com/${exec.twitter}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <Twitter className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

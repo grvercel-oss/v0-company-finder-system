@@ -260,11 +260,11 @@ export default function SearchPage() {
     return (
       <div className="min-h-screen bg-background">
         <div className="border-b bg-card">
-          <div className="container mx-auto px-4 py-8">
-            <div className="max-w-4xl mx-auto space-y-6">
+          <div className="px-8 py-8">
+            <div className="max-w-5xl space-y-6">
               <div>
-                <h1 className="text-4xl font-bold tracking-tight mb-2">Company Finder</h1>
-                <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
+                <h1 className="text-3xl font-bold tracking-tight mb-2">Search Companies</h1>
+                <p className="text-muted-foreground">AI-powered company search and intelligence platform</p>
               </div>
               <div className="animate-pulse">
                 <div className="h-12 bg-muted rounded-lg" />
@@ -278,12 +278,12 @@ export default function SearchPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-4 py-8">
-          <div className="max-w-4xl mx-auto space-y-6">
+      <div className="border-b bg-card shadow-sm">
+        <div className="px-8 py-8">
+          <div className="max-w-5xl space-y-6">
             <div>
-              <h1 className="text-4xl font-bold tracking-tight mb-2">Company Finder</h1>
-              <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
+              <h1 className="text-3xl font-bold tracking-tight mb-2">Search Companies</h1>
+              <p className="text-muted-foreground">Find and analyze companies using AI-powered search</p>
             </div>
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
 
@@ -320,10 +320,10 @@ export default function SearchPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="px-8 py-8">
         {previousSearch && !isLoading && (
-          <div className="max-w-4xl mx-auto mb-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-4 py-3 rounded-lg border">
+          <div className="max-w-5xl mb-6">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-accent/10 px-4 py-3 rounded-lg border border-accent/20">
               <Clock className="h-4 w-4" />
               <span>
                 Showing results from previous search:{" "}
@@ -337,17 +337,17 @@ export default function SearchPage() {
         )}
 
         {(isLoading || totalCost > 0) && (
-          <div className="max-w-4xl mx-auto mb-6">
-            <div className="bg-card border rounded-lg p-4">
+          <div className="max-w-5xl mb-6">
+            <div className="bg-card border rounded-lg p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Search Cost</p>
-                  <p className="text-2xl font-bold">${totalCost.toFixed(4)}</p>
+                  <p className="text-3xl font-bold">${totalCost.toFixed(4)}</p>
                 </div>
                 {companies.length > 0 && (
                   <div className="text-right">
                     <p className="text-sm font-medium text-muted-foreground">Cost per Company</p>
-                    <p className="text-lg font-semibold">{costPerCompany}</p>
+                    <p className="text-xl font-semibold">{costPerCompany}</p>
                   </div>
                 )}
               </div>
@@ -356,13 +356,13 @@ export default function SearchPage() {
         )}
 
         {isLoading && (
-          <div className="max-w-4xl mx-auto mb-6">
+          <div className="max-w-5xl mb-6">
             <SearchProgress workers={workers} companiesFound={companies.length} />
           </div>
         )}
 
         {searchCost && !isLoading && (
-          <div className="max-w-4xl mx-auto mb-6">
+          <div className="max-w-5xl mb-6">
             <CostTracker cost={searchCost} />
           </div>
         )}

@@ -114,6 +114,42 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+@media (prefers-color-scheme: dark) {
+  @theme inline {
+    --color-background: #0a0a0a;
+    --color-foreground: #fafafa;
+    --color-card: #141414;
+    --color-card-foreground: #fafafa;
+    --color-popover: #141414;
+    --color-popover-foreground: #fafafa;
+
+    --color-primary: #3cdbd3;
+    --color-primary-foreground: #0a0a0a;
+
+    --color-secondary: #e8e288;
+    --color-secondary-foreground: #0a0a0a;
+
+    --color-success: #7dce82;
+    --color-success-foreground: #0a0a0a;
+
+    --color-warning: #ff8360;
+    --color-warning-foreground: #ffffff;
+
+    --color-accent: #00fff5;
+    --color-accent-foreground: #0a0a0a;
+
+    --color-muted: #1a1a1a;
+    --color-muted-foreground: #a1a1a1;
+
+    --color-destructive: #ff8360;
+    --color-destructive-foreground: #ffffff;
+
+    --color-border: #262626;
+    --color-input: #262626;
+    --color-ring: #3cdbd3;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -121,65 +157,4 @@
   body {
     @apply bg-background text-foreground;
   }
-}
-
-@theme inline {
-  /* Updated to use Source Code Pro for all text */
-  --font-sans: "Source Code Pro", "Source Code Pro Fallback", monospace;
-  --font-mono: "Source Code Pro", "Source Code Pro Fallback", monospace;
-
-  /* Design tokens for enterprise theme */
-  --color-background: #ffffff;
-  --color-foreground: #0a0a0a;
-  --color-card: #ffffff;
-  --color-card-foreground: #0a0a0a;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #0a0a0a;
-  --color-primary: #2563eb;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
-  --color-muted: #f8fafc;
-  --color-muted-foreground: #64748b;
-  --color-accent: #f1f5f9;
-  --color-accent-foreground: #0f172a;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
-  --color-border: #e2e8f0;
-  --color-input: #e2e8f0;
-  --color-ring: #2563eb;
-  --radius: 0.5rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  @theme inline {
-    --color-background: #0a0a0a;
-    --color-foreground: #fafafa;
-    --color-card: #0f0f0f;
-    --color-card-foreground: #fafafa;
-    --color-popover: #0f0f0f;
-    --color-popover-foreground: #fafafa;
-    --color-primary: #3b82f6;
-    --color-primary-foreground: #ffffff;
-    --color-secondary: #1e293b;
-    --color-secondary-foreground: #f8fafc;
-    --color-muted: #1e293b;
-    --color-muted-foreground: #94a3b8;
-    --color-accent: #1e293b;
-    --color-accent-foreground: #f8fafc;
-    --color-destructive: #dc2626;
-    --color-destructive-foreground: #ffffff;
-    --color-border: #1e293b;
-    --color-input: #1e293b;
-    --color-ring: #3b82f6;
-  }
-}
-
-* {
-  border-color: var(--color-border);
-}
-
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
 }

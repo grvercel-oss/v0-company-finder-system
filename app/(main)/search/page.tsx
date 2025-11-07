@@ -6,6 +6,7 @@ import { AdvancedFilters, type FilterOptions } from "@/components/advanced-filte
 import { SearchResults } from "@/components/search-results"
 import { SearchProgress } from "@/components/search-progress"
 import { CostTracker } from "@/components/cost-tracker"
+import { SearchHistory } from "@/components/search-history"
 import type { Company } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { Clock } from "lucide-react"
@@ -50,36 +51,44 @@ export default function SearchPage() {
   const [totalCost, setTotalCost] = useState<number>(0)
   const [costPerCompany, setCostPerCompany] = useState<string>("$0.00")
   const [searchId, setSearchId] = useState<string | undefined>()
+  const [searchHistory, setSearchHistory] = useState<any[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
   useEffect(() => {
     let mounted = true
 
-    const loadPreviousSearch = async () => {
+    const loadData = async () => {
       try {
-        console.log("[v0] Loading previous search...")
-        const response = await fetch("/api/search/latest")
+        console.log("[v0] Loading previous search and history...")
+
+        const [searchResponse, historyResponse] = await Promise.all([
+          fetch("/api/search/latest"),
+          fetch("/api/search/history?limit=10"),
+        ])
 
         if (!mounted) return
 
-        if (!response.ok) {
-          throw new Error("Failed to load previous search")
+        // Handle previous search
+        if (searchResponse.ok) {
+          const data = await searchResponse.json()
+          if (data.search && data.companies.length > 0) {
+            console.log("[v0] Loaded previous search:", data.search.query, "with", data.companies.length, "companies")
+            setCompanies(data.companies)
+            setSearchPerformed(true)
+            setPreviousSearch({
+              query: data.search.query,
+              createdAt: data.search.createdAt,
+            })
+          }
         }
 
-        const data = await response.json()
-
-        if (!mounted) return
-
-        if (data.search && data.companies.length > 0) {
-          console.log("[v0] Loaded previous search:", data.search.query, "with", data.companies.length, "companies")
-          setCompanies(data.companies)
-          setSearchPerformed(true)
-          setPreviousSearch({
-            query: data.search.query,
-            createdAt: data.search.createdAt,
-          })
+        if (historyResponse.ok) {
+          const historyData = await historyResponse.json()
+          console.log("[v0] Loaded search history:", historyData.history.length, "items")
+          setSearchHistory(historyData.history || [])
         }
       } catch (err) {
-        console.error("[v0] Error loading previous search:", err)
+        console.error("[v0] Error loading data:", err)
       } finally {
         if (mounted) {
           setIsLoadingPrevious(false)
@@ -87,7 +96,7 @@ export default function SearchPage() {
       }
     }
 
-    loadPreviousSearch()
+    loadData()
 
     return () => {
       mounted = false
@@ -166,6 +175,8 @@ export default function SearchPage() {
         console.log("[v0] Search completed:", data.search_id)
         setIsLoading(false)
         eventSource.close()
+
+        loadSearchHistory()
       })
 
       eventSource.addEventListener("error", (e) => {
@@ -202,6 +213,49 @@ export default function SearchPage() {
     }
   }
 
+  const handleSelectHistory = async (searchId: string, query: string) => {
+    setIsLoadingHistory(true)
+    setPreviousSearch(null)
+    setError(undefined)
+
+    try {
+      console.log("[v0] Loading search from history:", searchId)
+      const response = await fetch(`/api/search/history/${searchId}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to load search")
+      }
+
+      const data = await response.json()
+
+      setCompanies(data.companies)
+      setSearchPerformed(true)
+      setPreviousSearch({
+        query: data.search.query,
+        createdAt: data.search.createdAt,
+      })
+
+      console.log("[v0] Loaded", data.companies.length, "companies from history")
+    } catch (err: any) {
+      console.error("[v0] Error loading search from history:", err)
+      setError(err.message || "Failed to load search from history")
+    } finally {
+      setIsLoadingHistory(false)
+    }
+  }
+
+  const loadSearchHistory = async () => {
+    try {
+      const response = await fetch("/api/search/history?limit=10")
+      if (response.ok) {
+        const data = await response.json()
+        setSearchHistory(data.history || [])
+      }
+    } catch (err) {
+      console.error("[v0] Error loading search history:", err)
+    }
+  }
+
   if (isLoadingPrevious) {
     return (
       <div className="min-h-screen bg-background">
@@ -232,6 +286,15 @@ export default function SearchPage() {
               <p className="text-muted-foreground text-lg">AI-powered company search and intelligence platform</p>
             </div>
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+
+            {!isLoading && !isLoadingHistory && searchHistory.length > 0 && (
+              <SearchHistory
+                history={searchHistory}
+                onSelectHistory={handleSelectHistory}
+                isLoading={isLoadingHistory}
+              />
+            )}
+
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Label htmlFor="company-count" className="text-sm font-medium whitespace-nowrap">

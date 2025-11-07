@@ -124,8 +124,9 @@
 }
 
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback";
-  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  /* Updated to use Source Code Pro for all text */
+  --font-sans: "Source Code Pro", "Source Code Pro Fallback", monospace;
+  --font-mono: "Source Code Pro", "Source Code Pro Fallback", monospace;
 
   /* Design tokens for enterprise theme */
   --color-background: #ffffff;

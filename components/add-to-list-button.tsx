@@ -10,24 +10,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { FolderPlus, Plus } from "lucide-react"
+import { FolderPlus, Plus, Loader2 } from "lucide-react"
 import { CreateListDialog } from "./create-list-dialog"
+import { useToast } from "@/hooks/use-toast"
 
 interface AddToListButtonProps {
   companyId: number
   companyName: string
+  variant?: "default" | "outline" | "ghost"
+  size?: "default" | "sm" | "lg" | "icon"
 }
 
-export function AddToListButton({ companyId, companyName }: AddToListButtonProps) {
+export function AddToListButton({ companyId, companyName, variant = "outline", size = "sm" }: AddToListButtonProps) {
   const [lists, setLists] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const { toast } = useToast()
 
   const fetchLists = async () => {
     try {
       const response = await fetch("/api/lists")
       const data = await response.json()
-      setLists(data.lists)
+      setLists(data.lists || [])
     } catch (error) {
       console.error("Failed to fetch lists:", error)
     }
@@ -46,14 +50,34 @@ export function AddToListButton({ companyId, companyName }: AddToListButtonProps
         body: JSON.stringify({ companyId }),
       })
 
+      const data = await response.json()
+
       if (response.ok) {
-        alert(`Added ${companyName} to ${listName}`)
-      } else if (response.status === 409) {
-        alert(`${companyName} is already in ${listName}`)
+        if (data.duplicates > 0) {
+          toast({
+            title: "Already in list",
+            description: `${companyName} is already in ${listName}`,
+          })
+        } else {
+          toast({
+            title: "Added to list",
+            description: `${companyName} added to ${listName}`,
+          })
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to add company to list",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Failed to add company to list:", error)
-      alert("Failed to add company to list")
+      toast({
+        title: "Error",
+        description: "Failed to add company to list",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -63,8 +87,8 @@ export function AddToListButton({ companyId, companyName }: AddToListButtonProps
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={loading}>
-            <FolderPlus className="mr-2 h-4 w-4" />
+          <Button variant={variant} size={size} disabled={loading}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FolderPlus className="mr-2 h-4 w-4" />}
             Add to List
           </Button>
         </DropdownMenuTrigger>
@@ -84,7 +108,7 @@ export function AddToListButton({ companyId, companyName }: AddToListButtonProps
               {lists.map((list) => (
                 <DropdownMenuItem key={list.id} onClick={() => handleAddToList(list.id, list.name)}>
                   <FolderPlus className="mr-2 h-4 w-4" />
-                  {list.name}
+                  {list.name} ({list.company_count || 0})
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
@@ -98,12 +122,7 @@ export function AddToListButton({ companyId, companyName }: AddToListButtonProps
       </DropdownMenu>
 
       {showCreateDialog && (
-        <CreateListDialog
-          onListCreated={() => {
-            fetchLists()
-            setShowCreateDialog(false)
-          }}
-        />
+        <CreateListDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} onListCreated={fetchLists} />
       )}
     </>
   )

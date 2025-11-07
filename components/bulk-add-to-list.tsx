@@ -42,36 +42,27 @@ export function BulkAddToList({ companyIds, onComplete }: BulkAddToListProps) {
   const handleBulkAddToList = async (listId: number, listName: string) => {
     setLoading(true)
     try {
-      let successCount = 0
-      let duplicateCount = 0
-      let errorCount = 0
-
-      for (const companyId of companyIds) {
-        try {
-          const response = await fetch(`/api/lists/${listId}/companies`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ companyId }),
-          })
-
-          if (response.ok) {
-            successCount++
-          } else if (response.status === 409) {
-            duplicateCount++
-          } else {
-            errorCount++
-          }
-        } catch (error) {
-          errorCount++
-        }
-      }
-
-      toast({
-        title: "Companies added to list",
-        description: `${successCount} added, ${duplicateCount} already in list, ${errorCount} failed`,
+      const response = await fetch(`/api/lists/${listId}/companies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyIds }),
       })
 
-      onComplete?.()
+      const data = await response.json()
+
+      if (response.ok) {
+        toast({
+          title: "Companies added",
+          description: `${data.added} added to ${listName}${data.duplicates > 0 ? `, ${data.duplicates} already in list` : ""}`,
+        })
+        onComplete?.()
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to add companies to list",
+          variant: "destructive",
+        })
+      }
     } catch (error) {
       console.error("Failed to add companies to list:", error)
       toast({
@@ -103,7 +94,7 @@ export function BulkAddToList({ companyIds, onComplete }: BulkAddToListProps) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>Add to List</DropdownMenuLabel>
+          <DropdownMenuLabel>Add {companyIds.length} companies to...</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {lists.length === 0 ? (
             <div className="px-2 py-6 text-center text-sm text-muted-foreground">
@@ -118,7 +109,7 @@ export function BulkAddToList({ companyIds, onComplete }: BulkAddToListProps) {
               {lists.map((list) => (
                 <DropdownMenuItem key={list.id} onClick={() => handleBulkAddToList(list.id, list.name)}>
                   <FolderPlus className="mr-2 h-4 w-4" />
-                  {list.name}
+                  {list.name} ({list.company_count || 0})
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
@@ -132,12 +123,7 @@ export function BulkAddToList({ companyIds, onComplete }: BulkAddToListProps) {
       </DropdownMenu>
 
       {showCreateDialog && (
-        <CreateListDialog
-          onListCreated={() => {
-            fetchLists()
-            setShowCreateDialog(false)
-          }}
-        />
+        <CreateListDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} onListCreated={fetchLists} />
       )}
     </>
   )

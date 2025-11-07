@@ -6,30 +6,49 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   try {
     const listId = Number.parseInt(params.id)
     const body = await request.json()
-    const { companyId, notes } = body
+    const { companyId, companyIds, notes } = body
 
-    console.log("[v0] Adding company", companyId, "to list", listId)
+    console.log("[v0] Adding companies to list", listId)
 
-    if (!companyId) {
-      return NextResponse.json({ error: "Company ID is required" }, { status: 400 })
+    const idsToAdd = companyIds || (companyId ? [companyId] : [])
+
+    if (idsToAdd.length === 0) {
+      return NextResponse.json({ error: "Company ID(s) required" }, { status: 400 })
     }
 
-    const result = await sql`
-      INSERT INTO company_list_items (list_id, company_id, notes)
-      VALUES (${listId}, ${companyId}, ${notes || null})
-      ON CONFLICT (list_id, company_id) DO NOTHING
-      RETURNING *
-    `
+    let successCount = 0
+    let duplicateCount = 0
+    const errors: any[] = []
 
-    if (result.length === 0) {
-      return NextResponse.json({ error: "Company already in list" }, { status: 409 })
+    for (const id of idsToAdd) {
+      try {
+        const result = await sql`
+          INSERT INTO company_list_items (list_id, company_id, notes)
+          VALUES (${listId}, ${id}, ${notes || null})
+          ON CONFLICT (list_id, company_id) DO NOTHING
+          RETURNING *
+        `
+
+        if (result.length > 0) {
+          successCount++
+        } else {
+          duplicateCount++
+        }
+      } catch (error: any) {
+        errors.push({ companyId: id, error: error.message })
+      }
     }
 
-    console.log("[v0] Company added to list successfully")
+    console.log("[v0] Bulk add complete:", successCount, "added,", duplicateCount, "duplicates")
 
-    return NextResponse.json({ success: true, item: result[0] })
+    return NextResponse.json({
+      success: true,
+      added: successCount,
+      duplicates: duplicateCount,
+      errors: errors.length > 0 ? errors : undefined,
+    })
   } catch (error: any) {
-    console.error("[v0] Error adding company to list:", error.message)
+    console.error("[v0] Error adding companies to list:", error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

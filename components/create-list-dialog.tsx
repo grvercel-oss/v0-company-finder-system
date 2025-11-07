@@ -14,20 +14,34 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus } from "lucide-react"
+import { Plus, Loader2 } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface CreateListDialogProps {
   onListCreated?: () => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
-export function CreateListDialog({ onListCreated }: CreateListDialogProps) {
-  const [open, setOpen] = useState(false)
+export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenChange }: CreateListDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
+  const { toast } = useToast()
+
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setOpen = onOpenChange || setInternalOpen
 
   const handleCreate = async () => {
-    if (!name.trim()) return
+    if (!name.trim()) {
+      toast({
+        title: "Error",
+        description: "List name is required",
+        variant: "destructive",
+      })
+      return
+    }
 
     setLoading(true)
     try {
@@ -38,13 +52,29 @@ export function CreateListDialog({ onListCreated }: CreateListDialogProps) {
       })
 
       if (response.ok) {
+        toast({
+          title: "List created",
+          description: `Created list "${name}"`,
+        })
         setName("")
         setDescription("")
         setOpen(false)
         onListCreated?.()
+      } else {
+        const error = await response.json()
+        toast({
+          title: "Error",
+          description: error.error || "Failed to create list",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Failed to create list:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create list",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -71,6 +101,7 @@ export function CreateListDialog({ onListCreated }: CreateListDialogProps) {
               placeholder="e.g., AI Startups in Europe"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={loading}
             />
           </div>
           <div className="space-y-2">
@@ -81,15 +112,23 @@ export function CreateListDialog({ onListCreated }: CreateListDialogProps) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+              disabled={loading}
             />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
             Cancel
           </Button>
           <Button onClick={handleCreate} disabled={!name.trim() || loading}>
-            {loading ? "Creating..." : "Create List"}
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create List"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

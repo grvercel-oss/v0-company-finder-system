@@ -36,6 +36,7 @@ export default function ListDetailPage() {
 
   const [list, setList] = useState<ListDetails | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
+  const [contactCounts, setContactCounts] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
   const [companyToDelete, setCompanyToDelete] = useState<number | null>(null)
   const [creatingCampaign, setCreatingCampaign] = useState(false)
@@ -63,6 +64,20 @@ export default function ListDetailPage() {
     }
   }
 
+  const fetchContactCounts = async () => {
+    try {
+      const counts: Record<number, number> = {}
+      for (const company of companies) {
+        const response = await fetch(`/api/companies/${company.id}/contacts`)
+        const data = await response.json()
+        counts[company.id] = data.contacts?.length || 0
+      }
+      setContactCounts(counts)
+    } catch (error) {
+      console.error("Failed to fetch contact counts:", error)
+    }
+  }
+
   const handleRemoveCompany = async (companyId: number) => {
     try {
       const response = await fetch(`/api/lists/${listId}/companies?companyId=${companyId}`, {
@@ -81,10 +96,21 @@ export default function ListDetailPage() {
   }
 
   const handleCreateCampaign = async () => {
+    const totalContacts = Object.values(contactCounts).reduce((sum, count) => sum + count, 0)
+
     if (companies.length === 0) {
       toast({
         title: "No companies",
         description: "Add companies to this list before creating a campaign",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (totalContacts === 0) {
+      toast({
+        title: "No contacts found",
+        description: "Use Hunter.io to get executive emails before creating a campaign",
         variant: "destructive",
       })
       return
@@ -102,10 +128,10 @@ export default function ListDetailPage() {
       })
 
       if (response.ok) {
-        const { campaign } = await response.json()
+        const { campaign, contactCount } = await response.json()
         toast({
           title: "Campaign created",
-          description: `Created campaign "${campaign.name}" with ${companies.length} companies and their contacts`,
+          description: `Created campaign "${campaign.name}" with ${companies.length} companies and ${contactCount} contacts`,
         })
         router.push(`/campaigns/${campaign.id}`)
       } else {
@@ -136,6 +162,12 @@ export default function ListDetailPage() {
 
     fetchDetails()
   }, [listId])
+
+  useEffect(() => {
+    if (companies.length > 0) {
+      fetchContactCounts()
+    }
+  }, [companies])
 
   if (loading) {
     return (
@@ -176,7 +208,8 @@ export default function ListDetailPage() {
           <h1 className="text-3xl font-bold">{list.name}</h1>
           {list.description && <p className="text-muted-foreground mt-2">{list.description}</p>}
           <p className="text-sm text-muted-foreground mt-2">
-            {companies.length} {companies.length === 1 ? "company" : "companies"}
+            {companies.length} {companies.length === 1 ? "company" : "companies"} •{" "}
+            {Object.values(contactCounts).reduce((sum, count) => sum + count, 0)} contacts
           </p>
         </div>
         {companies.length > 0 && (
@@ -199,6 +232,11 @@ export default function ListDetailPage() {
           {companies.map((company) => (
             <div key={company.id} className="relative">
               <CompanyCard company={company} />
+              {contactCounts[company.id] > 0 && (
+                <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                  {contactCounts[company.id]} {contactCounts[company.id] === 1 ? "contact" : "contacts"}
+                </div>
+              )}
               <Button
                 variant="ghost"
                 size="icon"

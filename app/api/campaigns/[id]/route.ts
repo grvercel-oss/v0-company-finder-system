@@ -20,15 +20,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       SELECT 
         cc.id,
         cc.email,
-        cc.first_name,
-        cc.last_name,
-        cc.position as job_title,
+        cc.name,
+        cc.role as job_title,
         c.name as company_name,
-        cc.linkedin,
-        cc.twitter,
-        cc.phone_number,
+        cc.linkedin_url,
+        cc.phone,
         cc.source,
-        cc.hunter_confidence,
+        cc.confidence_score as hunter_confidence,
         cc.email_verification_status,
         cc.created_at,
         'pending' as status,
@@ -39,7 +37,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       JOIN company_contacts cc ON camp_cont.contact_id = cc.id
       JOIN companies c ON cc.company_id = c.id
       WHERE camp_cont.campaign_id = ${id}
-      ORDER BY camp_cont.created_at DESC
+      ORDER BY camp_cont.added_at DESC
     `
 
     return NextResponse.json({

@@ -8,6 +8,7 @@ import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, AlertCircle
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
 import { HunterEmailModal } from "./hunter-email-modal"
+import { BulkAddToList } from "./bulk-add-to-list"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -206,6 +207,24 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
 
   return (
     <>
+      {selectedCompanies.length > 0 && (
+        <div className="mb-4 flex items-center justify-between bg-muted p-4 rounded-lg">
+          <p className="text-sm text-muted-foreground">
+            {selectedCompanies.length} {selectedCompanies.length === 1 ? "company" : "companies"} selected
+          </p>
+          <BulkAddToList
+            companyIds={selectedCompanies}
+            onComplete={() => {
+              onSelectionChange([])
+              toast({
+                title: "Companies added to list",
+                description: `Successfully added ${selectedCompanies.length} companies to the list`,
+              })
+            }}
+          />
+        </div>
+      )}
+
       <div className="border rounded-lg">
         <Table>
           <TableHeader>

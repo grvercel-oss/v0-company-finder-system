@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { CompanyCard } from "@/components/company-card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, Trash2 } from "lucide-react"
+import { ArrowLeft, Trash2, Rocket } from "lucide-react"
 import Link from "next/link"
 import type { Company } from "@/lib/db"
 import {
@@ -18,6 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
 
 interface ListDetails {
   id: number
@@ -31,11 +32,13 @@ export default function ListDetailPage() {
   const params = useParams()
   const router = useRouter()
   const listId = params.id as string
+  const { toast } = useToast()
 
   const [list, setList] = useState<ListDetails | null>(null)
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [companyToDelete, setCompanyToDelete] = useState<number | null>(null)
+  const [creatingCampaign, setCreatingCampaign] = useState(false)
 
   const fetchListDetails = async () => {
     try {
@@ -60,15 +63,6 @@ export default function ListDetailPage() {
     }
   }
 
-  useEffect(() => {
-    const fetchDetails = async () => {
-      await fetchListDetails()
-      await fetchCompanies()
-    }
-
-    fetchDetails()
-  }, [listId])
-
   const handleRemoveCompany = async (companyId: number) => {
     try {
       const response = await fetch(`/api/lists/${listId}/companies?companyId=${companyId}`, {
@@ -85,6 +79,63 @@ export default function ListDetailPage() {
       setCompanyToDelete(null)
     }
   }
+
+  const handleCreateCampaign = async () => {
+    if (companies.length === 0) {
+      toast({
+        title: "No companies",
+        description: "Add companies to this list before creating a campaign",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setCreatingCampaign(true)
+    try {
+      const response = await fetch("/api/campaigns/from-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listId: Number.parseInt(listId),
+          listName: list?.name,
+        }),
+      })
+
+      if (response.ok) {
+        const { campaign } = await response.json()
+        toast({
+          title: "Campaign created",
+          description: `Created campaign "${campaign.name}" with ${companies.length} companies and their contacts`,
+        })
+        router.push(`/campaigns/${campaign.id}`)
+      } else {
+        const error = await response.json()
+        toast({
+          title: "Failed to create campaign",
+          description: error.error || "An error occurred",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to create campaign:", error)
+      toast({
+        title: "Failed to create campaign",
+        description: "An error occurred while creating the campaign",
+        variant: "destructive",
+      })
+    } finally {
+      setCreatingCampaign(false)
+    }
+  }
+
+  useEffect(() => {
+    const fetchDetails = async () => {
+      await fetchListDetails()
+      await fetchCompanies()
+    }
+
+    fetchDetails()
+  }, [listId])
 
   if (loading) {
     return (
@@ -120,12 +171,20 @@ export default function ListDetailPage() {
         </Button>
       </Link>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">{list.name}</h1>
-        {list.description && <p className="text-muted-foreground mt-2">{list.description}</p>}
-        <p className="text-sm text-muted-foreground mt-2">
-          {companies.length} {companies.length === 1 ? "company" : "companies"}
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">{list.name}</h1>
+          {list.description && <p className="text-muted-foreground mt-2">{list.description}</p>}
+          <p className="text-sm text-muted-foreground mt-2">
+            {companies.length} {companies.length === 1 ? "company" : "companies"}
+          </p>
+        </div>
+        {companies.length > 0 && (
+          <Button onClick={handleCreateCampaign} disabled={creatingCampaign} size="lg" className="gap-2">
+            <Rocket className="h-5 w-5" />
+            {creatingCampaign ? "Creating Campaign..." : "Create Campaign"}
+          </Button>
+        )}
       </div>
 
       {companies.length === 0 ? (
@@ -144,7 +203,7 @@ export default function ListDetailPage() {
                 variant="ghost"
                 size="icon"
                 className="absolute top-2 right-2 h-8 w-8 bg-background/80 backdrop-blur-sm"
-                onClick={() => handleRemoveCompany(company.id)}
+                onClick={() => setCompanyToDelete(company.id)}
               >
                 <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
               </Button>

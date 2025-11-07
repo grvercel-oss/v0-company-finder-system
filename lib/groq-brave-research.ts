@@ -351,6 +351,13 @@ Focus on factual information from the search results. If information is limited,
 }
 
 /**
+ * Sleep utility for rate limiting
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
  * Main research function: Generate queries → Search Brave → Analyze with Groq
  */
 export async function researchCompanyWithGroqBrave(
@@ -363,13 +370,21 @@ export async function researchCompanyWithGroqBrave(
     // Step 1: Generate search queries using Groq
     const queries = await generateSearchQueries(companyName)
 
-    // Step 2: Search Brave for each query (limit to 10)
-    const searchPromises = queries.slice(0, 10).map(async (query) => ({
-      query,
-      results: await searchBrave(query),
-    }))
+    // Step 2: Search Brave for each query with rate limiting (1 request per second for free plan)
+    const searchResults: Array<{ query: string; results: BraveSearchResult[] }> = []
 
-    const searchResults = await Promise.all(searchPromises)
+    // Limit to 8 queries to avoid excessive API calls
+    const limitedQueries = queries.slice(0, 8)
+
+    for (const query of limitedQueries) {
+      const results = await searchBrave(query)
+      searchResults.push({ query, results })
+
+      // Wait 1.2 seconds between requests to respect free plan rate limit (1 req/sec)
+      if (searchResults.length < limitedQueries.length) {
+        await sleep(1200)
+      }
+    }
 
     console.log("[v0] Completed", searchResults.length, "searches")
 

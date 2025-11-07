@@ -4,14 +4,14 @@ import { getAccountIdFromRequest } from "@/lib/rls-helper"
 
 const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const accountId = await getAccountIdFromRequest()
     if (!accountId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const searchId = params.id
+    const { id: searchId } = await params
 
     console.log("[v0] Fetching search results for search ID:", searchId)
 

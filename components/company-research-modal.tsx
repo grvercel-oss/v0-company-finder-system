@@ -4,21 +4,20 @@ import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, ExternalLink, Calendar, Sparkles, AlertCircle } from "lucide-react"
+import { Loader2, Calendar, Sparkles, AlertCircle } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-interface TavilySearchResult {
-  title: string
-  url: string
+interface ResearchCategory {
+  category: string
   content: string
-  score: number
+  sources: string[]
 }
 
-interface TavilyResearchData {
-  query: string
-  answer: string
-  images: string[]
-  results: TavilySearchResult[]
+interface CompanyResearchData {
+  companyName: string
+  summary: string
+  categories: ResearchCategory[]
+  generatedAt: string
 }
 
 interface CompanyResearchModalProps {
@@ -30,7 +29,7 @@ interface CompanyResearchModalProps {
 
 export function CompanyResearchModal({ companyId, companyName, open, onOpenChange }: CompanyResearchModalProps) {
   const [loading, setLoading] = useState(false)
-  const [research, setResearch] = useState<TavilyResearchData | null>(null)
+  const [research, setResearch] = useState<CompanyResearchData | null>(null)
   const [cached, setCached] = useState(false)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -93,7 +92,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
             Latest Research: {companyName}
           </DialogTitle>
           <DialogDescription>
-            AI-powered research from Tavily with the latest information about this company
+            AI-powered research using Groq + DuckDuckGo with the latest information about this company
           </DialogDescription>
         </DialogHeader>
 
@@ -102,10 +101,8 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <div className="text-center space-y-2">
               <p className="text-lg font-medium">Researching {companyName}...</p>
-              <p className="text-sm text-muted-foreground">
-                Tavily is gathering the latest information from across the web
-              </p>
-              <p className="text-xs text-muted-foreground">This may take 10-30 seconds</p>
+              <p className="text-sm text-muted-foreground">Groq is analyzing multiple sources from across the web</p>
+              <p className="text-xs text-muted-foreground">This may take 20-40 seconds</p>
             </div>
           </div>
         )}
@@ -135,37 +132,41 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 {fetchedAt && new Date(fetchedAt).toLocaleString()}
               </div>
 
-              {/* AI Summary */}
-              {research.answer && (
+              {/* Executive Summary */}
+              {research.summary && (
                 <div className="rounded-lg bg-primary/5 p-4 border border-primary/20">
                   <h3 className="font-semibold mb-2 flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
-                    AI Summary
+                    Executive Summary
                   </h3>
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{research.answer}</p>
+                  <p className="text-sm leading-relaxed">{research.summary}</p>
                 </div>
               )}
 
-              {/* Sources */}
-              {research.results && research.results.length > 0 && (
+              {/* Research Categories */}
+              {research.categories && research.categories.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3">Sources & Details</h3>
+                  <h3 className="font-semibold mb-3">Detailed Research</h3>
                   <div className="space-y-4">
-                    {research.results.map((result, index) => (
+                    {research.categories.map((category, index) => (
                       <div key={index} className="rounded-lg border p-4 hover:bg-muted/50 transition-colors">
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <h4 className="font-medium text-sm flex-1">{result.title}</h4>
-                          <Badge variant="secondary" className="text-xs">
-                            {Math.round(result.score * 100)}% match
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-3 leading-relaxed">{result.content}</p>
-                        <Button variant="ghost" size="sm" asChild>
-                          <a href={result.url} target="_blank" rel="noopener noreferrer" className="gap-2">
-                            <ExternalLink className="h-3 w-3" />
-                            View Source
-                          </a>
-                        </Button>
+                        <h4 className="font-medium text-base mb-3">{category.category}</h4>
+                        <p className="text-sm text-muted-foreground mb-3 leading-relaxed whitespace-pre-wrap">
+                          {category.content}
+                        </p>
+
+                        {category.sources && category.sources.length > 0 && (
+                          <div className="pt-2 border-t">
+                            <p className="text-xs text-muted-foreground mb-2">Sources:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {category.sources.map((source, idx) => (
+                                <Badge key={idx} variant="secondary" className="text-xs">
+                                  {source}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -173,7 +174,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
               )}
 
               {/* No results message */}
-              {research.results && research.results.length === 0 && !research.answer && (
+              {research.categories && research.categories.length === 0 && !research.summary && (
                 <div className="text-center py-8 text-muted-foreground">
                   <p>No research results found for this company.</p>
                 </div>

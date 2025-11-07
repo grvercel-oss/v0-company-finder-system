@@ -1,18 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { searchCompanyWithTavily } from "@/lib/tavily"
+import { researchCompanyWithGroqDuckDuckGo } from "@/lib/groq-duckduckgo-research"
 import { auth } from "@clerk/nextjs/server"
 
-const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
+const sql = neon(process.env.NEON_DATABASE_URL!)
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     // Get company from database
     const companies = await sql`
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const fetchedAt = company.tavily_research_fetched_at ? new Date(company.tavily_research_fetched_at).getTime() : 0
 
     if (company.tavily_research && now - fetchedAt < cacheExpiry) {
-      console.log(`[v0] Using cached Tavily research for company ${id}`)
+      console.log(`[v0] Using cached research for company ${id}`)
       return NextResponse.json({
         cached: true,
         data: company.tavily_research,
@@ -41,11 +41,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       })
     }
 
-    // Fetch fresh research from Tavily
-    console.log(`[v0] Fetching fresh Tavily research for company: ${company.name}`)
-    const research = await searchCompanyWithTavily(company.name, company.domain || company.website)
+    console.log(`[v0] Fetching fresh Groq+DuckDuckGo research for company: ${company.name}`)
+    const research = await researchCompanyWithGroqDuckDuckGo(company.name, company.domain || company.website)
 
-    // Save research to database
+    // Save research to database (reusing tavily_research column)
     await sql`
       UPDATE companies
       SET 
@@ -54,7 +53,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       WHERE id = ${id}
     `
 
-    console.log(`[v0] Saved Tavily research for company ${id}`)
+    console.log(`[v0] Saved research for company ${id}`)
 
     return NextResponse.json({
       cached: false,

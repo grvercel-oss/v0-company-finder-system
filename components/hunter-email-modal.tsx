@@ -17,8 +17,8 @@ import {
   TrendingUp,
   Building2,
   X,
-  Send,
   Rocket,
+  Database,
 } from "lucide-react"
 
 interface Executive {
@@ -68,6 +68,7 @@ export function HunterEmailModal({
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [selectedCampaign, setSelectedCampaign] = useState<string>("")
   const [sendingToCampaign, setSendingToCampaign] = useState<string | null>(null)
+  const [savedContacts, setSavedContacts] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
   const fetchCampaigns = async () => {
@@ -79,6 +80,20 @@ export function HunterEmailModal({
       }
     } catch (error) {
       console.error("[v0] Failed to fetch campaigns:", error)
+    }
+  }
+
+  const fetchSavedContacts = async () => {
+    try {
+      const response = await fetch(`/api/companies/${companyId}/contacts`)
+      if (response.ok) {
+        const data = await response.json()
+        const savedEmails = new Set(data.contacts.map((c: any) => c.email.toLowerCase()))
+        setSavedContacts(savedEmails)
+        console.log("[v0] Loaded saved contacts:", savedEmails.size)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch saved contacts:", error)
     }
   }
 
@@ -146,6 +161,7 @@ export function HunterEmailModal({
 
       const data = await response.json()
       setRevealedEmails((prev) => new Set([...prev, key]))
+      setSavedContacts((prev) => new Set([...prev, data.email.toLowerCase()]))
 
       setExecutives((prev) =>
         prev.map((exec) =>
@@ -226,6 +242,70 @@ export function HunterEmailModal({
     }
   }
 
+  const sendSelectedToCampaign = async () => {
+    if (!selectedCampaign) {
+      toast({
+        title: "No campaign selected",
+        description: "Please select a campaign first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (selectedEmails.size === 0) {
+      toast({
+        title: "No emails selected",
+        description: "Please choose at least one email to send to campaign.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const selectedExecs = executives.filter((exec) => selectedEmails.has(exec.value))
+
+    let successCount = 0
+    let errorCount = 0
+
+    for (const exec of selectedExecs) {
+      try {
+        const response = await fetch("/api/hunter/add-to-campaign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campaignId: Number.parseInt(selectedCampaign),
+            companyId,
+            companyName,
+            email: exec.value,
+            firstName: exec.first_name,
+            lastName: exec.last_name,
+            position: exec.position,
+            department: exec.department,
+            linkedin: exec.linkedin,
+            twitter: exec.twitter,
+            source: "hunter.io",
+          }),
+        })
+
+        if (response.ok) {
+          successCount++
+        } else {
+          errorCount++
+        }
+      } catch (error) {
+        errorCount++
+      }
+    }
+
+    const campaignName = campaigns.find((c) => c.id === Number.parseInt(selectedCampaign))?.name
+
+    toast({
+      title: "Contacts added to campaign",
+      description: `Successfully added ${successCount} contact${successCount !== 1 ? "s" : ""} to "${campaignName}"${errorCount > 0 ? `. ${errorCount} failed.` : ""}`,
+    })
+
+    setSelectedEmails(new Set())
+  }
+
   const copyEmail = (email: string, name: string) => {
     navigator.clipboard.writeText(email)
     toast({
@@ -246,41 +326,27 @@ export function HunterEmailModal({
     })
   }
 
-  const sendSelectedEmails = () => {
-    if (selectedEmails.size === 0) {
-      toast({
-        title: "No emails selected",
-        description: "Please choose at least one email to send.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const selectedExecs = executives.filter((exec) => selectedEmails.has(exec.value))
-    const emailList = Array.from(selectedEmails)
-
-    console.log("[v0] Sending emails to:", emailList)
-    console.log("[v0] Selected executives:", selectedExecs)
-
-    toast({
-      title: "Ready to send",
-      description: `Selected ${selectedEmails.size} email${selectedEmails.size !== 1 ? "s" : ""} to send to`,
-    })
-  }
-
   useEffect(() => {
-    if (open && executives.length === 0) {
+    if (open) {
+      console.log("[v0] Opening Hunter.io modal for company:", companyId, companyName)
+      setExecutives([])
+      setRevealedEmails(new Set())
+      setSelectedEmails(new Set())
+      setSavedContacts(new Set())
+      setTotalFound(0)
+      setSelectedCampaign("")
+
       searchExecutives()
       fetchCampaigns()
+      fetchSavedContacts()
     }
-  }, [open])
+  }, [open, companyId])
 
   if (!open) return null
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
       <div className="bg-background rounded-lg shadow-2xl w-full max-w-4xl flex flex-col max-h-[85vh]">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
@@ -296,7 +362,6 @@ export function HunterEmailModal({
           </Button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-4">
@@ -341,14 +406,14 @@ export function HunterEmailModal({
                 </div>
               )}
 
-              {selectedEmails.size > 0 && (
-                <div className="flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+              {selectedEmails.size > 0 && selectedCampaign && (
+                <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                   <p className="text-sm font-medium">
-                    {selectedEmails.size} email{selectedEmails.size !== 1 ? "s" : ""} selected
+                    {selectedEmails.size} contact{selectedEmails.size !== 1 ? "s" : ""} selected
                   </p>
-                  <Button onClick={sendSelectedEmails} className="bg-orange-500 hover:bg-orange-600">
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Email
+                  <Button onClick={sendSelectedToCampaign} className="bg-blue-500 hover:bg-blue-600">
+                    <Rocket className="h-4 w-4 mr-2" />
+                    Add to Campaign
                   </Button>
                 </div>
               )}
@@ -360,11 +425,12 @@ export function HunterEmailModal({
                   const isRevealing = revealingEmail === key
                   const isSelected = selectedEmails.has(exec.value)
                   const isSending = sendingToCampaign === key
+                  const isSaved = exec.value && savedContacts.has(exec.value.toLowerCase())
 
                   return (
                     <div key={key} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
                       <div className="flex items-start justify-between gap-4">
-                        {isRevealed && (
+                        {(isRevealed || isSaved) && (
                           <div className="flex items-start pt-1">
                             <Checkbox
                               checked={isSelected}
@@ -383,6 +449,15 @@ export function HunterEmailModal({
                               <Badge className="bg-orange-500 text-white">Executive</Badge>
                             )}
                             {exec.seniority === "senior" && <Badge variant="secondary">Senior</Badge>}
+                            {isSaved && (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 bg-green-500/10 text-green-600 border-green-500/20"
+                              >
+                                <Database className="h-3 w-3" />
+                                Saved
+                              </Badge>
+                            )}
                           </div>
 
                           <p className="text-sm text-muted-foreground mb-2">{exec.position}</p>
@@ -399,7 +474,7 @@ export function HunterEmailModal({
                             </div>
                           </div>
 
-                          {isRevealed ? (
+                          {isRevealed || isSaved ? (
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
                                 <code className="px-2 py-1 bg-muted rounded text-sm font-mono">{exec.value}</code>
@@ -498,9 +573,10 @@ export function HunterEmailModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="border-t p-4 flex items-center justify-between flex-shrink-0 bg-muted/30">
-          <p className="text-xs text-muted-foreground">💳 Each revealed email costs 1 Hunter.io credit</p>
+          <p className="text-xs text-muted-foreground">
+            💳 Each revealed email costs 1 Hunter.io credit • Already saved emails are free
+          </p>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>

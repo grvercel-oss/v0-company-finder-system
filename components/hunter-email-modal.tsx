@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import {
   Mail,
@@ -15,6 +16,7 @@ import {
   TrendingUp,
   Building2,
   X,
+  Send,
 } from "lucide-react"
 
 interface Executive {
@@ -54,6 +56,7 @@ export function HunterEmailModal({
   const [revealedEmails, setRevealedEmails] = useState<Set<string>>(new Set())
   const [revealingEmail, setRevealingEmail] = useState<string | null>(null)
   const [totalFound, setTotalFound] = useState(0)
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set())
   const { toast } = useToast()
 
   const searchExecutives = async () => {
@@ -154,6 +157,46 @@ export function HunterEmailModal({
     })
   }
 
+  const toggleEmailSelection = (email: string) => {
+    setSelectedEmails((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(email)) {
+        newSet.delete(email)
+      } else {
+        newSet.add(email)
+      }
+      return newSet
+    })
+  }
+
+  const sendSelectedEmails = () => {
+    if (selectedEmails.size === 0) {
+      toast({
+        title: "No emails selected",
+        description: "Please choose at least one email to send.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const selectedExecs = executives.filter((exec) => selectedEmails.has(exec.value))
+    const emailList = Array.from(selectedEmails)
+
+    // Pass to email sending function (you can customize this based on your needs)
+    console.log("[v0] Sending emails to:", emailList)
+    console.log("[v0] Selected executives:", selectedExecs)
+
+    // Here you would integrate with your email sending system
+    // For now, show a toast with the selected emails
+    toast({
+      title: "Ready to send",
+      description: `Selected ${selectedEmails.size} email${selectedEmails.size !== 1 ? "s" : ""} to send to`,
+    })
+
+    // You can add your sendEmail function call here
+    // sendEmail(emailList)
+  }
+
   useState(() => {
     if (open && executives.length === 0) {
       searchExecutives()
@@ -207,15 +250,38 @@ export function HunterEmailModal({
                 </Badge>
               </div>
 
+              {selectedEmails.size > 0 && (
+                <div className="flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                  <p className="text-sm font-medium">
+                    {selectedEmails.size} email{selectedEmails.size !== 1 ? "s" : ""} selected
+                  </p>
+                  <Button onClick={sendSelectedEmails} className="bg-orange-500 hover:bg-orange-600">
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Email
+                  </Button>
+                </div>
+              )}
+
               <div className="grid gap-3">
                 {executives.map((exec) => {
                   const key = `${exec.first_name}-${exec.last_name}`
                   const isRevealed = revealedEmails.has(key)
                   const isRevealing = revealingEmail === key
+                  const isSelected = selectedEmails.has(exec.value)
 
                   return (
                     <div key={key} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
                       <div className="flex items-start justify-between gap-4">
+                        {isRevealed && (
+                          <div className="flex items-start pt-1">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleEmailSelection(exec.value)}
+                              className="border-orange-500 data-[state=checked]:bg-orange-500"
+                            />
+                          </div>
+                        )}
+
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-semibold">

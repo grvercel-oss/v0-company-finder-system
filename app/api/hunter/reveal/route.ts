@@ -6,14 +6,20 @@ export async function POST(request: NextRequest) {
   try {
     const { domain, firstName, lastName, companyId, companyName } = await request.json()
 
+    console.log("[v0] Hunter reveal request:", { domain, firstName, lastName, companyId, companyName })
+
     if (!domain || !firstName || !lastName) {
       return NextResponse.json({ error: "Domain, firstName, and lastName are required" }, { status: 400 })
     }
 
+    console.log("[v0] Calling Hunter.io API to reveal email...")
     const result = await revealEmail(domain, firstName, lastName)
+    console.log("[v0] Hunter.io response:", { email: result.email, score: result.score, position: result.position })
 
     if (companyId && result.email) {
       try {
+        console.log("[v0] Attempting to save contact to database for company:", companyId)
+
         await sql`
           INSERT INTO company_contacts (
             company_id,
@@ -47,11 +53,13 @@ export async function POST(request: NextRequest) {
             updated_at = CURRENT_TIMESTAMP
         `
 
-        console.log(`[Hunter.io] Saved contact ${result.email} for company ${companyId}`)
+        console.log("[v0] ✓ Contact saved successfully:", result.email, "for company", companyId)
       } catch (dbError) {
-        console.error("[Hunter.io] Failed to save contact to database:", dbError)
+        console.error("[v0] ✗ Failed to save contact to database:", dbError)
         // Don't fail the request if database save fails
       }
+    } else {
+      console.log("[v0] Skipping database save - missing companyId or email:", { companyId, email: result.email })
     }
 
     return NextResponse.json(result)

@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const lists = await sql`
       SELECT 
         cl.*,
-        COUNT(cli.id) as company_count
+        COUNT(cli.id)::integer as company_count
       FROM company_lists cl
       LEFT JOIN company_list_items cli ON cl.id = cli.list_id
       WHERE cl.account_id = ${accountId}
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
           const lists = await sql`
             SELECT 
               cl.*,
-              COUNT(cli.id) as company_count
+              COUNT(cli.id)::integer as company_count
             FROM company_lists cl
             LEFT JOIN company_list_items cli ON cl.id = cli.list_id
             WHERE cl.account_id = ${accountId}
@@ -61,25 +61,28 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const accountId = await getAccountIdFromRequest(request)
-
     const body = await request.json()
     const { name, description } = body
 
     console.log("[v0] Creating new list:", name, "for account:", accountId)
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return NextResponse.json({ error: "List name is required" }, { status: 400 })
     }
 
     const result = await sql`
-      INSERT INTO company_lists (name, description, account_id)
-      VALUES (${name}, ${description || null}, ${accountId})
+      INSERT INTO company_lists (name, description, account_id, created_at, updated_at)
+      VALUES (${name.trim()}, ${description?.trim() || null}, ${accountId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING *
     `
 
+    if (result.length === 0) {
+      throw new Error("Failed to create list - no rows returned")
+    }
+
     console.log("[v0] List created successfully:", result[0].id)
 
-    return NextResponse.json({ list: result[0] })
+    return NextResponse.json({ list: result[0] }, { status: 201 })
   } catch (error: any) {
     console.error("[v0] Error creating list:", error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })

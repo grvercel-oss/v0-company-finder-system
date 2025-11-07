@@ -2,9 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 
 // POST /api/lists/[id]/companies - Add a company to a list
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const listId = Number.parseInt(params.id)
+    const { id } = await params
+    const listId = Number.parseInt(id)
     const body = await request.json()
     const { companyId, companyIds, notes } = body
 
@@ -54,9 +55,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 }
 
 // GET /api/lists/[id]/companies - Fetch companies in a list
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const listId = Number.parseInt(params.id)
+    const { id } = await params
+    const listId = Number.parseInt(id)
 
     const companies = await sql`
       SELECT c.* 
@@ -74,9 +76,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE /api/lists/[id]/companies/[companyId] - Remove a company from a list
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const listId = Number.parseInt(params.id)
+    const { id } = await params
+    const listId = Number.parseInt(id)
     const url = new URL(request.url)
     const companyId = url.searchParams.get("companyId")
 

@@ -2,9 +2,10 @@ import { type NextRequest, NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 
 // GET /api/lists/[id] - Get a specific list with its companies
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const listId = Number.parseInt(params.id)
+    const { id } = await params
+    const listId = Number.parseInt(id)
     console.log("[v0] Fetching list:", listId)
 
     const listResult = await sql`
@@ -39,9 +40,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // DELETE /api/lists/[id] - Delete a list
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const listId = Number.parseInt(params.id)
+    const { id } = await params
+    const listId = Number.parseInt(id)
     console.log("[v0] Deleting list:", listId)
 
     // Check if list exists first
@@ -68,13 +70,14 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 }
 
 // PATCH /api/lists/[id] - Update a list
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const listId = Number.parseInt(params.id)
+    const { id } = await params
+    const listId = Number.parseInt(id)
+    console.log("[v0] Updating list:", listId)
+
     const body = await request.json()
     const { name, description } = body
-
-    console.log("[v0] Updating list:", listId)
 
     const result = await sql`
       UPDATE company_lists 

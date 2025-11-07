@@ -10,11 +10,11 @@ export async function GET(request: Request) {
     const campaigns = await sql`
       SELECT 
         c.*,
-        COUNT(DISTINCT co.id) as total_contacts,
-        COUNT(DISTINCT CASE WHEN co.status = 'sent' THEN co.id END) as emails_sent,
-        COUNT(DISTINCT CASE WHEN co.status = 'replied' THEN co.id END) as replies_received
+        COUNT(DISTINCT cc.contact_id) as total_contacts,
+        0 as emails_sent,
+        0 as replies_received
       FROM campaigns c
-      LEFT JOIN contacts co ON c.id = co.campaign_id
+      LEFT JOIN campaign_contacts cc ON c.id = cc.campaign_id
       WHERE c.account_id = ${accountId}
         AND c.deleted_at IS NULL
       GROUP BY c.id

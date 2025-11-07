@@ -22,22 +22,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         cc.email,
         cc.name,
         cc.role as job_title,
-        c.name as company_name,
         cc.linkedin_url,
         cc.phone,
         cc.source,
         cc.confidence_score as hunter_confidence,
         cc.email_verification_status,
-        cc.created_at,
-        'pending' as status,
-        '' as subject,
-        '' as body,
-        NULL as sent_at
+        c.id as company_id,
+        c.name as company_name,
+        c.description as company_description,
+        c.website as company_website,
+        c.industry as company_industry,
+        c.size as company_size,
+        camp_cont.created_at as added_at
       FROM campaign_contacts camp_cont
       JOIN company_contacts cc ON camp_cont.contact_id = cc.id
       JOIN companies c ON cc.company_id = c.id
       WHERE camp_cont.campaign_id = ${id}
-      ORDER BY camp_cont.added_at DESC
+      ORDER BY camp_cont.created_at DESC
     `
 
     return NextResponse.json({

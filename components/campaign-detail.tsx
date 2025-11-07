@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Users, Mail, MessageSquare } from "lucide-react"
 import Link from "next/link"
-import { ContactsManager } from "@/components/contacts-manager"
+import { CampaignContactsTable } from "@/components/campaign-contacts-table"
 
 interface Campaign {
   id: number
@@ -18,16 +18,19 @@ interface Campaign {
 
 interface Contact {
   id: number
+  name: string
   email: string
-  first_name: string
-  last_name: string
-  company_name: string
   job_title: string
-  status: string
-  subject: string
-  body: string
-  sent_at: string
-  created_at: string
+  company_name: string
+  company_description: string
+  company_website?: string
+  company_industry?: string
+  company_size?: string
+  linkedin_url?: string
+  source?: string
+  hunter_confidence?: number
+  email_verification_status?: string
+  added_at: string
 }
 
 interface CampaignDetailProps {
@@ -66,10 +69,9 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
 
   const stats = {
     total: contacts.length,
-    pending: contacts.filter((c) => c.status === "pending").length,
-    generated: contacts.filter((c) => c.status === "generated").length,
-    sent: contacts.filter((c) => c.status === "sent").length,
-    replied: contacts.filter((c) => c.status === "replied").length,
+    pending: contacts.length,
+    sent: 0,
+    replied: 0,
   }
 
   return (
@@ -128,12 +130,12 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             <CardTitle className="text-sm font-medium">Pending</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.pending + stats.generated}</div>
+            <div className="text-2xl font-bold">{stats.pending}</div>
           </CardContent>
         </Card>
       </div>
 
-      <ContactsManager campaignId={campaignId} contacts={contacts} onUpdate={fetchCampaign} />
+      <CampaignContactsTable contacts={contacts} />
     </div>
   )
 }

@@ -84,7 +84,8 @@ export async function searchExecutiveEmails(domain: string, companyName?: string
   const params = new URLSearchParams({
     domain: domain,
     api_key: HUNTER_API_KEY,
-    limit: "100", // Get as many as possible to find executives
+    limit: "10", // Free plan limit
+    seniority: "executive,senior", // Filter for executives at API level to save credits
   })
 
   if (companyName) {

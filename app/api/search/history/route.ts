@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const limit = request.nextUrl.searchParams.get("limit") || "10"
+    const limit = request.nextUrl.searchParams.get("limit") || "6"
 
     console.log("[v0] Fetching search history for account:", accountId)
 

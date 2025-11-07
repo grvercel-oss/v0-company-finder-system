@@ -27,7 +27,7 @@ export function AppSidebar() {
           <Building2 className="h-6 w-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-base font-bold leading-tight">Company Finder</h1>
+          <h1 className="text-base font-bold leading-tight">Binfo</h1>
           <p className="text-xs text-muted-foreground">B2B Lead Gen</p>
         </div>
       </div>

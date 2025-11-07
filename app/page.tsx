@@ -22,7 +22,7 @@ export default async function LandingPage() {
               <Search className="h-5 w-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Company Finder
+              Binfo
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -69,7 +69,7 @@ export default async function LandingPage() {
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground text-balance max-w-3xl mx-auto leading-relaxed">
-            Professional company finder and information scraper system utilizing Perplexity and OpenAI for accurate,
+            Professional business intelligence and company finder system utilizing Perplexity and OpenAI for accurate,
             reliable business intelligence.
           </p>
 
@@ -98,7 +98,7 @@ export default async function LandingPage() {
               <Button size="lg" asChild className="text-lg px-8 py-6 font-bold">
                 <Link href="/search">
                   <Search className="mr-2 h-5 w-5" />
-                  Start Searching
+                  Launch Binfo
                 </Link>
               </Button>
               <Button
@@ -227,7 +227,7 @@ export default async function LandingPage() {
                 <Button size="lg" variant="secondary" asChild className="text-lg px-8 py-6 font-bold">
                   <Link href="/search">
                     <Search className="mr-2 h-5 w-5" />
-                    Launch Company Finder
+                    Launch Binfo
                   </Link>
                 </Button>
               </SignedIn>
@@ -239,7 +239,7 @@ export default async function LandingPage() {
       {/* Footer */}
       <footer className="border-t mt-16 bg-muted/30">
         <div className="container mx-auto px-4 py-8 text-center text-sm text-muted-foreground">
-          <p>© 2025 Company Finder. All rights reserved.</p>
+          <p>© 2025 Binfo. All rights reserved.</p>
         </div>
       </footer>
     </div>

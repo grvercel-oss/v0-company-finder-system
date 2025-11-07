@@ -26,7 +26,7 @@ export function Navigation() {
         <div className="flex items-center gap-6 h-16">
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
             <Building2 className="h-6 w-6" />
-            <span>Company Finder</span>
+            <span>Binfo</span>
           </Link>
           <div className="flex gap-1 ml-auto items-center">
             {links.map((link) => {

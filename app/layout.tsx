@@ -22,8 +22,8 @@ const sourceCodePro = Source_Code_Pro({
 })
 
 export const metadata: Metadata = {
-  title: "Company Finder - AI-Powered Business Intelligence",
-  description: "Professional company finder and information scraper system utilizing Perplexity and OpenAI",
+  title: "Binfo - AI-Powered Business Intelligence",
+  description: "Professional business intelligence and company finder system utilizing Perplexity and OpenAI",
   generator: "v0.app",
 }
 

@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Source_Code_Pro } from "next/font/google"
 import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 import { ClerkSetupBanner } from "@/components/clerk-setup-banner"
+import { ThemeProvider } from "@/contexts/theme-context"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,7 +48,9 @@ export default function RootLayout({
   return (
     <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" afterSignOutUrl="/">
       <html lang="en">
-        <body className={`${sourceCodePro.variable} antialiased`}>{children}</body>
+        <body className={`${sourceCodePro.variable} antialiased`}>
+          <ThemeProvider>{children}</ThemeProvider>
+        </body>
       </html>
     </ClerkProvider>
   )

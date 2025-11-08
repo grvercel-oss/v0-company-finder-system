@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Save, User, Mail, ArrowLeft } from "lucide-react"
+import { Loader2, Save, User, Mail, ArrowLeft, Palette } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { EmailConnectionCard } from "@/components/email-connection-card"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface Profile {
   full_name: string
@@ -100,10 +101,14 @@ export function SettingsContent() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
+          </TabsTrigger>
+          <TabsTrigger value="appearance" className="flex items-center gap-2">
+            <Palette className="h-4 w-4" />
+            Appearance
           </TabsTrigger>
           <TabsTrigger value="email" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
@@ -241,6 +246,10 @@ export function SettingsContent() {
               </div>
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="appearance" className="space-y-6">
+          <ThemeToggle />
         </TabsContent>
 
         <TabsContent value="email" className="space-y-6">

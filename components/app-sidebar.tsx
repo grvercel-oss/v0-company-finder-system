@@ -24,12 +24,21 @@ export function AppSidebar() {
     <div className="flex h-screen w-64 flex-col border-r border-border bg-card">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-6">
-        <div className="flex h-10 w-10 items-center justify-center">
-          <Image src="/logo.svg" alt="Binfo Logo" width={40} height={40} className="text-accent" />
+        <div className="flex h-12 w-12 items-center justify-center">
+          <Image
+            src="/logo.svg"
+            alt="Binfo Logo"
+            width={48}
+            height={48}
+            className="brightness-0 invert hue-rotate-[150deg] saturate-[3]"
+            style={{
+              filter:
+                "brightness(0) saturate(100%) invert(79%) sepia(35%) saturate(1461%) hue-rotate(129deg) brightness(95%) contrast(89%)",
+            }}
+          />
         </div>
         <div>
-          <h1 className="text-base font-bold leading-tight">Binfo</h1>
-          <p className="text-xs text-muted-foreground">B2B Lead Gen</p>
+          <h1 className="text-lg font-bold leading-tight">Binfo</h1>
         </div>
       </div>
 

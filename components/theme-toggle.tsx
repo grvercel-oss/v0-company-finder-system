@@ -1,50 +1,44 @@
 "use client"
 
-import { useTheme } from "@/contexts/theme-context"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { useTheme } from "@/contexts/theme-provider"
 import { Moon, Sun } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
+  const { theme, toggleTheme } = useTheme()
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Theme</CardTitle>
-        <CardDescription>Choose your preferred color theme</CardDescription>
+        <CardTitle className="flex items-center gap-2">
+          {theme === "dark" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+          Appearance
+        </CardTitle>
+        <CardDescription>Choose your preferred theme</CardDescription>
       </CardHeader>
-      <CardContent>
-        <RadioGroup value={theme} onValueChange={(value) => setTheme(value as "light" | "dark")}>
-          <div className="grid gap-4">
-            <div className="flex items-center space-x-4 rounded-lg border p-4 cursor-pointer hover:bg-accent transition-colors">
-              <RadioGroupItem value="light" id="light" />
-              <Label htmlFor="light" className="flex items-center gap-3 cursor-pointer flex-1">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-background border">
-                  <Sun className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="font-medium">Light</p>
-                  <p className="text-sm text-muted-foreground">Clean, bright interface</p>
-                </div>
-              </Label>
-            </div>
-
-            <div className="flex items-center space-x-4 rounded-lg border p-4 cursor-pointer hover:bg-accent transition-colors">
-              <RadioGroupItem value="dark" id="dark" />
-              <Label htmlFor="dark" className="flex items-center gap-3 cursor-pointer flex-1">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-background border">
-                  <Moon className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="font-medium">Dark</p>
-                  <p className="text-sm text-muted-foreground">Easy on the eyes in low light</p>
-                </div>
-              </Label>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <div className="text-sm font-medium">Theme</div>
+            <div className="text-sm text-muted-foreground">
+              Currently using {theme === "dark" ? "dark" : "light"} mode
             </div>
           </div>
-        </RadioGroup>
+          <Button onClick={toggleTheme} variant="outline" size="lg" className="w-32 bg-transparent">
+            {theme === "dark" ? (
+              <>
+                <Sun className="h-4 w-4 mr-2" />
+                Light
+              </>
+            ) : (
+              <>
+                <Moon className="h-4 w-4 mr-2" />
+                Dark
+              </>
+            )}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

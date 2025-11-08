@@ -106,13 +106,13 @@ export function SettingsContent() {
             <User className="h-4 w-4" />
             Profile
           </TabsTrigger>
-          <TabsTrigger value="appearance" className="flex items-center gap-2">
-            <Palette className="h-4 w-4" />
-            Appearance
-          </TabsTrigger>
           <TabsTrigger value="email" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
             Email Connection
+          </TabsTrigger>
+          <TabsTrigger value="appearance" className="flex items-center gap-2">
+            <Palette className="h-4 w-4" />
+            Appearance
           </TabsTrigger>
         </TabsList>
 
@@ -248,12 +248,12 @@ export function SettingsContent() {
           )}
         </TabsContent>
 
-        <TabsContent value="appearance" className="space-y-6">
-          <ThemeToggle />
-        </TabsContent>
-
         <TabsContent value="email" className="space-y-6">
           <EmailConnectionCard />
+        </TabsContent>
+
+        <TabsContent value="appearance" className="space-y-6">
+          <ThemeToggle />
         </TabsContent>
       </Tabs>
     </div>

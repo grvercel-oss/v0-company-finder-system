@@ -4,7 +4,7 @@ import { Geist, Geist_Mono, Source_Code_Pro } from "next/font/google"
 import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 import { ClerkSetupBanner } from "@/components/clerk-setup-banner"
-import { ThemeProvider } from "@/contexts/theme-context"
+import { ThemeProvider } from "@/contexts/theme-provider"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

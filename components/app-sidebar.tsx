@@ -1,10 +1,11 @@
 "use client"
 
-import { Home, Search, FolderOpen, Send, Inbox, BarChart3, Settings, Building2 } from "lucide-react"
+import { Home, Search, FolderOpen, Send, Inbox, BarChart3, Settings } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { UserButton } from "@clerk/nextjs"
 import { cn } from "@/lib/utils"
+import Image from "next/image"
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
@@ -23,8 +24,8 @@ export function AppSidebar() {
     <div className="flex h-screen w-64 flex-col border-r border-border bg-card">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-          <Building2 className="h-6 w-6 text-primary-foreground" />
+        <div className="flex h-10 w-10 items-center justify-center">
+          <Image src="/logo.svg" alt="Binfo Logo" width={40} height={40} className="text-accent" />
         </div>
         <div>
           <h1 className="text-base font-bold leading-tight">Binfo</h1>

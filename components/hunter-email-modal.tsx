@@ -451,11 +451,11 @@ export function HunterEmailModal({
               )}
 
               {selectedEmails.size > 0 && selectedCampaign && (
-                <div className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-accent/10 border border-accent/20 rounded-lg">
                   <p className="text-sm font-medium">
                     {selectedEmails.size} contact{selectedEmails.size !== 1 ? "s" : ""} selected
                   </p>
-                  <Button onClick={sendSelectedToCampaign} className="bg-blue-500 hover:bg-blue-600">
+                  <Button onClick={sendSelectedToCampaign} className="bg-accent hover:bg-accent/90 text-white">
                     <Rocket className="h-4 w-4 mr-2" />
                     Add to Campaign
                   </Button>
@@ -539,7 +539,7 @@ export function HunterEmailModal({
                                     size="sm"
                                     onClick={() => sendToCampaign({ ...exec, value: email })}
                                     disabled={isSending}
-                                    className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                                    className="border-accent text-accent hover:bg-accent/10"
                                   >
                                     {isSending ? (
                                       <>
@@ -676,7 +676,7 @@ export function HunterEmailModal({
                                       size="sm"
                                       onClick={() => sendToCampaign(exec)}
                                       disabled={isSending}
-                                      className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                                      className="border-accent text-accent hover:bg-accent/10"
                                     >
                                       {isSending ? (
                                         <>

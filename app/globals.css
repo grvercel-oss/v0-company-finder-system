@@ -116,37 +116,37 @@
 
 @media (prefers-color-scheme: dark) {
   @theme inline {
-    --color-background: #0a0a0a;
-    --color-foreground: #fafafa;
-    --color-card: #141414;
-    --color-card-foreground: #fafafa;
-    --color-popover: #141414;
-    --color-popover-foreground: #fafafa;
+    --color-background: #ffffff;
+    --color-foreground: #0a0a0a;
+    --color-card: #ffffff;
+    --color-card-foreground: #0a0a0a;
+    --color-popover: #ffffff;
+    --color-popover-foreground: #0a0a0a;
 
-    --color-primary: #3cdbd3;
-    --color-primary-foreground: #0a0a0a;
+    --color-primary: #0a0a0a;
+    --color-primary-foreground: #ffffff;
 
-    --color-secondary: #e8e288;
+    --color-secondary: #f5f5f5;
     --color-secondary-foreground: #0a0a0a;
 
-    --color-success: #7dce82;
-    --color-success-foreground: #0a0a0a;
+    --color-success: #22c55e;
+    --color-success-foreground: #ffffff;
 
-    --color-warning: #ff8360;
+    --color-warning: #f97316;
     --color-warning-foreground: #ffffff;
 
-    --color-accent: #00fff5;
+    --color-accent: #f5f5f5;
     --color-accent-foreground: #0a0a0a;
 
-    --color-muted: #1a1a1a;
-    --color-muted-foreground: #a1a1a1;
+    --color-muted: #f5f5f5;
+    --color-muted-foreground: #737373;
 
-    --color-destructive: #ff8360;
+    --color-destructive: #ef4444;
     --color-destructive-foreground: #ffffff;
 
-    --color-border: #262626;
-    --color-input: #262626;
-    --color-ring: #3cdbd3;
+    --color-border: #e5e5e5;
+    --color-input: #e5e5e5;
+    --color-ring: #a3a3a3;
   }
 }
 

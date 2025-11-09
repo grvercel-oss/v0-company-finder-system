@@ -4,10 +4,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail } from "lucide-react"
+import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, Zap } from "lucide-react"
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
-import { HunterEmailModal } from "./hunter-email-modal"
+import { ApolloContactModal } from "./apollo-contact-modal"
 import { BulkAddToList } from "./bulk-add-to-list"
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
@@ -36,8 +36,8 @@ interface CompanyContact {
 export function SearchResultsTable({ companies, selectedCompanies, onSelectionChange }: SearchResultsTableProps) {
   const [researchModalOpen, setResearchModalOpen] = useState(false)
   const [selectedCompanyForResearch, setSelectedCompanyForResearch] = useState<Company | null>(null)
-  const [hunterModalOpen, setHunterModalOpen] = useState(false)
-  const [selectedCompanyForHunter, setSelectedCompanyForHunter] = useState<Company | null>(null)
+  const [apolloModalOpen, setApolloModalOpen] = useState(false)
+  const [selectedCompanyForApollo, setSelectedCompanyForApollo] = useState<Company | null>(null)
   const [companyContacts, setCompanyContacts] = useState<Record<number, CompanyContact[]>>({})
   const { toast } = useToast()
 
@@ -91,15 +91,15 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
     setResearchModalOpen(true)
   }
 
-  const handleHunterContactSaved = async () => {
-    if (selectedCompanyForHunter) {
-      await fetchContacts([selectedCompanyForHunter.id])
+  const handleApolloContactSaved = async () => {
+    if (selectedCompanyForApollo) {
+      await fetchContacts([selectedCompanyForApollo.id])
     }
   }
 
-  const handleHunterSearch = (company: Company) => {
-    setSelectedCompanyForHunter(company)
-    setHunterModalOpen(true)
+  const handleApolloSearch = (company: Company) => {
+    setSelectedCompanyForApollo(company)
+    setApolloModalOpen(true)
   }
 
   const copyEmail = (email: string) => {
@@ -236,6 +236,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                             <div className="flex-1 min-w-0">
                               <div className="font-medium truncate">{contact.name}</div>
                               <div className="text-xs text-muted-foreground truncate">{contact.role}</div>
+                              {contact.source === "apollo.io" && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] px-1 py-0 h-4 border-blue-500/50 text-blue-600 mt-0.5"
+                                >
+                                  Apollo.io
+                                </Badge>
+                              )}
                               {contact.source === "hunter.io" && (
                                 <Badge
                                   variant="outline"
@@ -284,11 +292,11 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                       <Button
                         variant="default"
                         size="sm"
-                        onClick={() => handleHunterSearch(company)}
-                        className="bg-orange-500 hover:bg-orange-600 text-white"
+                        onClick={() => handleApolloSearch(company)}
+                        className="bg-blue-500 hover:bg-blue-600 text-white"
                       >
-                        <Mail className="h-4 w-4 mr-1" />
-                        Get email from Hunter.io
+                        <Zap className="h-4 w-4 mr-1" />
+                        Get contact from Apollo
                       </Button>
                       <Button variant="default" size="sm" onClick={() => handleGetMoreInfo(company)}>
                         Get more info
@@ -311,14 +319,14 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
         />
       )}
 
-      {selectedCompanyForHunter && (
-        <HunterEmailModal
-          companyName={selectedCompanyForHunter.name}
-          companyId={selectedCompanyForHunter.id}
-          domain={selectedCompanyForHunter.website?.replace(/^https?:\/\//i, "").split("/")[0] || ""}
-          open={hunterModalOpen}
-          onOpenChange={setHunterModalOpen}
-          onContactSaved={handleHunterContactSaved}
+      {selectedCompanyForApollo && (
+        <ApolloContactModal
+          companyName={selectedCompanyForApollo.name}
+          companyId={selectedCompanyForApollo.id}
+          domain={selectedCompanyForApollo.website?.replace(/^https?:\/\//i, "").split("/")[0] || ""}
+          open={apolloModalOpen}
+          onOpenChange={setApolloModalOpen}
+          onContactSaved={handleApolloContactSaved}
         />
       )}
     </>

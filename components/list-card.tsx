@@ -2,10 +2,11 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { FolderOpen, Trash2 } from "lucide-react"
+import { FolderOpen, Trash2, Briefcase, Building2, Target, Users, Star, Lightbulb, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 
 interface ListCardProps {
   list: {
@@ -14,8 +15,32 @@ interface ListCardProps {
     description: string | null
     company_count: number
     created_at: string
+    icon?: string
+    color?: string
   }
   onDelete?: (id: number) => void
+}
+
+const ICON_MAP: Record<string, any> = {
+  folder: FolderOpen,
+  briefcase: Briefcase,
+  building: Building2,
+  target: Target,
+  users: Users,
+  star: Star,
+  lightbulb: Lightbulb,
+  trending: TrendingUp,
+}
+
+const COLOR_MAP: Record<string, string> = {
+  gray: "text-gray-500",
+  blue: "text-blue-500",
+  green: "text-green-500",
+  purple: "text-purple-500",
+  orange: "text-orange-500",
+  pink: "text-pink-500",
+  red: "text-red-500",
+  accent: "text-accent",
 }
 
 export function ListCard({ list, onDelete }: ListCardProps) {
@@ -54,12 +79,15 @@ export function ListCard({ list, onDelete }: ListCardProps) {
     }
   }
 
+  const IconComponent = ICON_MAP[list.icon || "folder"] || FolderOpen
+  const iconColor = COLOR_MAP[list.color || "gray"] || "text-gray-500"
+
   return (
     <Card className="hover:border-primary/50 transition-colors">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5 text-primary" />
+            <IconComponent className={cn("h-5 w-5", iconColor)} />
             <CardTitle className="text-lg">{list.name}</CardTitle>
           </div>
           <Button variant="ghost" size="icon" onClick={handleDelete} className="h-8 w-8" disabled={isDeleting}>

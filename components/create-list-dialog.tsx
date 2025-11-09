@@ -14,8 +14,20 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Loader2 } from "lucide-react"
+import {
+  Plus,
+  Loader2,
+  FolderOpen,
+  Briefcase,
+  Building2,
+  Target,
+  Users,
+  Star,
+  Lightbulb,
+  TrendingUp,
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 interface CreateListDialogProps {
   onListCreated?: () => void
@@ -23,10 +35,34 @@ interface CreateListDialogProps {
   onOpenChange?: (open: boolean) => void
 }
 
+const ICON_OPTIONS = [
+  { name: "folder", icon: FolderOpen },
+  { name: "briefcase", icon: Briefcase },
+  { name: "building", icon: Building2 },
+  { name: "target", icon: Target },
+  { name: "users", icon: Users },
+  { name: "star", icon: Star },
+  { name: "lightbulb", icon: Lightbulb },
+  { name: "trending", icon: TrendingUp },
+]
+
+const COLOR_OPTIONS = [
+  { name: "gray", value: "text-gray-500" },
+  { name: "blue", value: "text-blue-500" },
+  { name: "green", value: "text-green-500" },
+  { name: "purple", value: "text-purple-500" },
+  { name: "orange", value: "text-orange-500" },
+  { name: "pink", value: "text-pink-500" },
+  { name: "red", value: "text-red-500" },
+  { name: "accent", value: "text-accent" },
+]
+
 export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenChange }: CreateListDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [selectedIcon, setSelectedIcon] = useState("folder")
+  const [selectedColor, setSelectedColor] = useState("gray")
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
@@ -48,7 +84,7 @@ export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenCh
       const response = await fetch("/api/lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, icon: selectedIcon, color: selectedColor }),
       })
 
       if (response.ok) {
@@ -58,6 +94,8 @@ export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenCh
         })
         setName("")
         setDescription("")
+        setSelectedIcon("folder")
+        setSelectedColor("gray")
         setOpen(false)
         onListCreated?.()
       } else {
@@ -88,7 +126,7 @@ export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenCh
           Create List
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Create New List</DialogTitle>
           <DialogDescription>Create a new list to organize your companies</DialogDescription>
@@ -114,6 +152,49 @@ export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenCh
               rows={3}
               disabled={loading}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Icon</Label>
+            <div className="grid grid-cols-8 gap-2">
+              {ICON_OPTIONS.map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.name}
+                    type="button"
+                    onClick={() => setSelectedIcon(option.name)}
+                    className={cn(
+                      "p-3 rounded-lg border-2 hover:border-accent transition-colors flex items-center justify-center",
+                      selectedIcon === option.name ? "border-accent bg-accent/10" : "border-border",
+                    )}
+                    disabled={loading}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Color</Label>
+            <div className="grid grid-cols-8 gap-2">
+              {COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.name}
+                  type="button"
+                  onClick={() => setSelectedColor(option.name)}
+                  className={cn(
+                    "p-3 rounded-lg border-2 hover:border-accent transition-colors flex items-center justify-center",
+                    selectedColor === option.name ? "border-accent bg-accent/10" : "border-border",
+                  )}
+                  disabled={loading}
+                >
+                  <div className={cn("h-5 w-5 rounded-full", option.value.replace("text-", "bg-"))} />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <DialogFooter>

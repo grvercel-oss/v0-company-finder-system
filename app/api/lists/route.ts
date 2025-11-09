@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   try {
     const accountId = await getAccountIdFromRequest(request)
     const body = await request.json()
-    const { name, description } = body
+    const { name, description, icon = "folder", color = "gray" } = body
 
     console.log("[v0] Creating new list:", name, "for account:", accountId)
 
@@ -71,8 +71,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await sql`
-      INSERT INTO company_lists (name, description, account_id, created_at, updated_at)
-      VALUES (${name.trim()}, ${description?.trim() || null}, ${accountId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      INSERT INTO company_lists (name, description, icon, color, account_id, created_at, updated_at)
+      VALUES (${name.trim()}, ${description?.trim() || null}, ${icon}, ${color}, ${accountId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       RETURNING *
     `
 

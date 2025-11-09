@@ -12,6 +12,8 @@ interface CompanyList {
   description: string | null
   company_count: number
   created_at: string
+  icon?: string
+  color?: string
 }
 
 export default function ListsPage() {

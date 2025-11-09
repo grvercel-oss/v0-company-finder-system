@@ -190,7 +190,10 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                           </Link>
                           {company.verified && <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />}
                         </div>
-                        <p className="text-sm text-muted-foreground truncate">
+                        <p
+                          className="text-sm text-muted-foreground line-clamp-2"
+                          title={company.ai_summary || company.description || "No description"}
+                        >
                           {company.ai_summary || company.description || "No description"}
                         </p>
                       </div>

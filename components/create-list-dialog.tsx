@@ -47,14 +47,14 @@ const ICON_OPTIONS = [
 ]
 
 const COLOR_OPTIONS = [
-  { name: "gray", value: "text-gray-500" },
-  { name: "blue", value: "text-blue-500" },
-  { name: "green", value: "text-green-500" },
-  { name: "purple", value: "text-purple-500" },
-  { name: "orange", value: "text-orange-500" },
-  { name: "pink", value: "text-pink-500" },
-  { name: "red", value: "text-red-500" },
-  { name: "accent", value: "text-accent" },
+  { name: "gray", bgClass: "bg-gray-500" },
+  { name: "blue", bgClass: "bg-blue-500" },
+  { name: "green", bgClass: "bg-green-500" },
+  { name: "purple", bgClass: "bg-purple-500" },
+  { name: "orange", bgClass: "bg-orange-500" },
+  { name: "pink", bgClass: "bg-pink-500" },
+  { name: "red", bgClass: "bg-red-500" },
+  { name: "accent", bgClass: "bg-accent" },
 ]
 
 export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenChange }: CreateListDialogProps) {
@@ -191,7 +191,7 @@ export function CreateListDialog({ onListCreated, open: controlledOpen, onOpenCh
                   )}
                   disabled={loading}
                 >
-                  <div className={cn("h-5 w-5 rounded-full", option.value.replace("text-", "bg-"))} />
+                  <div className={cn("h-5 w-5 rounded-full", option.bgClass)} />
                 </button>
               ))}
             </div>

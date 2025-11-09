@@ -116,6 +116,8 @@ async function extractContentFromWARC(record: CDXRecord): Promise<string | null>
     const { offset, length, filename } = record
     const warcUrl = `https://data.commoncrawl.org/${filename}`
 
+    console.log("[v0] [CommonCrawl] Downloading WARC record from:", warcUrl)
+
     // Download specific byte range
     const response = await fetch(warcUrl, {
       headers: {
@@ -124,7 +126,7 @@ async function extractContentFromWARC(record: CDXRecord): Promise<string | null>
     })
 
     if (!response.ok) {
-      console.warn("[v0] [CommonCrawl] Failed to fetch WARC record")
+      console.warn("[v0] [CommonCrawl] Failed to fetch WARC record:", response.status)
       return null
     }
 
@@ -135,6 +137,7 @@ async function extractContentFromWARC(record: CDXRecord): Promise<string | null>
     // WARC format has headers, then HTTP headers, then HTML content
     const htmlMatch = text.match(/<html[\s\S]*?<\/html>/i)
     if (!htmlMatch) {
+      console.warn("[v0] [CommonCrawl] No HTML content found in WARC record")
       return null
     }
 
@@ -147,6 +150,8 @@ async function extractContentFromWARC(record: CDXRecord): Promise<string | null>
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
       .trim()
+
+    cleanText = cleanText.replace(/[\x00-\x1F\x7F-\x9F]/g, "")
 
     // Limit to first 2000 characters
     cleanText = cleanText.substring(0, 2000)

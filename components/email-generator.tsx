@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Sparkles, Loader2 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 
@@ -18,12 +20,37 @@ interface Contact {
 interface EmailGeneratorProps {
   campaignId: string
   contacts: Contact[]
+  campaign: {
+    name: string
+    description?: string
+    email_prompt?: string
+  }
   onComplete: () => void
 }
 
-export function EmailGenerator({ campaignId, contacts, onComplete }: EmailGeneratorProps) {
+export function EmailGenerator({ campaignId, contacts, campaign, onComplete }: EmailGeneratorProps) {
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [emailPrompt, setEmailPrompt] = useState(campaign.email_prompt || "")
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false)
+
+  const handleSavePrompt = async () => {
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_prompt: emailPrompt }),
+      })
+
+      if (!response.ok) throw new Error("Failed to update campaign")
+
+      setIsEditingPrompt(false)
+      alert("Email instructions updated successfully!")
+    } catch (error) {
+      console.error("Failed to update prompt:", error)
+      alert("Failed to update email instructions")
+    }
+  }
 
   const handleGenerate = async () => {
     if (contacts.length === 0) return
@@ -33,7 +60,7 @@ export function EmailGenerator({ campaignId, contacts, onComplete }: EmailGenera
 
     try {
       const contactIds = contacts.map((c) => c.id)
-      const batchSize = 5 // Process 5 at a time
+      const batchSize = 5
 
       for (let i = 0; i < contactIds.length; i += batchSize) {
         const batch = contactIds.slice(i, i + batchSize)
@@ -41,7 +68,7 @@ export function EmailGenerator({ campaignId, contacts, onComplete }: EmailGenera
         const response = await fetch("/api/emails/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ campaignId, contactIds: batch }),
+          body: JSON.stringify({ campaignId, contactIds: batch, email_prompt: emailPrompt }),
         })
 
         if (!response.ok) throw new Error("Failed to generate emails")
@@ -67,6 +94,47 @@ export function EmailGenerator({ campaignId, contacts, onComplete }: EmailGenera
         <CardDescription>Use AI to generate personalized emails for your contacts</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="p-4 border rounded-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <Label className="text-base font-medium">Email Instructions</Label>
+            {!isEditingPrompt && (
+              <Button variant="ghost" size="sm" onClick={() => setIsEditingPrompt(true)}>
+                Edit
+              </Button>
+            )}
+          </div>
+          {isEditingPrompt ? (
+            <div className="space-y-3">
+              <Textarea
+                value={emailPrompt}
+                onChange={(e) => setEmailPrompt(e.target.value)}
+                placeholder="e.g., Focus on our new product launch, mention cost savings, use a friendly tone..."
+                rows={4}
+                className="w-full"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSavePrompt}>
+                  Save
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEmailPrompt(campaign.email_prompt || "")
+                    setIsEditingPrompt(false)
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {emailPrompt || "No specific instructions - AI will use campaign context"}
+            </p>
+          )}
+        </div>
+
         <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
           <div>
             <div className="font-medium">{contacts.length} contacts ready</div>

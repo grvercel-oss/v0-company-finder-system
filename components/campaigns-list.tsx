@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Mail, Users, MessageSquare, Trash2 } from "lucide-react"
+import { Mail, Users, MessageSquare, Trash2, Target, TrendingUp, Zap, Rocket, Megaphone, Send } from "lucide-react"
 import { CreateCampaignDialog } from "@/components/create-campaign-dialog"
 
 interface Campaign {
@@ -25,10 +25,34 @@ interface Campaign {
   name: string
   description: string
   status: string
+  icon?: string
+  color?: string
   total_contacts: number
   emails_sent: number
   replies_received: number
   created_at: string
+}
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  mail: Mail,
+  target: Target,
+  users: Users,
+  trending: TrendingUp,
+  zap: Zap,
+  rocket: Rocket,
+  megaphone: Megaphone,
+  send: Send,
+}
+
+const COLOR_MAP: Record<string, string> = {
+  gray: "text-gray-600",
+  blue: "text-blue-600",
+  green: "text-green-600",
+  purple: "text-purple-600",
+  orange: "text-orange-600",
+  pink: "text-pink-600",
+  red: "text-red-600",
+  accent: "text-accent",
 }
 
 export function CampaignsList() {
@@ -110,61 +134,69 @@ export function CampaignsList() {
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {campaigns.map((campaign) => (
-              <div key={campaign.id} className="relative group">
-                <Link href={`/campaigns/${campaign.id}`}>
-                  <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-lg">{campaign.name}</CardTitle>
-                        <Badge variant={campaign.status === "active" ? "default" : "secondary"}>
-                          {campaign.status}
-                        </Badge>
-                      </div>
-                      <CardDescription className="line-clamp-2">
-                        {campaign.description || "No description"}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Users className="h-4 w-4" />
-                            <span>Contacts</span>
+            {campaigns.map((campaign) => {
+              const IconComponent = ICON_MAP[campaign.icon || "mail"] || Mail
+              const colorClass = COLOR_MAP[campaign.color || "blue"] || "text-blue-600"
+
+              return (
+                <div key={campaign.id} className="relative group">
+                  <Link href={`/campaigns/${campaign.id}`}>
+                    <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
+                      <CardHeader>
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-2">
+                            <IconComponent className={`h-5 w-5 ${colorClass}`} />
+                            <CardTitle className="text-lg">{campaign.name}</CardTitle>
                           </div>
-                          <span className="font-semibold">{campaign.total_contacts || 0}</span>
+                          <Badge variant={campaign.status === "active" ? "default" : "secondary"}>
+                            {campaign.status}
+                          </Badge>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Mail className="h-4 w-4" />
-                            <span>Sent</span>
+                        <CardDescription className="line-clamp-2">
+                          {campaign.description || "No description"}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Users className="h-4 w-4" />
+                              <span>Contacts</span>
+                            </div>
+                            <span className="font-semibold">{campaign.total_contacts || 0}</span>
                           </div>
-                          <span className="font-semibold">{campaign.emails_sent || 0}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <MessageSquare className="h-4 w-4" />
-                            <span>Replies</span>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Mail className="h-4 w-4" />
+                              <span>Sent</span>
+                            </div>
+                            <span className="font-semibold">{campaign.emails_sent || 0}</span>
                           </div>
-                          <span className="font-semibold">{campaign.replies_received || 0}</span>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <MessageSquare className="h-4 w-4" />
+                              <span>Replies</span>
+                            </div>
+                            <span className="font-semibold">{campaign.replies_received || 0}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground pt-2 border-t">
+                            Created {new Date(campaign.created_at).toLocaleDateString()}
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground pt-2 border-t">
-                          Created {new Date(campaign.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => handleDeleteClick(e, campaign)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+                      </CardContent>
+                    </Card>
+                  </Link>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => handleDeleteClick(e, campaign)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

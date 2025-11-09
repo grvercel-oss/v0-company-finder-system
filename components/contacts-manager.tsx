@@ -25,11 +25,16 @@ interface Contact {
 
 interface ContactsManagerProps {
   campaignId: string
+  campaign: {
+    name: string
+    description?: string
+    email_prompt?: string
+  }
   contacts: Contact[]
   onUpdate: () => void
 }
 
-export function ContactsManager({ campaignId, contacts, onUpdate }: ContactsManagerProps) {
+export function ContactsManager({ campaignId, campaign, contacts, onUpdate }: ContactsManagerProps) {
   const [activeTab, setActiveTab] = useState("contacts")
 
   const pendingContacts = contacts.filter((c) => c.status === "pending")
@@ -90,6 +95,7 @@ export function ContactsManager({ campaignId, contacts, onUpdate }: ContactsMana
             <EmailGenerator
               campaignId={campaignId}
               contacts={pendingContacts}
+              campaign={campaign}
               onComplete={() => {
                 onUpdate()
                 setActiveTab("send")

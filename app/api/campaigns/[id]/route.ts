@@ -87,7 +87,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, description, status } = body
+    const { name, description, status, email_prompt } = body
 
     const result = await sql`
       UPDATE campaigns
@@ -95,6 +95,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         name = COALESCE(${name}, name),
         description = COALESCE(${description}, description),
         status = COALESCE(${status}, status),
+        email_prompt = COALESCE(${email_prompt}, email_prompt),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *

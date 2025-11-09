@@ -34,15 +34,15 @@ export async function POST(request: Request) {
     const accountId = await getAccountIdFromRequest(request)
 
     const body = await request.json()
-    const { name, description } = body
+    const { name, description, email_prompt, icon = "mail", color = "blue" } = body
 
     if (!name) {
       return NextResponse.json({ error: "Campaign name is required" }, { status: 400 })
     }
 
     const result = await sql`
-      INSERT INTO campaigns (name, description, status, account_id)
-      VALUES (${name}, ${description || ""}, 'draft', ${accountId})
+      INSERT INTO campaigns (name, description, email_prompt, status, icon, color, account_id)
+      VALUES (${name}, ${description || ""}, ${email_prompt || null}, 'draft', ${icon}, ${color}, ${accountId})
       RETURNING *
     `
 

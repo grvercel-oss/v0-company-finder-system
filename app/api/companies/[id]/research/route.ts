@@ -1,18 +1,18 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithGroqBrave } from "@/lib/groq-brave-research"
+import { researchCompanyWithGroqBrowser } from "@/lib/groq-browser-research"
 import { auth } from "@clerk/nextjs/server"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
+    const { id } = params
 
     // Get company from database
     const companies = await sql`
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     }
 
-    console.log(`[v0] Fetching fresh Groq+Brave research for company: ${company.name}`)
-    const research = await researchCompanyWithGroqBrave(company.name, company.domain || company.website)
+    console.log(`[v0] Fetching fresh Groq browser research for company: ${company.name}`)
+    const research = await researchCompanyWithGroqBrowser(company.name, company.domain || company.website)
 
     // Save research to database (reusing tavily_research column)
     await sql`

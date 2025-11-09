@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
+import { generateText } from "ai"
 
 // POST regenerate email for a contact
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -25,116 +26,109 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const profiles = await sql`SELECT * FROM user_profile LIMIT 1`
     const profile = profiles.length > 0 ? profiles[0] : null
 
-    // Generate new email using AI (will be implemented in next task with GPT-4o-mini)
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini", // Fixed model name from gpt-4o-nano to gpt-4o-mini
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert outreach copywriter and email deliverability specialist. Generate professional, friendly, and highly effective emails for outreach. Follow these rules exactly:
-- Always optimize emails to minimize chances of landing in spam folders. Avoid spammy words like 'free', 'urgent', '$$$', 'buy now'.
-- Do not use long em-dashes or unnecessary punctuation. Use simple dashes or commas instead.
-- Keep the tone professional, friendly, and straightforward but engaging and confident.
-- Email body should be concise, clear, and easy to read. Use short paragraphs and bullets where useful.
-- Include at least one clear Call-to-Action (CTA) in each email.
-- Avoid overly salesy or pushy language. Focus on building trust and value.
-- End the email politely.
-- Provide subject lines that are clear, relevant, and personalized.
-- Always format output as JSON with the following fields: { "subject": string, "body": string, "cta": string }`,
-          },
-          {
-            role: "user",
-            content: `Generate a personalized outreach email for:
+    const { text, usage } = await generateText({
+      model: "groq/openai/gpt-oss-20b",
+      temperature: 0.7,
+      maxTokens: 500,
+      system: `# ROLE: ELITE CONVERSATIONALIST
 
-Campaign: ${campaign.name}
-Campaign Description: ${campaign.description || "General outreach"}
+You are an Elite Conversationalist specializing in highly effective, customized cold email outreach. Your sole purpose is to generate a single, complete email (Subject Line and Body) that appears to be written manually by a knowledgeable, busy human colleague or executive.
 
-Contact Details:
-- Name: ${contact.first_name} ${contact.last_name}
-- Company: ${contact.company_name}
-- Job Title: ${contact.job_title}
-- Email: ${contact.email}
+Your generated email must be immediately usable for outbound communication. The tone must be concise, direct, professional, and entirely authentic.
 
-${
-  profile
-    ? `Sender Information:
-- Name: ${profile.full_name}
-- Company: ${profile.company}
-- Phone: ${profile.phone}
-- Website: ${profile.website}
-- Email: ${profile.email}`
-    : ""
-}
+# CRITICAL ANTI-AI OUTPUT CONSTRAINTS
 
-Generate a subject line and email body. Keep it professional, concise (under 150 words), and personalized.
+NEVER violate these rules. The goal is 100% human authenticity.
+
+1. **Avoid AI Markers:** Do not use long dashes (— or em-dashes), excessive bullet points within the main email prose, unnecessary markdown formatting, or any introductory filler phrases like "I hope this email finds you well," "I am reaching out to," "Certainly," "Absolutely," or "Based on my analysis."
+2. **Brevity and Focus:** Keep all sentences short and the email body maximally concise, prioritizing signal over noise. The subject line must be compelling yet brief (ideally under seven words).
+3. **No Templates:** The output must be the finished, custom email text, not a template with placeholders or instructional commentary.
+4. **Natural Flow:** Write as a busy professional would - direct, confident, and conversational without being overly formal or robotic.
+5. **NO SIGNATURE:** Do NOT include any closing signature, sign-off, "Best regards", "Sincerely", name, title, or contact information. The email body should end with the call-to-action or final thought. Signatures are added automatically.
+
+# PERSUASION STRATEGY (INTERNAL - DO NOT REFERENCE)
+
+You must internally apply these principles without mentioning them:
+
+**Relationship Cultivation:**
+- Reciprocity: Offer value before asking
+- Liking: Find common ground or genuine compliment
+
+**Reducing Uncertainty:**
+- Social Proof: Reference similar companies/people
+- Authority: Demonstrate deep knowledge of their problem
+
+**Motivating Action:**
+- Scarcity: Create urgency naturally
+- Commitment: Make the ask as small as possible
+
+# SUBJECT LINE STRATEGY
+
+Your subject line must:
+- Trigger System 2 (slow, analytical thinking)
+- Avoid spam triggers and marketing clichés
+- Use curiosity gaps, relevant questions, or non sequiturs
+- Stay under 7 words
+- Never be deceptive or create expectation gaps
+
+# OUTPUT FORMAT
 
 Return ONLY a JSON object with this exact format:
 {
   "subject": "your subject line here",
-  "body": "your email body here",
-  "cta": "your call to action here"
-}`,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 600,
-      }),
+  "body": "your email body here"
+}
+
+The body should be 50-120 words maximum. Include a greeting (Hi [FirstName],) but NO signature, sign-off, or closing whatsoever.`,
+      prompt: `Generate a personalized outreach email using this context:
+
+**Campaign Context:**
+${campaign.name}${campaign.description ? ` - ${campaign.description}` : ""}
+
+**Recipient:**
+${contact.first_name} ${contact.last_name}
+${contact.job_title || ""}${contact.company_name ? ` at ${contact.company_name}` : ""}
+Email: ${contact.email}
+
+**Sender:**
+${profile?.full_name || "Our team"}${profile?.company ? ` from ${profile.company}` : ""}
+
+**Your Task:**
+Create a concise, human-written cold email that:
+1. Opens with a relevant observation or compliment about their company/role (if possible)
+2. Quickly states why you're reaching out and the value proposition
+3. Includes subtle social proof or authority if relevant to campaign
+4. Ends with the smallest possible commitment ask (e.g., "Worth a quick chat?")
+
+Remember: 
+- Sound like a busy human, not an AI
+- Be direct, confident, and conversational
+- Include greeting but NO signature or sign-off
+- End with the call-to-action`,
     })
-
-    if (!response.ok) {
-      throw new Error("AI generation failed")
-    }
-
-    const data = await response.json()
-    const content = data.choices[0].message.content
 
     // Parse JSON response
     let emailData
     try {
-      emailData = JSON.parse(content)
+      emailData = JSON.parse(text)
     } catch {
-      const subjectMatch = content.match(/"subject":\s*"([^"]+)"/)
-      const bodyMatch = content.match(/"body":\s*"([^"]+)"/)
+      const subjectMatch = text.match(/"subject":\s*"([^"]+)"/)
+      const bodyMatch = text.match(/"body":\s*"([^"]+)"/)
       emailData = {
-        subject: subjectMatch ? subjectMatch[1] : "Outreach from " + campaign.name,
-        body: bodyMatch ? bodyMatch[1] : content,
+        subject: subjectMatch ? subjectMatch[1] : `Re: ${campaign.name}`,
+        body: bodyMatch ? bodyMatch[1] : text,
       }
     }
 
     let finalBody = emailData.body
 
-    if (profile) {
-      // Add signature if exists
-      if (profile.signature) {
-        finalBody += `\n\n${profile.signature}`
-      } else {
-        // Create default signature from profile
-        finalBody += `\n\nBest regards,\n${profile.full_name || ""}`
-        if (profile.company) finalBody += `\n${profile.company}`
-      }
-
-      // Add contact information
-      const contactInfo = []
-      if (profile.phone) contactInfo.push(`Phone: ${profile.phone}`)
-      if (profile.email) contactInfo.push(`Email: ${profile.email}`)
-      if (profile.website) contactInfo.push(`Website: ${profile.website}`)
-      if (profile.linkedin_url) contactInfo.push(`LinkedIn: ${profile.linkedin_url}`)
-
-      if (contactInfo.length > 0) {
-        finalBody += `\n\n${contactInfo.join(" | ")}`
-      }
+    // Append user's custom signature if it exists
+    if (profile?.signature) {
+      finalBody += `\n\n${profile.signature}`
     }
 
-    // Track AI usage
-    const usage = data.usage
-    const inputCost = (usage.prompt_tokens / 1000000) * 0.15
-    const outputCost = (usage.completion_tokens / 1000000) * 0.6
+    const inputCost = (usage.promptTokens / 1000000) * 0.1
+    const outputCost = (usage.completionTokens / 1000000) * 0.5
     const totalCost = (inputCost + outputCost).toFixed(6)
 
     await sql`
@@ -144,8 +138,8 @@ Return ONLY a JSON object with this exact format:
         cost_usd, generation_type
       )
       VALUES (
-        ${contact.campaign_id}, ${contactId}, 'gpt-4o-mini',
-        ${usage.prompt_tokens}, ${usage.completion_tokens}, ${usage.total_tokens},
+        ${contact.campaign_id}, ${contactId}, 'groq/openai/gpt-oss-20b',
+        ${usage.promptTokens}, ${usage.completionTokens}, ${usage.totalTokens},
         ${totalCost}, 'regenerate'
       )
     `
@@ -163,7 +157,7 @@ Return ONLY a JSON object with this exact format:
 
     return NextResponse.json({ contact: result[0], cost: totalCost })
   } catch (error) {
-    console.error("[v0] Error regenerating email:", error)
+    console.error("Error regenerating email:", error)
     return NextResponse.json({ error: "Failed to regenerate email" }, { status: 500 })
   }
 }

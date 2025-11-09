@@ -12,6 +12,7 @@ interface Campaign {
   id: number
   name: string
   description: string
+  email_prompt?: string
   status: string
   created_at: string
 }
@@ -140,7 +141,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
         </Card>
       </div>
 
-      <ContactsManager campaignId={campaignId} contacts={contacts} onUpdate={fetchCampaign} />
+      <ContactsManager campaignId={campaignId} campaign={campaign} contacts={contacts} onUpdate={fetchCampaign} />
     </div>
   )
 }

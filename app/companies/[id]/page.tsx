@@ -39,14 +39,23 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
     ORDER BY confidence_score DESC, created_at DESC
   `
 
+  const safeJsonParse = (value: any) => {
+    if (!value || value === "" || value === "null") return undefined
+    try {
+      return JSON.parse(value)
+    } catch {
+      return undefined
+    }
+  }
+
   const hasEnrichmentData = !!(company.ai_summary || company.technologies || company.funding_stage)
 
   const enrichmentData = hasEnrichmentData
     ? {
         summary: company.ai_summary,
         extractedInfo: {
-          technologies: company.technologies ? JSON.parse(company.technologies) : undefined,
-          keywords: company.keywords ? JSON.parse(company.keywords) : undefined,
+          technologies: safeJsonParse(company.technologies),
+          keywords: safeJsonParse(company.keywords),
           employee_count: company.employee_count,
           revenue_range: company.revenue_range,
           funding_stage: company.funding_stage,
@@ -55,7 +64,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
           headquarters: company.headquarters,
           ceo_name: company.ceo_name,
           recent_news: company.recent_news,
-          competitors: company.competitors ? JSON.parse(company.competitors) : undefined,
+          competitors: safeJsonParse(company.competitors),
         },
       }
     : undefined

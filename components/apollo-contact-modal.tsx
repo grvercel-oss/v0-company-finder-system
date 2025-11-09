@@ -67,6 +67,7 @@ export function ApolloContactModal({
   const [savingContact, setSavingContact] = useState<string | null>(null)
   const [sendingToCampaign, setSendingToCampaign] = useState<string | null>(null)
   const [savedContactsSet, setSavedContactsSet] = useState<Set<string>>(new Set())
+  const [upgradeRequired, setUpgradeRequired] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export function ApolloContactModal({
     setSavedContactsSet(new Set())
     setTotalFound(0)
     setSelectedCampaign("")
+    setUpgradeRequired(false)
     setLoading(true)
 
     const controller = new AbortController()
@@ -108,7 +110,15 @@ export function ApolloContactModal({
         body: JSON.stringify({ domain, companyName }),
         signal: controller.signal,
       })
-        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((res) => {
+          if (res.status === 402) {
+            return res.json().then((data) => {
+              setUpgradeRequired(true)
+              throw new Error(data.message || "Upgrade required")
+            })
+          }
+          return res.ok ? res.json() : Promise.reject(res)
+        })
         .then((data) => {
           setExecutives(data.executives || [])
           setTotalFound(data.totalFound || 0)
@@ -130,7 +140,7 @@ export function ApolloContactModal({
           if (error.name !== "AbortError") {
             toast({
               title: "Search failed",
-              description: "Failed to search Apollo.io",
+              description: error.message || "Failed to search Apollo.io",
               variant: "destructive",
             })
           }
@@ -375,6 +385,27 @@ export function ApolloContactModal({
             <div className="flex flex-col items-center justify-center py-12 gap-4">
               <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
               <p className="text-sm text-muted-foreground">Searching Apollo.io for executives...</p>
+            </div>
+          ) : upgradeRequired ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center">
+                <Zap className="h-8 w-8 text-amber-500" />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="text-lg font-semibold">Apollo.io Upgrade Required</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  The People Search API is not available on Apollo.io's free plan. Please upgrade your Apollo.io account
+                  to access this feature.
+                </p>
+              </div>
+              <Button asChild className="bg-blue-500 hover:bg-blue-600">
+                <a href="https://app.apollo.io/" target="_blank" rel="noopener noreferrer">
+                  Upgrade Apollo.io Plan
+                </a>
+              </Button>
+              <p className="text-xs text-muted-foreground mt-4">
+                Alternative: Use Hunter.io integration which works on free tier
+              </p>
             </div>
           ) : executives.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-4">

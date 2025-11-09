@@ -1,18 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
 import { researchCompanyWithGroqBrave } from "@/lib/groq-brave-research"
+import { researchCompanyWithCommonCrawl } from "@/lib/commoncrawl"
 import { auth } from "@clerk/nextjs/server"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
+    const { id } = params
 
     // Get company from database
     const companies = await sql`
@@ -41,8 +42,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     }
 
-    console.log(`[v0] Fetching fresh Groq+Brave research for company: ${company.name}`)
-    const research = await researchCompanyWithGroqBrave(company.name, company.domain || company.website)
+    console.log(`[v0] Fetching fresh research for company: ${company.name}`)
+
+    const [braveResearch, commonCrawlData] = await Promise.all([
+      researchCompanyWithGroqBrave(company.name, company.domain || company.website),
+      researchCompanyWithCommonCrawl(company.name, company.domain || company.website).catch((err) => {
+        console.error("[v0] Common Crawl research failed:", err)
+        return null
+      }),
+    ])
+
+    const research = {
+      ...braveResearch,
+      commonCrawlData: commonCrawlData || undefined,
+    }
 
     // Save research to database (reusing tavily_research column)
     await sql`
@@ -53,7 +66,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       WHERE id = ${id}
     `
 
-    console.log(`[v0] Saved research for company ${id}`)
+    console.log(`[v0] Saved combined research for company ${id}`)
 
     return NextResponse.json({
       cached: false,

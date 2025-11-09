@@ -93,6 +93,9 @@ export async function searchExecutiveContacts(domain: string, companyName: strin
 
   if (!response.ok) {
     const error = await response.json()
+    if (error.error && error.error.includes("not accessible with this api_key on a free plan")) {
+      throw new Error("UPGRADE_REQUIRED")
+    }
     throw new Error(error.error || "Failed to search Apollo.io")
   }
 

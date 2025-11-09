@@ -3,7 +3,6 @@ import { CompanyHeader } from "@/components/company-header"
 import { CompanyOverview } from "@/components/company-overview"
 import { CompanyUpdates } from "@/components/company-updates"
 import { CompanyContacts } from "@/components/company-contacts"
-import { EditCompanyDialog } from "@/components/edit-company-dialog"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
@@ -40,6 +39,27 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
     ORDER BY confidence_score DESC, created_at DESC
   `
 
+  const hasEnrichmentData = !!(company.ai_summary || company.technologies || company.funding_stage)
+
+  const enrichmentData = hasEnrichmentData
+    ? {
+        summary: company.ai_summary,
+        extractedInfo: {
+          technologies: company.technologies ? JSON.parse(company.technologies) : undefined,
+          keywords: company.keywords ? JSON.parse(company.keywords) : undefined,
+          employee_count: company.employee_count,
+          revenue_range: company.revenue_range,
+          funding_stage: company.funding_stage,
+          total_funding: company.total_funding,
+          founded_year: company.founded_year,
+          headquarters: company.headquarters,
+          ceo_name: company.ceo_name,
+          recent_news: company.recent_news,
+          competitors: company.competitors ? JSON.parse(company.competitors) : undefined,
+        },
+      }
+    : undefined
+
   return (
     <div className="min-h-screen bg-background">
       <CompanyHeader company={company} />
@@ -52,13 +72,18 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
               Back to Search
             </Link>
           </Button>
-          <EditCompanyDialog company={company} />
         </div>
 
         <div className="space-y-6">
           <CompanyOverview company={company} />
           <CompanyContacts contacts={contacts} />
-          <CompanyUpdates updates={updates} />
+          <CompanyUpdates
+            updates={updates}
+            companyId={company.id}
+            companyName={company.name}
+            hasEnrichmentData={hasEnrichmentData}
+            enrichmentData={enrichmentData}
+          />
         </div>
       </div>
     </div>

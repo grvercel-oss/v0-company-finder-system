@@ -10,10 +10,13 @@ const sql = neon(process.env.NEON_DATABASE_URL!)
 function sanitizeJSON(obj: any): any {
   if (typeof obj === "string") {
     return obj
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // Remove control characters
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, "") // Remove unicode control chars
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "") // Remove control chars except \t \n \r
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "")
       .replace(/\uFEFF/g, "") // Remove BOM
-      .replace(/[\u2000-\u200B\u2028\u2029]/g, " ") // Replace special spaces
+      .replace(/[\u2000-\u200F\u2028-\u202F\u205F-\u206F]/g, " ") // Replace special spaces
+      .replace(/[\u2060-\u2069]/g, "") // Remove invisible chars
+      .replace(/[^\x20-\x7E\xA0-\xFF\u0100-\uFFFF]/g, "") // Keep only valid printable chars
+      .trim()
   }
   if (Array.isArray(obj)) {
     return obj.map(sanitizeJSON)
@@ -28,14 +31,24 @@ function sanitizeJSON(obj: any): any {
   return obj
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+function validateJSON(obj: any): boolean {
+  try {
+    const str = JSON.stringify(obj)
+    JSON.parse(str)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
+    const { id } = params
 
     console.log("[v0] [Research API] Fetching research for company ID:", id)
 
@@ -52,8 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const company = companies[0]
 
-    // Check if we have cached research (less than 7 days old)
-    const cacheExpiry = 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
+    const cacheExpiry = 7 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const fetchedAt = company.tavily_research_fetched_at ? new Date(company.tavily_research_fetched_at).getTime() : 0
 
@@ -62,11 +74,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
       const sanitizedData = sanitizeJSON(company.tavily_research)
 
-      return NextResponse.json({
-        cached: true,
-        data: sanitizedData,
-        fetchedAt: company.tavily_research_fetched_at,
-      })
+      if (!validateJSON(sanitizedData)) {
+        console.error("[v0] [Research API] Cached data contains invalid JSON, fetching fresh data")
+      } else {
+        return NextResponse.json({
+          cached: true,
+          data: sanitizedData,
+          fetchedAt: company.tavily_research_fetched_at,
+        })
+      }
     }
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
@@ -105,6 +121,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const sanitizedResearch = sanitizeJSON(research)
+
+    if (!validateJSON(sanitizedResearch)) {
+      console.error("[v0] [Research API] Generated research contains invalid JSON")
+      return NextResponse.json({ error: "Generated research contains invalid characters" }, { status: 500 })
+    }
 
     console.log("[v0] [Research API] Research completed, saving to database")
 

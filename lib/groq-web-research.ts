@@ -51,6 +51,8 @@ export interface CompanyResearchData {
  * Clean text to prevent InvalidCharacterError
  */
 function cleanText(text: string): string {
+  if (!text) return ""
+
   return text
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "") // Control chars
     .replace(/[\u2018\u2019]/g, "'") // Smart single quotes
@@ -61,7 +63,20 @@ function cleanText(text: string): string {
     .replace(/[\uFEFF\uFFFE\uFFFF]/g, "") // BOM
     .replace(/[\u200B-\u200D\uFEFF]/g, "") // Zero-width chars
     .replace(/[^\x20-\x7E\n\r]/g, " ") // Keep only ASCII printable + newlines
+    .replace(/\s+/g, " ") // Normalize whitespace
     .trim()
+}
+
+/**
+ * Ultra-safe JSON stringification that handles any special characters
+ */
+function safeStringify(obj: any): string {
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === "string") {
+      return cleanText(value)
+    }
+    return value
+  })
 }
 
 /**
@@ -77,69 +92,82 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
         {
           role: "system",
           content: cleanText(
-            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. Use web search to find the most comprehensive and up-to-date information.",
+            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. Use web search to find the most comprehensive and up-to-date information. ALWAYS prioritize data from 2024 and 2025.",
           ),
         },
         {
           role: "user",
-          content: cleanText(`Research "${companyName}" and provide a comprehensive report focusing on:
+          content:
+            cleanText(`Research "${companyName}" and provide a comprehensive report. CRITICAL: Prioritize the most recent data from 2024-2025.
 
-PRIORITY 1 - FUNDING & INVESTORS (Most Important):
+PRIORITY 1 - RECENT FUNDING & INVESTORS (2024-2025 FIRST):
+- Search for funding announcements from 2024 and 2025 FIRST
 - All funding rounds (Seed, Series A/B/C/D, etc.) with specific amounts in USD
-- Exact dates of funding announcements
+- Exact dates of funding announcements (MUST include 2024-2025 if any exist)
 - Lead investors and participating investors for each round
 - Total funding raised to date
-- Current company valuation (post-money valuation)
-- Cap table information if available
+- Current company valuation (post-money valuation from latest round)
+- Recent investor additions and cap table changes
 - Notable angel investors
 
-PRIORITY 2 - FINANCIAL METRICS:
-- Annual Recurring Revenue (ARR)
-- Monthly Recurring Revenue (MRR)
-- Total revenue and growth rate
-- Profitability status
-- Burn rate and runway
-- Employee count and growth
+PRIORITY 2 - RECENT FINANCIAL METRICS (2024-2025):
+- Latest Annual Recurring Revenue (ARR) - prioritize 2024/2025 data
+- Latest Monthly Recurring Revenue (MRR)
+- Most recent revenue figures and growth rate
+- Current profitability status
+- Latest employee count
+- Recent acquisitions or exits
 
-PRIORITY 3 - COMPANY INFORMATION:
-- Company overview and mission
-- Products and services
-- Market size and position
+PRIORITY 3 - CURRENT COMPANY INFORMATION:
+- Company overview and current mission
+- Latest products and services
+- Current market position
 - Key competitors
-- Leadership team (CEO, CFO, CTO, etc.)
-- Board members and advisors
-- Recent news and press releases
-- Acquisition history
+- Current leadership team (CEO, CFO, CTO, etc.)
+- Recent news from 2024-2025
+- Latest press releases
 
-Search multiple sources including:
-- TechCrunch, VentureBeat, Bloomberg, Reuters
-- Crunchbase, PitchBook, CB Insights
-- Company website and press releases
-- LinkedIn company page
-- SEC filings (if public company)
+SEARCH STRATEGY:
+1. First search for "${companyName} funding 2025"
+2. Then search for "${companyName} funding 2024"
+3. Then search for "${companyName} Series [A/B/C/D] 2024 2025"
+4. Search "${companyName} valuation 2024 2025"
+5. Search "${companyName} revenue 2024"
+
+Use sources like:
+- TechCrunch (search: "${companyName} funding 2024 2025")
+- Crunchbase (most recent funding)
+- PitchBook
+- Company press releases from 2024-2025
+- SEC filings if public
 
 Return ONLY a valid JSON object (no markdown, no code blocks) with this structure:
 {
-  "summary": "2-3 sentence executive summary highlighting key funding and metrics",
+  "summary": "2-3 sentence executive summary highlighting LATEST funding and 2024-2025 metrics",
   "categories": [
     {
-      "category": "Funding & Investors",
-      "content": "Detailed funding history with amounts, dates, and investor names",
+      "category": "Recent Funding & Investors (2024-2025)",
+      "content": "Most recent funding rounds with amounts, dates from 2024-2025, and investor names",
       "sources": ["https://source1.com", "https://source2.com"]
     },
     {
-      "category": "Financial Metrics",
-      "content": "Revenue, ARR, MRR, profitability, and growth metrics",
+      "category": "Historical Funding",
+      "content": "Earlier funding rounds before 2024",
+      "sources": ["https://source1.com"]
+    },
+    {
+      "category": "Latest Financial Metrics (2024-2025)",
+      "content": "Most recent revenue, ARR, MRR, profitability from 2024-2025",
       "sources": ["https://source1.com"]
     },
     {
       "category": "Company Overview",
-      "content": "Products, market position, and business model",
+      "content": "Current products, market position, and business model",
       "sources": ["https://source1.com"]
     },
     {
       "category": "Leadership & Team",
-      "content": "Executives, board members, and key personnel",
+      "content": "Current executives and key personnel",
       "sources": ["https://source1.com"]
     }
   ],
@@ -168,18 +196,18 @@ Return ONLY a valid JSON object (no markdown, no code blocks) with this structur
   }
 }
 
-Be extremely thorough. Search for funding announcements, press releases, and news articles. Include as much financial detail as possible.`),
+IMPORTANT: Include ALL funding rounds you find, but list 2024-2025 rounds FIRST. Be extremely thorough in searching for recent funding data.`),
         },
       ],
-      temperature: 0.2, // Low temperature for factual accuracy
-      max_tokens: 4000, // Increased for comprehensive responses
+      temperature: 0.2,
+      max_tokens: 4000,
     })
 
     let content = completion.choices[0]?.message?.content || "{}"
     console.log("[v0] [Groq] Received response, cleaning...")
 
     content = cleanText(content)
-    content = content.replace(/```(?:json)?\s*\n?/g, "").replace(/\n?```/g, "") // Remove markdown
+    content = content.replace(/```(?:json)?\s*\n?/g, "").replace(/\n?```/g, "")
 
     console.log("[v0] [Groq] Parsing JSON response...")
 
@@ -190,9 +218,8 @@ Be extremely thorough. Search for funding announcements, press releases, and new
       console.error("[v0] [Groq] JSON parse error:", parseError)
       console.log("[v0] [Groq] Raw content:", content.substring(0, 500))
 
-      // Fallback: return raw content as summary
       return {
-        companyName,
+        companyName: cleanText(companyName),
         summary: cleanText(content.substring(0, 500)),
         categories: [
           {
@@ -206,7 +233,7 @@ Be extremely thorough. Search for funding announcements, press releases, and new
     }
 
     const result: CompanyResearchData = {
-      companyName,
+      companyName: cleanText(companyName),
       summary: cleanText(
         analysis.summary ||
           `Comprehensive research compiled for ${companyName} covering funding, investors, and financials.`,
@@ -221,7 +248,7 @@ Be extremely thorough. Search for funding announcements, press releases, and new
 
     if (analysis.funding_data) {
       result.funding = {
-        companyName,
+        companyName: cleanText(companyName),
         funding_rounds: (analysis.funding_data.funding_rounds || []).map((round: any) => ({
           round_type: cleanText(round.round_type || "Unknown"),
           amount_usd: Number(round.amount_usd) || 0,
@@ -261,8 +288,10 @@ Be extremely thorough. Search for funding announcements, press releases, and new
     console.error("[v0] [Groq Web Search] Error:", error)
 
     return {
-      companyName,
-      summary: `Unable to complete research for ${companyName}. Error: ${error instanceof Error ? cleanText(error.message) : "Unknown error"}`,
+      companyName: cleanText(companyName),
+      summary: cleanText(
+        `Unable to complete research for ${companyName}. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      ),
       categories: [
         {
           category: "Error",

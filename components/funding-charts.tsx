@@ -38,17 +38,23 @@ export function FundingCharts({
   allInvestors,
 }: FundingChartsProps) {
   // Prepare funding timeline data
-  const fundingTimelineData = fundingRounds
+  const safeFundingRounds = Array.isArray(fundingRounds) ? fundingRounds : []
+  const safeFinancialMetrics = Array.isArray(financialMetrics) ? financialMetrics : []
+  const safeInvestors = Array.isArray(allInvestors) ? allInvestors : []
+  const safeTotalFunding = typeof totalFunding === "number" && !isNaN(totalFunding) ? totalFunding : 0
+
+  const fundingTimelineData = safeFundingRounds
+    .filter((round) => round && typeof round.amount_usd === "number" && round.announced_date)
     .sort((a, b) => new Date(a.announced_date).getTime() - new Date(b.announced_date).getTime())
     .map((round) => ({
       date: new Date(round.announced_date).toLocaleDateString("en-US", { year: "numeric", month: "short" }),
       amount: round.amount_usd / 1000000,
-      roundType: round.round_type,
+      roundType: round.round_type || "Unknown",
       valuation: round.post_money_valuation ? round.post_money_valuation / 1000000 : undefined,
     }))
 
-  const revenueData = financialMetrics
-    .filter((m) => m.revenue)
+  const revenueData = safeFinancialMetrics
+    .filter((m) => m && m.revenue && typeof m.fiscal_year === "number")
     .sort((a, b) => a.fiscal_year - b.fiscal_year)
     .map((metric) => ({
       year: metric.fiscal_year.toString(),
@@ -58,28 +64,39 @@ export function FundingCharts({
     }))
 
   const formatCurrency = (value: number) => {
+    if (!isFinite(value)) return "$0M"
     if (value >= 1000) return `$${(value / 1000).toFixed(1)}B`
     return `$${value.toFixed(1)}M`
+  }
+
+  if (safeFundingRounds.length === 0 && safeFinancialMetrics.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p className="text-sm">No funding or financial data available</p>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
-              Total Funding
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalFunding / 1000000)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{fundingRounds.length} rounds</p>
-          </CardContent>
-        </Card>
+        {safeTotalFunding > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Total Funding
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(safeTotalFunding / 1000000)}</div>
+              <p className="text-xs text-muted-foreground mt-1">{safeFundingRounds.length} rounds</p>
+            </CardContent>
+          </Card>
+        )}
 
-        {latestValuation && (
+        {latestValuation && typeof latestValuation === "number" && latestValuation > 0 && (
           <Card>
             <CardHeader className="pb-2">
               <CardDescription className="flex items-center gap-2">
@@ -94,20 +111,22 @@ export function FundingCharts({
           </Card>
         )}
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Investors
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{allInvestors.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Unique investors</p>
-          </CardContent>
-        </Card>
+        {safeInvestors.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Investors
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{safeInvestors.length}</div>
+              <p className="text-xs text-muted-foreground mt-1">Unique investors</p>
+            </CardContent>
+          </Card>
+        )}
 
-        {fundingRounds.length > 0 && (
+        {safeFundingRounds.length > 0 && (
           <Card>
             <CardHeader className="pb-2">
               <CardDescription className="flex items-center gap-2">
@@ -118,14 +137,14 @@ export function FundingCharts({
             <CardContent>
               <div className="text-2xl font-bold">
                 {
-                  fundingRounds.sort(
+                  safeFundingRounds.sort(
                     (a, b) => new Date(b.announced_date).getTime() - new Date(a.announced_date).getTime(),
                   )[0].round_type
                 }
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {new Date(
-                  fundingRounds.sort(
+                  safeFundingRounds.sort(
                     (a, b) => new Date(b.announced_date).getTime() - new Date(a.announced_date).getTime(),
                   )[0].announced_date,
                 ).getFullYear()}
@@ -239,7 +258,7 @@ export function FundingCharts({
       )}
 
       {/* Investor List */}
-      {allInvestors.length > 0 && (
+      {safeInvestors.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Investors</CardTitle>
@@ -247,7 +266,7 @@ export function FundingCharts({
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {allInvestors.map((investor, idx) => (
+              {safeInvestors.map((investor, idx) => (
                 <div key={idx} className="px-3 py-1.5 bg-primary/10 text-primary rounded-md text-sm font-medium border">
                   {investor}
                 </div>

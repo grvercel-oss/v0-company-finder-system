@@ -368,15 +368,20 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
 
                 {/* Funding & Financial Data Section */}
                 {research.funding &&
+                  typeof research.funding === "object" &&
+                  Array.isArray(research.funding.funding_rounds) &&
+                  Array.isArray(research.funding.financial_metrics) &&
                   (research.funding.funding_rounds.length > 0 || research.funding.financial_metrics.length > 0) && (
                     <div>
                       <h3 className="text-sm font-medium text-muted-foreground mb-3">FUNDING & FINANCIALS</h3>
                       <FundingCharts
                         fundingRounds={research.funding.funding_rounds}
                         financialMetrics={research.funding.financial_metrics}
-                        totalFunding={research.funding.total_funding}
+                        totalFunding={research.funding.total_funding || 0}
                         latestValuation={research.funding.latest_valuation}
-                        allInvestors={research.funding.all_investors}
+                        allInvestors={
+                          Array.isArray(research.funding.all_investors) ? research.funding.all_investors : []
+                        }
                       />
                     </div>
                   )}

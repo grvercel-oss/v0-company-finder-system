@@ -108,19 +108,37 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
       const response = await fetch(`/api/companies/${companyId}/research`)
 
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error("[v0] [Research Modal] API error:", response.status, errorText)
         throw new Error(`Failed to fetch company research: ${response.status}`)
       }
 
       const text = await response.text()
       console.log("[v0] [Research Modal] Response length:", text.length)
 
+      const cleanText = text
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "")
+        .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
+        .trim()
+
       let data
       try {
-        data = JSON.parse(text)
+        data = JSON.parse(cleanText)
       } catch (parseError) {
         console.error("[v0] [Research Modal] JSON parse error:", parseError)
-        console.error("[v0] [Research Modal] Response text (first 500 chars):", text.substring(0, 500))
-        throw new Error("Invalid JSON response from server")
+        console.error("[v0] [Research Modal] Clean text (first 500 chars):", cleanText.substring(0, 500))
+
+        const jsonMatch = cleanText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            data = JSON.parse(jsonMatch[0])
+            console.log("[v0] [Research Modal] Successfully extracted JSON from response")
+          } catch {
+            throw new Error("Could not parse server response as JSON")
+          }
+        } else {
+          throw new Error("Invalid JSON response from server")
+        }
       }
 
       setResearch(data.data)
@@ -128,7 +146,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
       setFetchedAt(data.fetchedAt)
     } catch (err) {
       console.error("[v0] [Research Modal] Error:", err)
-      setError(err instanceof Error ? err.message : "An error occurred")
+      setError(err instanceof Error ? err.message : "An error occurred while fetching research data")
     } finally {
       setLoading(false)
     }

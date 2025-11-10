@@ -2,9 +2,35 @@
 // Uses only free, open-source Common Crawl archives + Groq AI
 
 import Groq from "groq-sdk"
-import { DecompressionStream } from "web-streams-polyfill"
+import { gunzipSync } from "node:zlib"
 
 const groq = new Groq({ apiKey: process.env.API_KEY_GROQ_API_KEY })
+
+function cleanText(text: string): string {
+  if (!text || typeof text !== "string") return ""
+
+  return (
+    text
+      // Remove ALL control characters
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+      // Remove BOM and invalid Unicode
+      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
+      // Convert special quotes to ASCII
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      // Convert dashes to ASCII
+      .replace(/[\u2013\u2014]/g, "-")
+      // Convert special spaces to normal space
+      .replace(/[\u00A0\u2000-\u200F\u2028-\u202F]/g, " ")
+      // Remove invisible characters
+      .replace(/[\u200B-\u200D\u2060-\u2069]/g, "")
+      // Keep only printable ASCII + basic Latin
+      .replace(/[^\x20-\x7E\xA0-\xFF]/g, "")
+      // Normalize whitespace
+      .replace(/\s+/g, " ")
+      .trim()
+  )
+}
 
 interface CommonCrawlIndex {
   urlkey: string
@@ -257,25 +283,23 @@ async function extractTextFromWARC(record: CommonCrawlIndex): Promise<string> {
     // Get raw response (gzipped WARC)
     const arrayBuffer = await response.arrayBuffer()
 
-    // Decompress using native DecompressionStream
-    const blob = new Blob([arrayBuffer])
-    const stream = blob.stream().pipeThrough(new DecompressionStream("gzip"))
-    const decompressed = await new Response(stream).text()
+    const buffer = Buffer.from(arrayBuffer)
+    const decompressed = gunzipSync(buffer).toString("utf-8")
 
     // Extract HTML from WARC format
     const htmlMatch = decompressed.match(/<html[\s\S]*?<\/html>/i)
     if (!htmlMatch) return ""
 
-    // Clean HTML to plain text
+    // Clean HTML to plain text with aggressive sanitization
     const text = htmlMatch[0]
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/\s+/g, " ")
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
-      .trim()
 
-    return text.substring(0, 3000) // Limit to 3000 chars per page
+    const cleanedText = cleanText(text)
+
+    return cleanedText.substring(0, 5000) // Limit to 5000 chars per page
   } catch (error) {
     console.error("[v0] [CC] Error extracting text:", error)
     return ""
@@ -289,59 +313,34 @@ async function analyzeFundingWithGroq(companyName: string, pages: ExtractedPage[
   console.log("[v0] [Groq] Running focused funding analysis")
 
   const pagesText = pages
-    .map((p, i) => `\n--- Source ${i + 1}: ${p.url} (${p.timestamp}) ---\n${p.content}`)
+    .map((p, i) => {
+      const cleanContent = cleanText(p.content)
+      const cleanUrl = cleanText(p.url)
+      return `\n--- Source ${i + 1}: ${cleanUrl} ---\n${cleanContent}`
+    })
     .join("\n\n")
-    .substring(0, 25000)
+    .substring(0, 40000)
 
-  const fundingPrompt = `You are a financial analyst extracting funding and investor data about "${companyName}".
+  const fundingPrompt = `You are a financial analyst extracting funding and investor data about "${cleanText(companyName)}".
 
-Archived Web Content:
+Archived Web Content from news sites, press releases, and financial databases:
 ${pagesText}
 
-Extract ALL funding, investment, and financial information from these pages. Look for:
-- Funding rounds (Seed, Series A/B/C/D, etc.)
-- Investment amounts and dates
-- Investor names (VC firms, angels, corporate investors)
-- Valuations (pre-money, post-money)
-- Revenue figures or financial metrics
-- Acquisition prices
-- Financial performance indicators
+Extract ALL funding, investment, and financial information. Return ONLY valid JSON with NO special characters or formatting.
 
-Return ONLY a JSON object:
+Use this exact structure:
 {
-  "funding_rounds": [
-    {
-      "round_type": "Series A",
-      "amount_usd": 5000000,
-      "currency": "USD",
-      "announced_date": "2023-01-15",
-      "lead_investors": ["Accel", "Sequoia"],
-      "other_investors": ["Y Combinator"],
-      "post_money_valuation": 25000000,
-      "source_url": "url where found",
-      "confidence_score": 0.95
-    }
-  ],
-  "total_funding": 5000000,
-  "latest_valuation": 25000000,
-  "financial_metrics": [
-    {
-      "fiscal_year": 2023,
-      "revenue": 10000000,
-      "profit": 1000000,
-      "revenue_growth_pct": 150,
-      "source": "news article",
-      "source_url": "url",
-      "confidence_score": 0.8
-    }
-  ],
-  "all_investors": ["Accel", "Sequoia", "Y Combinator"],
-  "key_partnerships": ["Company X partnership", "Company Y acquisition"],
-  "business_model": "SaaS/B2B/etc",
-  "employee_count": 50
+  "funding_rounds": [],
+  "total_funding": 0,
+  "latest_valuation": 0,
+  "financial_metrics": [],
+  "all_investors": [],
+  "key_partnerships": [],
+  "business_model": "",
+  "employee_count": 0
 }
 
-Be thorough. Extract every financial data point you can find. Use confidence scores (0-1) based on source reliability.`
+IMPORTANT: Use only ASCII characters. No special quotes, dashes, or Unicode.`
 
   try {
     const completion = await groq.chat.completions.create({
@@ -350,35 +349,29 @@ Be thorough. Extract every financial data point you can find. Use confidence sco
         {
           role: "system",
           content:
-            "You are a financial data extraction specialist. Extract structured funding data from text. Return only valid JSON with no markdown.",
+            "You are a financial data extraction specialist. Return only valid JSON with ASCII characters. No markdown, no special characters.",
         },
         {
           role: "user",
           content: fundingPrompt,
         },
       ],
-      temperature: 0.2, // Lower temperature for more accurate extraction
-      max_tokens: 3000,
+      temperature: 0.1,
+      max_tokens: 4000,
     })
 
     const content = completion.choices[0]?.message?.content || "{}"
 
-    // Clean and parse JSON
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    const cleanedContent = cleanText(content)
+
+    // Extract JSON from response
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       console.log("[v0] [Groq] No valid JSON found in funding analysis")
       return null
     }
 
-    const cleanContent = jsonMatch[0]
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/[\u2013\u2014]/g, "-")
-      .replace(/\u00A0/g, " ")
-      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
-
-    const fundingData = JSON.parse(cleanContent)
+    const fundingData = JSON.parse(jsonMatch[0])
     console.log("[v0] [Groq] Extracted funding data with", fundingData.funding_rounds?.length || 0, "rounds")
 
     return fundingData
@@ -396,38 +389,32 @@ async function analyzeGeneralInfo(
   pages: ExtractedPage[],
 ): Promise<Omit<CompanyResearchData, "funding">> {
   const pagesText = pages
-    .map((p, i) => `\n--- Page ${i + 1}: ${p.url} ---\n${p.content}`)
+    .map((p, i) => {
+      const cleanContent = cleanText(p.content)
+      const cleanUrl = cleanText(p.url)
+      return `\n--- Page ${i + 1}: ${cleanUrl} ---\n${cleanContent}`
+    })
     .join("\n\n")
     .substring(0, 20000)
 
-  const prompt = `Analyze web archive data about "${companyName}".
+  const prompt = `Analyze web archive data about "${cleanText(companyName)}".
 
 Content:
 ${pagesText}
 
-Create a comprehensive report. Return ONLY a JSON object:
+Return ONLY valid JSON with ASCII characters. No special characters or markdown.
+
+Use this exact structure:
 {
-  "summary": "2-3 sentence executive summary",
+  "summary": "Brief company overview",
   "categories": [
     {
       "category": "Company Overview",
-      "content": "What the company does, mission, products",
-      "sources": ["url1", "url2"]
-    },
-    {
-      "category": "Market & Industry",
-      "content": "Industry position, market size, competitors",
-      "sources": ["url1"]
-    },
-    {
-      "category": "Recent Developments",
-      "content": "News, product launches, partnerships",
-      "sources": ["url1"]
+      "content": "Description",
+      "sources": []
     }
   ]
-}
-
-Be comprehensive. Extract all factual information available.`
+}`
 
   try {
     const completion = await groq.chat.completions.create({
@@ -436,7 +423,7 @@ Be comprehensive. Extract all factual information available.`
         {
           role: "system",
           content:
-            "You are a business analyst. Extract and structure company information from web content. Return only valid JSON.",
+            "You are a business analyst. Return only valid JSON with ASCII characters. No markdown or special characters.",
         },
         {
           role: "user",
@@ -448,31 +435,29 @@ Be comprehensive. Extract all factual information available.`
     })
 
     const content = completion.choices[0]?.message?.content || "{}"
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    let cleanContent = jsonMatch ? jsonMatch[0] : content
 
-    cleanContent = cleanContent
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201C\u201D]/g, '"')
-      .replace(/[\u2013\u2014]/g, "-")
-      .replace(/\u00A0/g, " ")
-      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
-      .trim()
+    const cleanedContent = cleanText(content)
 
-    const analysis = JSON.parse(cleanContent)
+    const jsonMatch = cleanedContent.match(/\{[\s\S]*\}/)
+    const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
 
     return {
-      companyName,
-      summary: analysis.summary || `Research from ${pages.length} archived web pages about ${companyName}.`,
-      categories: analysis.categories || [],
+      companyName: cleanText(companyName),
+      summary: cleanText(analysis.summary || `Research from ${pages.length} archived web pages.`),
+      categories: Array.isArray(analysis.categories)
+        ? analysis.categories.map((cat: any) => ({
+            category: cleanText(cat.category || ""),
+            content: cleanText(cat.content || ""),
+            sources: Array.isArray(cat.sources) ? cat.sources.map(cleanText) : [],
+          }))
+        : [],
       generatedAt: new Date().toISOString(),
     }
   } catch (error) {
     console.error("[v0] [Groq] Error in general analysis:", error)
     return {
-      companyName,
-      summary: `Research from ${pages.length} archived pages. Analysis encountered an error.`,
+      companyName: cleanText(companyName),
+      summary: `Research from ${pages.length} archived pages.`,
       categories: [],
       generatedAt: new Date().toISOString(),
     }
@@ -495,15 +480,19 @@ async function analyzeWithGroq(companyName: string, pages: ExtractedPage[]): Pro
     ...generalAnalysis,
     funding: fundingAnalysis
       ? {
-          companyName,
+          companyName: cleanText(companyName),
           funding_rounds: fundingAnalysis.funding_rounds || [],
           total_funding: fundingAnalysis.total_funding || 0,
           latest_valuation: fundingAnalysis.latest_valuation,
           financial_metrics: fundingAnalysis.financial_metrics || [],
-          all_investors: fundingAnalysis.all_investors || [],
+          all_investors: Array.isArray(fundingAnalysis.all_investors)
+            ? fundingAnalysis.all_investors.map(cleanText)
+            : [],
           generatedAt: new Date().toISOString(),
-          key_partnerships: fundingAnalysis.key_partnerships,
-          business_model: fundingAnalysis.business_model,
+          key_partnerships: Array.isArray(fundingAnalysis.key_partnerships)
+            ? fundingAnalysis.key_partnerships.map(cleanText)
+            : undefined,
+          business_model: fundingAnalysis.business_model ? cleanText(fundingAnalysis.business_model) : undefined,
           employee_count: fundingAnalysis.employee_count,
         }
       : undefined,
@@ -527,8 +516,8 @@ export async function researchCompanyWithCommonCrawlGroq(
     if (allRecords.length === 0) {
       console.log("[v0] No pages found in Common Crawl")
       return {
-        companyName,
-        summary: `No archived pages found for ${companyName}. The company may be too new or not widely covered.`,
+        companyName: cleanText(companyName),
+        summary: `No archived pages found for ${cleanText(companyName)}. The company may be too new.`,
         categories: [],
         generatedAt: new Date().toISOString(),
       }
@@ -537,24 +526,23 @@ export async function researchCompanyWithCommonCrawlGroq(
     console.log("[v0] Processing", allRecords.length, "pages")
 
     const extractedPages: ExtractedPage[] = []
-    const maxPages = Math.min(15, allRecords.length) // Increased from 10 to 15
+    const maxPages = Math.min(20, allRecords.length)
 
     for (let i = 0; i < maxPages; i++) {
       const record = allRecords[i]
       console.log(`[v0] Extracting ${i + 1}/${maxPages}:`, record.url)
 
       const content = await extractTextFromWARC(record)
-      if (content && content.length > 150) {
-        // Lower threshold to capture more data
+      if (content && content.length > 100) {
         extractedPages.push({
-          url: record.url,
-          content,
+          url: cleanText(record.url),
+          content: content, // Already cleaned in extractTextFromWARC
           timestamp: record.timestamp,
         })
       }
 
       if (i < maxPages - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 600))
+        await new Promise((resolve) => setTimeout(resolve, 400))
       }
     }
 
@@ -562,7 +550,7 @@ export async function researchCompanyWithCommonCrawlGroq(
 
     if (extractedPages.length === 0) {
       return {
-        companyName,
+        companyName: cleanText(companyName),
         summary: `Found ${allRecords.length} pages but could not extract content.`,
         categories: [],
         generatedAt: new Date().toISOString(),
@@ -579,7 +567,7 @@ export async function researchCompanyWithCommonCrawlGroq(
 
     return research
   } catch (error) {
-    console.error("[v0] Error in research:", error)
+    console.error("[v0] [CC] Error in research:", error)
     throw error
   }
 }

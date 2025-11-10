@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithGroqBrave } from "@/lib/groq-brave-research"
-import { researchCompanyWithCommonCrawl } from "@/lib/commoncrawl"
-import { researchCompanyFunding } from "@/lib/funding-research"
+import { researchCompanyWithCommonCrawlGroq } from "@/lib/commoncrawl-groq-research"
 import { auth } from "@clerk/nextjs/server"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
@@ -87,38 +85,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
 
-    const [braveResearch, commonCrawlData, fundingData] = await Promise.all([
-      researchCompanyWithGroqBrave(company.name, company.domain || company.website).catch((err) => {
-        console.error("[v0] [Research API] Groq+Brave research failed:", err)
+    const research = await researchCompanyWithCommonCrawlGroq(company.name, company.domain || company.website).catch(
+      (err) => {
+        console.error("[v0] [Research API] Common Crawl + Groq research failed:", err)
         return {
           companyName: company.name,
-          summary: "Research data could not be fetched.",
+          summary: "Research data could not be fetched at this time.",
           categories: [],
           generatedAt: new Date().toISOString(),
         }
-      }),
-      researchCompanyWithCommonCrawl(company.name, company.domain || company.website).catch((err) => {
-        console.error("[v0] [Research API] Common Crawl research failed:", err)
-        return null
-      }),
-      researchCompanyFunding(company.name, company.domain || company.website).catch((err) => {
-        console.error("[v0] [Research API] Funding research failed:", err)
-        return {
-          companyName: company.name,
-          funding_rounds: [],
-          total_funding: 0,
-          financial_metrics: [],
-          all_investors: [],
-          generatedAt: new Date().toISOString(),
-        }
-      }),
-    ])
-
-    const research = {
-      ...braveResearch,
-      commonCrawlData: commonCrawlData || undefined,
-      funding: fundingData,
-    }
+      },
+    )
 
     const sanitizedResearch = sanitizeJSON(research)
 
@@ -138,8 +115,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       WHERE id = ${id}
     `
 
-    if (fundingData.funding_rounds && fundingData.funding_rounds.length > 0) {
-      for (const round of fundingData.funding_rounds) {
+    if (research.funding && research.funding.funding_rounds && research.funding.funding_rounds.length > 0) {
+      for (const round of research.funding.funding_rounds) {
         try {
           await sql`
             INSERT INTO company_funding (
@@ -162,41 +139,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           `
         } catch (error) {
           console.error("[v0] [Research API] Error storing funding round:", error)
-        }
-      }
-    }
-
-    if (fundingData.financial_metrics && fundingData.financial_metrics.length > 0) {
-      for (const metric of fundingData.financial_metrics) {
-        try {
-          await sql`
-            INSERT INTO company_financials (
-              company_id, fiscal_year, fiscal_quarter, revenue, profit,
-              revenue_growth_pct, user_count, arr, mrr,
-              source, source_url, confidence_score
-            ) VALUES (
-              ${id},
-              ${metric.fiscal_year},
-              ${metric.fiscal_quarter || null},
-              ${metric.revenue || null},
-              ${metric.profit || null},
-              ${metric.revenue_growth_pct || null},
-              ${metric.user_count || null},
-              ${metric.arr || null},
-              ${metric.mrr || null},
-              ${metric.source},
-              ${metric.source_url},
-              ${metric.confidence_score}
-            )
-            ON CONFLICT (company_id, fiscal_year, fiscal_quarter)
-            DO UPDATE SET
-              revenue = EXCLUDED.revenue,
-              profit = EXCLUDED.profit,
-              revenue_growth_pct = EXCLUDED.revenue_growth_pct,
-              updated_at = NOW()
-          `
-        } catch (error) {
-          console.error("[v0] [Research API] Error storing financial metric:", error)
         }
       }
     }

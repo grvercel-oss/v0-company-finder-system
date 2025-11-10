@@ -8,8 +8,11 @@ const sql = neon(process.env.NEON_DATABASE_URL!)
 
 function sanitizeJSON(obj: any): any {
   if (typeof obj === "string") {
-    // Remove control characters that cause InvalidCharacterError
-    return obj.replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+    return obj
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // Remove control characters
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, "") // Remove unicode control chars
+      .replace(/\uFEFF/g, "") // Remove BOM
+      .replace(/[\u2000-\u200B\u2028\u2029]/g, " ") // Replace special spaces
   }
   if (Array.isArray(obj)) {
     return obj.map(sanitizeJSON)
@@ -24,14 +27,14 @@ function sanitizeJSON(obj: any): any {
   return obj
 }
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     console.log("[v0] [Research API] Fetching research for company ID:", id)
 

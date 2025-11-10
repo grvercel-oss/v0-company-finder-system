@@ -69,18 +69,31 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
     setError(null)
 
     try {
+      console.log("[v0] [Research Modal] Fetching research for company ID:", companyId)
+
       const response = await fetch(`/api/companies/${companyId}/research`)
 
       if (!response.ok) {
         throw new Error(`Failed to fetch company research: ${response.status}`)
       }
 
-      const data = await response.json()
+      const text = await response.text()
+      console.log("[v0] [Research Modal] Response length:", text.length)
+
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (parseError) {
+        console.error("[v0] [Research Modal] JSON parse error:", parseError)
+        console.error("[v0] [Research Modal] Response text (first 500 chars):", text.substring(0, 500))
+        throw new Error("Invalid JSON response from server")
+      }
 
       setResearch(data.data)
       setCached(data.cached)
       setFetchedAt(data.fetchedAt)
     } catch (err) {
+      console.error("[v0] [Research Modal] Error:", err)
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
       setLoading(false)

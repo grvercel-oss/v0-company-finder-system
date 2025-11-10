@@ -21,6 +21,7 @@ import {
   Shield,
   UserCheck,
 } from "lucide-react"
+import { FundingCharts } from "@/components/funding-charts"
 
 interface ResearchCategory {
   category: string
@@ -42,12 +43,45 @@ interface CorporateRegistryData {
   country: string
 }
 
+interface CompanyFundingData {
+  companyName: string
+  funding_rounds: Array<{
+    round_type: string
+    amount_usd: number
+    currency: string
+    announced_date: string
+    lead_investors: string[]
+    other_investors: string[]
+    post_money_valuation?: number
+    source_url: string
+    confidence_score: number
+  }>
+  total_funding: number
+  latest_valuation?: number
+  financial_metrics: Array<{
+    fiscal_year: number
+    fiscal_quarter?: number
+    revenue?: number
+    profit?: number
+    revenue_growth_pct?: number
+    user_count?: number
+    arr?: number
+    mrr?: number
+    source: string
+    source_url: string
+    confidence_score: number
+  }>
+  all_investors: string[]
+  generatedAt: string
+}
+
 interface CompanyResearchData {
   companyName: string
   summary: string
   categories: ResearchCategory[]
   generatedAt: string
   registryData?: CorporateRegistryData | null
+  funding?: CompanyFundingData
 }
 
 interface CompanyResearchModalProps {
@@ -331,6 +365,21 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                     </div>
                   </div>
                 )}
+
+                {/* Funding & Financial Data Section */}
+                {research.funding &&
+                  (research.funding.funding_rounds.length > 0 || research.funding.financial_metrics.length > 0) && (
+                    <div>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-3">FUNDING & FINANCIALS</h3>
+                      <FundingCharts
+                        fundingRounds={research.funding.funding_rounds}
+                        financialMetrics={research.funding.financial_metrics}
+                        totalFunding={research.funding.total_funding}
+                        latestValuation={research.funding.latest_valuation}
+                        allInvestors={research.funding.all_investors}
+                      />
+                    </div>
+                  )}
 
                 {/* Key Metrics Dashboard */}
                 {research && extractMetrics(research).length > 0 && (

@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithCommonCrawlGroq } from "@/lib/commoncrawl-groq-research"
+import { researchCompanyWithGroq } from "@/lib/groq-web-research"
 import { auth } from "@clerk/nextjs/server"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
@@ -85,17 +85,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
 
-    const research = await researchCompanyWithCommonCrawlGroq(company.name, company.domain || company.website).catch(
-      (err) => {
-        console.error("[v0] [Research API] Common Crawl + Groq research failed:", err)
-        return {
-          companyName: company.name,
-          summary: "Research data could not be fetched at this time.",
-          categories: [],
-          generatedAt: new Date().toISOString(),
-        }
-      },
-    )
+    const research = await researchCompanyWithGroq(company.name).catch((err) => {
+      console.error("[v0] [Research API] Groq web search failed:", err)
+      return {
+        companyName: company.name,
+        summary: "Research data could not be fetched at this time.",
+        categories: [],
+        generatedAt: new Date().toISOString(),
+      }
+    })
 
     const sanitizedResearch = sanitizeJSON(research)
 

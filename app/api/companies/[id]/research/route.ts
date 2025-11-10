@@ -5,7 +5,33 @@ import { researchCompanyWithCommonCrawlGroq } from "@/lib/commoncrawl-groq-resea
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+function sanitizeForJSON(obj: any): any {
+  if (typeof obj === "string") {
+    return obj
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // Remove control characters
+      .replace(/[\u2018\u2019]/g, "'") // Smart quotes to regular quotes
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-") // Em/en dashes to hyphens
+      .replace(/[\u2026]/g, "...") // Ellipsis
+      .replace(/[^\x20-\x7E\n\r\t]/g, "") // Keep only printable ASCII + newline/tab
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForJSON)
+  }
+
+  if (obj && typeof obj === "object") {
+    const cleaned: any = {}
+    for (const [key, value] of Object.entries(obj)) {
+      cleaned[key] = sanitizeForJSON(value)
+    }
+    return cleaned
+  }
+
+  return obj
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId } = await auth()
     if (!userId) {
@@ -15,7 +41,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       })
     }
 
-    const { id } = params
+    const { id } = await params
 
     console.log("[v0] [Research API] Fetching research for company ID:", id)
 
@@ -31,10 +57,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     if (cachedData.length > 0 && cachedData[0].tavily_research) {
       console.log("[v0] [Research API] Returning cached research")
+      const sanitizedData = sanitizeForJSON(cachedData[0].tavily_research)
       return new Response(
         JSON.stringify({
           cached: true,
-          data: cachedData[0].tavily_research,
+          data: sanitizedData,
           fetchedAt: cachedData[0].tavily_research_fetched_at,
         }),
         {
@@ -75,10 +102,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     console.log("[v0] [Research API] Research completed, saving to database")
 
+    const sanitizedResearch = sanitizeForJSON(research)
+
     await sql`
       UPDATE companies
       SET 
-        tavily_research = ${JSON.stringify(research)},
+        tavily_research = ${JSON.stringify(sanitizedResearch)},
         tavily_research_fetched_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
     `.catch((err) => {
@@ -90,7 +119,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return new Response(
       JSON.stringify({
         cached: false,
-        data: research,
+        data: sanitizedResearch,
         fetchedAt: new Date().toISOString(),
       }),
       {

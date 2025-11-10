@@ -2,6 +2,7 @@
 // Uses only free, open-source Common Crawl archives + Groq AI
 
 import Groq from "groq-sdk"
+import { DecompressionStream } from "web-streams-polyfill"
 
 const groq = new Groq({ apiKey: process.env.API_KEY_GROQ_API_KEY })
 
@@ -62,6 +63,9 @@ export interface CompanyResearchData {
     }>
     all_investors: string[]
     generatedAt: string
+    key_partnerships?: string[]
+    business_model?: string
+    employee_count?: number
   }
 }
 
@@ -83,47 +87,62 @@ async function getLatestCrawlIndex(): Promise<string> {
  * Search Common Crawl for company mentions across the entire web
  * (not just the company domain)
  */
-async function searchMultipleSources(companyName: string, indexUrl: string): Promise<CommonCrawlIndex[]> {
-  console.log("[v0] [CC] Searching multiple sources for:", companyName)
+async function searchMultipleSources(
+  companyName: string,
+  domain: string,
+  indexUrl: string,
+): Promise<CommonCrawlIndex[]> {
+  console.log("[v0] [CC] Enhanced multi-source search for:", companyName)
 
   const searchDomains = [
-    // Tech news sites
-    "techcrunch.com",
-    "venturebeat.com",
-    "theverge.com",
-    "wired.com",
-    "arstechnica.com",
-    "engadget.com",
-    // Business news
-    "reuters.com",
-    "bloomberg.com",
-    "forbes.com",
-    "businessinsider.com",
-    "cnbc.com",
-    // Press release sites
-    "prnewswire.com",
-    "businesswire.com",
-    "globenewswire.com",
-    // Investment/Funding
+    // Funding & Investment databases
     "crunchbase.com",
     "pitchbook.com",
     "cbinsights.com",
+    // Tech news sites (funding announcements)
+    "techcrunch.com",
+    "venturebeat.com",
+    "theinformation.com",
+    // Business news (financial data)
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "forbes.com",
+    "businessinsider.com",
+    "ft.com",
+    // Press release sites (funding announcements)
+    "prnewswire.com",
+    "businesswire.com",
+    "globenewswire.com",
+    // Industry specific
+    "techradar.com",
+    "zdnet.com",
+    "computerworld.com",
   ]
 
   const allRecords: CommonCrawlIndex[] = []
-  const companyQuery = encodeURIComponent(companyName)
 
-  // Search major news/tech sites for company mentions
-  for (const domain of searchDomains.slice(0, 10)) {
-    // Limit to 10 domains for speed
+  if (domain) {
+    const domainRecords = await searchCompanyDomain(domain, indexUrl)
+    allRecords.push(...domainRecords)
+    console.log("[v0] [CC] Found", domainRecords.length, "pages from company domain")
+  }
+
+  for (const siteDomain of searchDomains) {
     try {
-      // Search for pages on this domain mentioning the company
-      const searchUrl = `${indexUrl}?url=${domain}/*${companyQuery}*&output=json&limit=2`
+      // Try multiple URL patterns to find company mentions
+      const searchUrl = `${indexUrl}?url=${siteDomain}/*&matchType=domain&output=json&limit=20`
 
-      console.log("[v0] [CC] Searching domain:", domain)
+      console.log("[v0] [CC] Searching:", siteDomain)
 
-      const response = await fetch(searchUrl)
-      if (!response.ok) continue
+      const response = await fetch(searchUrl, {
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      })
+
+      if (!response.ok) {
+        console.log("[v0] [CC] No results from:", siteDomain)
+        continue
+      }
 
       const text = await response.text()
       if (!text.trim()) continue
@@ -133,26 +152,41 @@ async function searchMultipleSources(companyName: string, indexUrl: string): Pro
       for (const line of lines) {
         try {
           const record = JSON.parse(line) as CommonCrawlIndex
-          if (record.status === "200" && record.mime?.includes("html")) {
+
+          // Filter for relevant pages (check URL and content type)
+          if (
+            record.status === "200" &&
+            record.mime?.includes("html") &&
+            (record.url.toLowerCase().includes(companyName.toLowerCase().split(" ")[0]) ||
+              record.url.toLowerCase().includes(domain?.split(".")[0] || ""))
+          ) {
             allRecords.push(record)
+            console.log("[v0] [CC] Found relevant page:", record.url)
           }
         } catch (e) {
-          // Skip invalid JSON
+          // Skip invalid JSON lines
         }
       }
 
-      // Rate limiting to avoid overwhelming Common Crawl
-      await new Promise((resolve) => setTimeout(resolve, 600))
+      // Rate limiting
+      await new Promise((resolve) => setTimeout(resolve, 400))
 
-      // Stop if we have enough records
-      if (allRecords.length >= 15) break
-    } catch (error) {
-      console.error("[v0] [CC] Error searching domain:", domain, error)
+      // Stop early if we have enough quality sources
+      if (allRecords.length >= 25) {
+        console.log("[v0] [CC] Reached target of 25 pages, stopping search")
+        break
+      }
+    } catch (error: any) {
+      if (error.name === "TimeoutError") {
+        console.log("[v0] [CC] Timeout searching:", siteDomain)
+      } else {
+        console.error("[v0] [CC] Error searching domain:", siteDomain, error)
+      }
     }
   }
 
-  console.log("[v0] [CC] Found", allRecords.length, "pages from multiple sources")
-  return allRecords.slice(0, 15)
+  console.log("[v0] [CC] Total pages found:", allRecords.length)
+  return allRecords.slice(0, 20) // Return top 20 most relevant
 }
 
 /**
@@ -249,48 +283,65 @@ async function extractTextFromWARC(record: CommonCrawlIndex): Promise<string> {
 }
 
 /**
- * Analyze company data with Groq AI
+ * Perform focused funding analysis with Groq AI
  */
-async function analyzeWithGroq(companyName: string, pages: ExtractedPage[]): Promise<CompanyResearchData> {
-  console.log("[v0] [Groq] Analyzing", pages.length, "pages for", companyName)
+async function analyzeFundingWithGroq(companyName: string, pages: ExtractedPage[]): Promise<any> {
+  console.log("[v0] [Groq] Running focused funding analysis")
 
   const pagesText = pages
-    .map((p, i) => `\n--- Page ${i + 1}: ${p.url} ---\n${p.content}`)
+    .map((p, i) => `\n--- Source ${i + 1}: ${p.url} (${p.timestamp}) ---\n${p.content}`)
     .join("\n\n")
-    .substring(0, 20000) // Limit total context
+    .substring(0, 25000)
 
-  const prompt = `You are analyzing web archive data from Common Crawl about "${companyName}".
+  const fundingPrompt = `You are a financial analyst extracting funding and investor data about "${companyName}".
 
-Archived Web Pages:
+Archived Web Content:
 ${pagesText}
 
-Create a comprehensive company research report with these sections:
+Extract ALL funding, investment, and financial information from these pages. Look for:
+- Funding rounds (Seed, Series A/B/C/D, etc.)
+- Investment amounts and dates
+- Investor names (VC firms, angels, corporate investors)
+- Valuations (pre-money, post-money)
+- Revenue figures or financial metrics
+- Acquisition prices
+- Financial performance indicators
 
-1. **Company Overview** - What the company does, products/services, mission
-2. **Industry & Market** - Market position, competitors, industry trends
-3. **Financial Information** - Funding, revenue, investors, valuations
-4. **Recent Developments** - News, partnerships, product launches
-5. **Key Insights** - Strategic analysis and important takeaways
-
-Return ONLY a JSON object with this structure:
+Return ONLY a JSON object:
 {
-  "summary": "2-3 sentence executive summary",
-  "categories": [
+  "funding_rounds": [
     {
-      "category": "Company Overview",
-      "content": "Detailed information extracted from pages",
-      "sources": ["url1", "url2"]
+      "round_type": "Series A",
+      "amount_usd": 5000000,
+      "currency": "USD",
+      "announced_date": "2023-01-15",
+      "lead_investors": ["Accel", "Sequoia"],
+      "other_investors": ["Y Combinator"],
+      "post_money_valuation": 25000000,
+      "source_url": "url where found",
+      "confidence_score": 0.95
     }
   ],
-  "funding_data": {
-    "total_funding": 0,
-    "funding_rounds": [],
-    "investors": [],
-    "valuation": 0
-  }
+  "total_funding": 5000000,
+  "latest_valuation": 25000000,
+  "financial_metrics": [
+    {
+      "fiscal_year": 2023,
+      "revenue": 10000000,
+      "profit": 1000000,
+      "revenue_growth_pct": 150,
+      "source": "news article",
+      "source_url": "url",
+      "confidence_score": 0.8
+    }
+  ],
+  "all_investors": ["Accel", "Sequoia", "Y Combinator"],
+  "key_partnerships": ["Company X partnership", "Company Y acquisition"],
+  "business_model": "SaaS/B2B/etc",
+  "employee_count": 50
 }
 
-Extract ONLY factual information present in the archived pages. If information is not available, acknowledge it. Focus on being comprehensive but concise.`
+Be thorough. Extract every financial data point you can find. Use confidence scores (0-1) based on source reliability.`
 
   try {
     const completion = await groq.chat.completions.create({
@@ -299,7 +350,93 @@ Extract ONLY factual information present in the archived pages. If information i
         {
           role: "system",
           content:
-            "You are a business intelligence analyst. Analyze archived web content and create structured reports. Return only valid JSON.",
+            "You are a financial data extraction specialist. Extract structured funding data from text. Return only valid JSON with no markdown.",
+        },
+        {
+          role: "user",
+          content: fundingPrompt,
+        },
+      ],
+      temperature: 0.2, // Lower temperature for more accurate extraction
+      max_tokens: 3000,
+    })
+
+    const content = completion.choices[0]?.message?.content || "{}"
+
+    // Clean and parse JSON
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      console.log("[v0] [Groq] No valid JSON found in funding analysis")
+      return null
+    }
+
+    const cleanContent = jsonMatch[0]
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u00A0/g, " ")
+      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
+
+    const fundingData = JSON.parse(cleanContent)
+    console.log("[v0] [Groq] Extracted funding data with", fundingData.funding_rounds?.length || 0, "rounds")
+
+    return fundingData
+  } catch (error) {
+    console.error("[v0] [Groq] Error in funding analysis:", error)
+    return null
+  }
+}
+
+/**
+ * Analyze general company information with Groq AI
+ */
+async function analyzeGeneralInfo(
+  companyName: string,
+  pages: ExtractedPage[],
+): Promise<Omit<CompanyResearchData, "funding">> {
+  const pagesText = pages
+    .map((p, i) => `\n--- Page ${i + 1}: ${p.url} ---\n${p.content}`)
+    .join("\n\n")
+    .substring(0, 20000)
+
+  const prompt = `Analyze web archive data about "${companyName}".
+
+Content:
+${pagesText}
+
+Create a comprehensive report. Return ONLY a JSON object:
+{
+  "summary": "2-3 sentence executive summary",
+  "categories": [
+    {
+      "category": "Company Overview",
+      "content": "What the company does, mission, products",
+      "sources": ["url1", "url2"]
+    },
+    {
+      "category": "Market & Industry",
+      "content": "Industry position, market size, competitors",
+      "sources": ["url1"]
+    },
+    {
+      "category": "Recent Developments",
+      "content": "News, product launches, partnerships",
+      "sources": ["url1"]
+    }
+  ]
+}
+
+Be comprehensive. Extract all factual information available.`
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a business analyst. Extract and structure company information from web content. Return only valid JSON.",
         },
         {
           role: "user",
@@ -311,102 +448,104 @@ Extract ONLY factual information present in the archived pages. If information i
     })
 
     const content = completion.choices[0]?.message?.content || "{}"
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    let cleanContent = jsonMatch ? jsonMatch[0] : content
 
-    // Remove markdown code blocks
-    const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/)
-    let cleanContent = jsonMatch ? jsonMatch[1].trim() : content.trim()
-
-    // Remove all control characters and special Unicode
     cleanContent = cleanContent
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // Control characters
-      .replace(/[\u2018\u2019]/g, "'") // Smart quotes to regular quotes
-      .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
-      .replace(/[\u2013\u2014]/g, "-") // Em/en dashes
-      .replace(/\u00A0/g, " ") // Non-breaking spaces
-      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "") // BOM and special chars
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u00A0/g, " ")
+      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
       .trim()
 
     const analysis = JSON.parse(cleanContent)
 
     return {
       companyName,
-      summary: analysis.summary || `Research compiled from ${pages.length} archived web pages about ${companyName}.`,
+      summary: analysis.summary || `Research from ${pages.length} archived web pages about ${companyName}.`,
       categories: analysis.categories || [],
       generatedAt: new Date().toISOString(),
-      funding: analysis.funding_data
-        ? {
-            companyName,
-            funding_rounds: analysis.funding_data.funding_rounds || [],
-            total_funding: analysis.funding_data.total_funding || 0,
-            latest_valuation: analysis.funding_data.valuation || undefined,
-            financial_metrics: [],
-            all_investors: analysis.funding_data.investors || [],
-            generatedAt: new Date().toISOString(),
-          }
-        : undefined,
     }
   } catch (error) {
-    console.error("[v0] [Groq] Error analyzing:", error)
-
+    console.error("[v0] [Groq] Error in general analysis:", error)
     return {
       companyName,
-      summary: `Research data compiled from ${pages.length} archived web pages. Analysis encountered an error.`,
-      categories: [
-        {
-          category: "Archived Content",
-          content: `Found ${pages.length} archived pages from multiple sources. Content analysis encountered an error.`,
-          sources: pages.map((p) => p.url),
-        },
-      ],
+      summary: `Research from ${pages.length} archived pages. Analysis encountered an error.`,
+      categories: [],
       generatedAt: new Date().toISOString(),
     }
   }
 }
 
 /**
+ * Analyze company data with Groq AI
+ */
+async function analyzeWithGroq(companyName: string, pages: ExtractedPage[]): Promise<CompanyResearchData> {
+  console.log("[v0] [Groq] Analyzing", pages.length, "pages for", companyName)
+
+  const [generalAnalysis, fundingAnalysis] = await Promise.all([
+    analyzeGeneralInfo(companyName, pages),
+    analyzeFundingWithGroq(companyName, pages),
+  ])
+
+  // Combine results
+  return {
+    ...generalAnalysis,
+    funding: fundingAnalysis
+      ? {
+          companyName,
+          funding_rounds: fundingAnalysis.funding_rounds || [],
+          total_funding: fundingAnalysis.total_funding || 0,
+          latest_valuation: fundingAnalysis.latest_valuation,
+          financial_metrics: fundingAnalysis.financial_metrics || [],
+          all_investors: fundingAnalysis.all_investors || [],
+          generatedAt: new Date().toISOString(),
+          key_partnerships: fundingAnalysis.key_partnerships,
+          business_model: fundingAnalysis.business_model,
+          employee_count: fundingAnalysis.employee_count,
+        }
+      : undefined,
+  }
+}
+
+/**
  * Main research function using ONLY Common Crawl + Groq AI
- * Now searches multiple sources across the web
  */
 export async function researchCompanyWithCommonCrawlGroq(
   companyName: string,
   companyDomain?: string,
 ): Promise<CompanyResearchData> {
-  console.log("[v0] Starting Common Crawl + Groq research for:", companyName)
+  console.log("[v0] Starting enhanced CC + Groq research for:", companyName)
 
   try {
-    // Step 1: Get latest Common Crawl index
     const indexUrl = await getLatestCrawlIndex()
 
-    const [domainRecords, multiSourceRecords] = await Promise.all([
-      companyDomain ? searchCompanyDomain(companyDomain, indexUrl) : Promise.resolve([]),
-      searchMultipleSources(companyName, indexUrl),
-    ])
-
-    // Combine results, prioritizing company domain pages
-    const allRecords = [...domainRecords, ...multiSourceRecords].slice(0, 15)
+    const allRecords = await searchMultipleSources(companyName, companyDomain || "", indexUrl)
 
     if (allRecords.length === 0) {
-      console.log("[v0] No pages found in Common Crawl for:", companyName)
+      console.log("[v0] No pages found in Common Crawl")
       return {
         companyName,
-        summary: `No archived pages found for ${companyName} in Common Crawl. The company may be too new or not yet crawled.`,
+        summary: `No archived pages found for ${companyName}. The company may be too new or not widely covered.`,
         categories: [],
         generatedAt: new Date().toISOString(),
       }
     }
 
-    console.log("[v0] Found total of", allRecords.length, "pages from all sources")
+    console.log("[v0] Processing", allRecords.length, "pages")
 
-    // Step 3: Extract text from pages (limit to 10 pages to avoid timeout)
     const extractedPages: ExtractedPage[] = []
-    const maxPages = Math.min(10, allRecords.length)
+    const maxPages = Math.min(15, allRecords.length) // Increased from 10 to 15
 
     for (let i = 0; i < maxPages; i++) {
       const record = allRecords[i]
-      console.log(`[v0] [CC] Extracting page ${i + 1}/${maxPages}:`, record.url)
+      console.log(`[v0] Extracting ${i + 1}/${maxPages}:`, record.url)
 
       const content = await extractTextFromWARC(record)
-      if (content && content.length > 200) {
+      if (content && content.length > 150) {
+        // Lower threshold to capture more data
         extractedPages.push({
           url: record.url,
           content,
@@ -414,30 +553,33 @@ export async function researchCompanyWithCommonCrawlGroq(
         })
       }
 
-      // Rate limiting
       if (i < maxPages - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 800))
+        await new Promise((resolve) => setTimeout(resolve, 600))
       }
     }
 
-    console.log("[v0] Extracted", extractedPages.length, "pages with content")
+    console.log("[v0] Successfully extracted", extractedPages.length, "pages")
 
     if (extractedPages.length === 0) {
       return {
         companyName,
-        summary: `Found ${allRecords.length} archived pages but could not extract readable content.`,
+        summary: `Found ${allRecords.length} pages but could not extract content.`,
         categories: [],
         generatedAt: new Date().toISOString(),
       }
     }
 
-    // Step 4: Analyze with Groq AI
     const research = await analyzeWithGroq(companyName, extractedPages)
 
-    console.log("[v0] Research completed successfully")
+    console.log("[v0] Research completed with", research.categories.length, "categories")
+    if (research.funding) {
+      console.log("[v0] Found", research.funding.funding_rounds.length, "funding rounds")
+      console.log("[v0] Total funding:", research.funding.total_funding)
+    }
+
     return research
   } catch (error) {
-    console.error("[v0] Error in CC+Groq research:", error)
+    console.error("[v0] Error in research:", error)
     throw error
   }
 }

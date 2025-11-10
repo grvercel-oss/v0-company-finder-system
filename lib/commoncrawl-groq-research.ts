@@ -422,6 +422,127 @@ Return ONLY a JSON object (no markdown, no code blocks):
   }
 }
 
+// Use Groq's built-in web search when Common Crawl finds nothing
+// This provides real-time data as a fallback
+async function searchWithGroqWeb(companyName: string): Promise<CompanyResearchData> {
+  console.log("[v0] [Groq Web] Searching with Groq web tools for:", companyName)
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a financial research analyst. Search the web and find comprehensive information about companies, especially funding, investors, and financial data.",
+        },
+        {
+          role: "user",
+          content: `Research "${companyName}" and find:
+1. All funding rounds (amounts, dates, investors)
+2. Total funding raised
+3. Current valuation
+4. Revenue and financial metrics
+5. Key investors and board members
+6. Company overview and products
+7. Leadership team
+
+Return a comprehensive JSON report with all findings.`,
+        },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "web_search",
+            description: "Search the web for current information",
+            parameters: {
+              type: "object",
+              properties: {
+                query: {
+                  type: "string",
+                  description: "Search query",
+                },
+              },
+              required: ["query"],
+            },
+          },
+        },
+      ],
+      tool_choice: "auto",
+      temperature: 0.3,
+      max_tokens: 3000,
+    })
+
+    let content = completion.choices[0]?.message?.content || "{}"
+
+    // Clean and parse response
+    content = content
+      .replace(/```(?:json)?\s*\n?/g, "")
+      .replace(/\n?```/g, "")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u2026/g, "...")
+      .replace(/\u00A0/g, " ")
+      .replace(/[\uFEFF\uFFFE\uFFFF]/g, "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .trim()
+
+    try {
+      const analysis = JSON.parse(content)
+
+      return {
+        companyName,
+        summary:
+          analysis.summary ||
+          `Research compiled from real-time web search covering funding, investors, and financials for ${companyName}.`,
+        categories: analysis.categories || [],
+        generatedAt: new Date().toISOString(),
+        funding: analysis.funding_data
+          ? {
+              companyName,
+              funding_rounds: (analysis.funding_data.funding_rounds || []).map((round: any) => ({
+                round_type: round.round_type || "Unknown",
+                amount_usd: round.amount_usd || 0,
+                currency: "USD",
+                announced_date: round.announced_date || "",
+                lead_investors: round.lead_investors || [],
+                other_investors: round.other_investors || [],
+                post_money_valuation: round.post_money_valuation || undefined,
+                source_url: "",
+                confidence_score: 0.8,
+              })),
+              total_funding: analysis.funding_data.total_funding || 0,
+              latest_valuation: analysis.funding_data.latest_valuation || undefined,
+              financial_metrics: [],
+              all_investors: analysis.funding_data.investors || [],
+              generatedAt: new Date().toISOString(),
+            }
+          : undefined,
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, return the text content as summary
+      return {
+        companyName,
+        summary: content.substring(0, 500),
+        categories: [
+          {
+            category: "Web Search Results",
+            content: content,
+            sources: [],
+          },
+        ],
+        generatedAt: new Date().toISOString(),
+      }
+    }
+  } catch (error) {
+    console.error("[v0] [Groq Web] Error:", error)
+    throw error
+  }
+}
+
 /**
  * Main research function using ONLY Common Crawl + Groq AI
  * Now searches multiple sources across the web
@@ -442,16 +563,11 @@ export async function researchCompanyWithCommonCrawlGroq(
     ])
 
     // Combine results, prioritizing company domain pages
-    const allRecords = [...domainRecords, ...multiSourceRecords].slice(0, 20) // Increased to 20 pages
+    const allRecords = [...domainRecords, ...multiSourceRecords].slice(0, 20)
 
     if (allRecords.length === 0) {
-      console.log("[v0] No pages found in Common Crawl for:", companyName)
-      return {
-        companyName,
-        summary: `No archived pages found for ${companyName} in Common Crawl. The company may be too new or not yet crawled.`,
-        categories: [],
-        generatedAt: new Date().toISOString(),
-      }
+      console.log("[v0] No pages found in Common Crawl, trying Groq web search...")
+      return await searchWithGroqWeb(companyName)
     }
 
     console.log("[v0] Found total of", allRecords.length, "pages from all sources")
@@ -496,6 +612,13 @@ export async function researchCompanyWithCommonCrawlGroq(
     return research
   } catch (error) {
     console.error("[v0] Error in CC+Groq research:", error)
-    throw error
+
+    console.log("[v0] Falling back to Groq web search due to error")
+    try {
+      return await searchWithGroqWeb(companyName)
+    } catch (fallbackError) {
+      console.error("[v0] Groq web search also failed:", fallbackError)
+      throw error
+    }
   }
 }

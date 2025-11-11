@@ -48,35 +48,57 @@ export interface CompanyResearchData {
 }
 
 /**
- * Clean text to prevent InvalidCharacterError
+ * ULTIMATE clean text - strips EVERYTHING except basic ASCII
  */
 function cleanText(text: string): string {
   if (!text) return ""
 
-  return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "") // Control chars
-    .replace(/[\u2018\u2019]/g, "'") // Smart single quotes
+  const buffer = Buffer.from(text, "utf8")
+  let cleaned = buffer.toString("utf8")
+
+  // Remove ALL non-printable characters
+  cleaned = cleaned
+    .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // All control characters
+    .replace(/[\u200B-\u200D\uFEFF]/g, "") // Zero-width characters
+    .replace(/[\u2000-\u206F]/g, " ") // All special spaces to regular space
+    .replace(/[\u2018\u2019]/g, "'") // Smart quotes
     .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
-    .replace(/[\u2013\u2014]/g, "-") // Em/en dashes
+    .replace(/[\u2013\u2014]/g, "-") // Dashes
     .replace(/\u2026/g, "...") // Ellipsis
-    .replace(/\u00A0/g, " ") // Non-breaking space
-    .replace(/[\uFEFF\uFFFE\uFFFF]/g, "") // BOM
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // Zero-width chars
-    .replace(/[^\x20-\x7E\n\r]/g, " ") // Keep only ASCII printable + newlines
-    .replace(/\s+/g, " ") // Normalize whitespace
-    .trim()
+
+  // Keep only: letters, numbers, basic punctuation, space, newline
+  cleaned = cleaned.replace(/[^\x20-\x7E\n\r\t]/g, " ")
+
+  // Normalize whitespace
+  cleaned = cleaned.replace(/\s+/g, " ").trim()
+
+  return cleaned
 }
 
 /**
- * Ultra-safe JSON stringification that handles any special characters
+ * Ultra-safe JSON stringification with character-by-character validation
  */
 function safeStringify(obj: any): string {
-  return JSON.stringify(obj, (key, value) => {
+  const replacer = (key: string, value: any) => {
     if (typeof value === "string") {
-      return cleanText(value)
+      // Clean every single character
+      return Array.from(value)
+        .map((char) => {
+          const code = char.charCodeAt(0)
+          // Only allow: space (32), printable ASCII (33-126), newline (10), carriage return (13), tab (9)
+          if (code === 32 || (code >= 33 && code <= 126) || code === 10 || code === 13 || code === 9) {
+            return char
+          }
+          return " " // Replace any other character with space
+        })
+        .join("")
+        .replace(/\s+/g, " ")
+        .trim()
     }
     return value
-  })
+  }
+
+  return JSON.stringify(obj, replacer, 2)
 }
 
 /**

@@ -1,9 +1,9 @@
 "use client"
 
-import { TrendingUp, DollarSign, Users, Calendar } from "lucide-react"
+import { TrendingUp, DollarSign, Calendar } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { Bar, BarChart, Line, LineChart, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts"
+import { Bar, BarChart, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts"
 
 interface FundingRound {
   round_type: string
@@ -111,17 +111,22 @@ export function FundingCharts({
           </Card>
         )}
 
-        {safeInvestors.length > 0 && (
+        {/* Revenue Estimation Card */}
+        {safeFinancialMetrics.length > 0 && safeFinancialMetrics[safeFinancialMetrics.length - 1].revenue && (
           <Card>
             <CardHeader className="pb-2">
               <CardDescription className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Investors
+                <DollarSign className="h-4 w-4" />
+                Revenue
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{safeInvestors.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">Unique investors</p>
+              <div className="text-2xl font-bold">
+                {formatCurrency(safeFinancialMetrics[safeFinancialMetrics.length - 1].revenue! / 1000000)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {safeFinancialMetrics[safeFinancialMetrics.length - 1].fiscal_year} est.
+              </p>
             </CardContent>
           </Card>
         )}
@@ -170,14 +175,14 @@ export function FundingCharts({
                 },
                 valuation: {
                   label: "Valuation",
-                  color: "hsl(var(--accent))", // Accent color (blue/cyan)
+                  color: "hsl(210 100% 50%)", // Bright blue for light theme, will be adjusted in dark
                 },
               }}
               className="h-[300px]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={fundingTimelineData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/30" />
                   <XAxis dataKey="date" className="text-xs" />
                   <YAxis className="text-xs" />
                   <ChartTooltip
@@ -202,55 +207,6 @@ export function FundingCharts({
                     />
                   )}
                 </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Revenue Chart */}
-      {revenueData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Financial Performance</CardTitle>
-            <CardDescription>Revenue and profit trends</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer
-              config={{
-                revenue: {
-                  label: "Revenue",
-                  color: "hsl(142 76% 36%)", // Vibrant green
-                },
-                profit: {
-                  label: "Profit",
-                  color: "hsl(262 83% 58%)", // Vibrant purple
-                },
-              }}
-              className="h-[300px]"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={revenueData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
-                  <XAxis dataKey="year" className="text-xs" />
-                  <YAxis className="text-xs" />
-                  <ChartTooltip content={<ChartTooltipContent formatter={(value) => `$${value}M`} />} />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="var(--color-revenue)"
-                    strokeWidth={2}
-                    name="Revenue ($M)"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="profit"
-                    stroke="var(--color-profit)"
-                    strokeWidth={2}
-                    name="Profit ($M)"
-                  />
-                </LineChart>
               </ResponsiveContainer>
             </ChartContainer>
           </CardContent>

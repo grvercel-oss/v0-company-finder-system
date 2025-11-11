@@ -166,20 +166,20 @@ export function FundingCharts({
               config={{
                 amount: {
                   label: "Funding Amount",
-                  color: "hsl(var(--chart-1))",
+                  color: "hsl(25 95% 53%)", // Vibrant orange
                 },
                 valuation: {
                   label: "Valuation",
-                  color: "hsl(var(--chart-2))",
+                  color: "hsl(var(--accent))", // Accent color (blue/cyan)
                 },
               }}
               className="h-[300px]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={fundingTimelineData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
+                  <XAxis dataKey="date" className="text-xs" />
+                  <YAxis className="text-xs" />
                   <ChartTooltip
                     content={
                       <ChartTooltipContent
@@ -220,20 +220,20 @@ export function FundingCharts({
               config={{
                 revenue: {
                   label: "Revenue",
-                  color: "hsl(var(--chart-3))",
+                  color: "hsl(142 76% 36%)", // Vibrant green
                 },
                 profit: {
                   label: "Profit",
-                  color: "hsl(var(--chart-4))",
+                  color: "hsl(262 83% 58%)", // Vibrant purple
                 },
               }}
               className="h-[300px]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={revenueData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="year" />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
+                  <XAxis dataKey="year" className="text-xs" />
+                  <YAxis className="text-xs" />
                   <ChartTooltip content={<ChartTooltipContent formatter={(value) => `$${value}M`} />} />
                   <Legend />
                   <Line

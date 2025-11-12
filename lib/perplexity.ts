@@ -121,9 +121,8 @@ Return exactly 5 companies. Use real, current information from the internet.`,
     const inputTokens = usage.prompt_tokens || 0
     const outputTokens = usage.completion_tokens || 0
 
-    // Perplexity Sonar Pro pricing: $3 per 1M input tokens, $15 per 1M output tokens
-    const inputCost = (inputTokens / 1_000_000) * 3
-    const outputCost = (outputTokens / 1_000_000) * 15
+    const inputCost = (inputTokens / 1_000_000) * 1.0
+    const outputCost = (outputTokens / 1_000_000) * 1.0
     const totalCost = inputCost + outputCost
 
     console.log("[v0] Perplexity usage - Input tokens:", inputTokens, "Output tokens:", outputTokens)

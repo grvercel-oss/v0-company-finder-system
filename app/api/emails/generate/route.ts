@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { generateText } from "ai"
+import { trackAIUsage } from "@/lib/ai-cost-tracker"
+import { auth } from "@clerk/nextjs/server"
 
 export async function POST(request: Request) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const body = await request.json()
     const { campaignId, contactIds, email_prompt } = body
 
@@ -139,22 +146,16 @@ Remember:
           finalBody += `\n\n${profile.signature}`
         }
 
-        const inputCost = (usage.promptTokens / 1000000) * 0.1
-        const outputCost = (usage.completionTokens / 1000000) * 0.5
-        const totalCost = (inputCost + outputCost).toFixed(6)
-
-        await sql`
-          INSERT INTO ai_usage_tracking (
-            campaign_id, contact_id, model, 
-            prompt_tokens, completion_tokens, total_tokens,
-            cost_usd, generation_type
-          )
-          VALUES (
-            ${campaignId}, ${contactId}, 'groq/openai/gpt-oss-20b',
-            ${usage.promptTokens}, ${usage.completionTokens}, ${usage.totalTokens},
-            ${totalCost}, 'email'
-          )
-        `
+        const cost = await trackAIUsage({
+          sql,
+          accountId: userId,
+          model: "groq/openai/gpt-oss-20b",
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          generationType: "email",
+          campaignId,
+          contactId,
+        })
 
         await sql`
           UPDATE contacts
@@ -167,7 +168,7 @@ Remember:
           WHERE id = ${contactId}
         `
 
-        results.push({ contactId, success: true, cost: totalCost })
+        results.push({ contactId, success: true, cost: cost.toFixed(6) })
       } catch (error) {
         console.error(`Failed to generate email for contact ${contactId}:`, error)
         results.push({ contactId, success: false, error: String(error) })

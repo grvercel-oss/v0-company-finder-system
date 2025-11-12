@@ -23,6 +23,11 @@ export const AI_MODELS = {
     inputCostPer1M: 0.15,
     outputCostPer1M: 0.6,
   },
+  tavily: {
+    provider: "Tavily",
+    inputCostPer1M: 2000, // $0.002 per search, assuming ~1000 searches per "1M tokens equivalent"
+    outputCostPer1M: 0,
+  },
 } as const
 
 export type AIModel = keyof typeof AI_MODELS
@@ -74,6 +79,40 @@ export async function trackAIUsage(params: {
       ${promptTokens},
       ${completionTokens},
       ${promptTokens + completionTokens},
+      ${cost},
+      ${generationType}
+    )
+  `
+
+  return cost
+}
+
+/**
+ * Track Tavily search usage (cost per search)
+ */
+export async function trackTavilyUsage(params: {
+  sql: any
+  accountId: string
+  searchCount: number
+  generationType: string
+}) {
+  const { sql, accountId, searchCount, generationType } = params
+
+  const costPerSearch = 0.002
+  const cost = searchCount * costPerSearch
+
+  await sql`
+    INSERT INTO ai_usage_tracking (
+      account_id, model,
+      prompt_tokens, completion_tokens, total_tokens,
+      cost_usd, generation_type
+    )
+    VALUES (
+      ${accountId},
+      'tavily',
+      ${searchCount * 1000},
+      0,
+      ${searchCount * 1000},
       ${cost},
       ${generationType}
     )

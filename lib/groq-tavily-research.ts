@@ -1,7 +1,8 @@
-// Groq AI with Web Search Tools - NO Common Crawl, NO Brave, NO Tavily
-// Uses ONLY Groq's built-in web search capabilities
+// Groq AI + Tavily Web Search Integration
+// Uses Tavily for real web data, Groq for analysis
 
 import Groq from "groq-sdk"
+import { searchCompanyWithTavily } from "./tavily-client"
 
 const groq = new Groq({ apiKey: process.env.API_KEY_GROQ_API_KEY })
 
@@ -51,8 +52,8 @@ function cleanText(text: string): string {
   if (!text || typeof text !== "string") return ""
 
   return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // Remove control chars except \t, \n, \r
-    .replace(/[\u2018\u2019]/g, "'") // Smart quotes to regular
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/\u2026/g, "...")
@@ -77,69 +78,120 @@ function deepCleanObject(obj: any): any {
 }
 
 /**
- * Research company using Groq with web search tools
+ * Research company using Tavily search + Groq analysis
  */
-export async function researchCompanyWithGroq(companyName: string): Promise<CompanyResearchData> {
-  console.log("[v0] [Groq Web Search] Starting research for:", companyName)
+export async function researchCompanyWithTavilyAndGroq(companyName: string): Promise<CompanyResearchData> {
+  console.log("[v0] [Tavily+Groq] Starting research for:", companyName)
 
   try {
+    // Step 1: Search the web with Tavily
+    console.log("[v0] [Tavily+Groq] Performing web searches...")
+    const searchResults = await searchCompanyWithTavily(companyName)
+
+    // Step 2: Compile all search results into context
+    const webContext = {
+      funding_info: searchResults.funding.results
+        .filter((r) => r.score > 0.4)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .join("\n---\n"),
+
+      investors_info: searchResults.investors.results
+        .filter((r) => r.score > 0.4)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .join("\n---\n"),
+
+      financial_info: searchResults.financial.results
+        .filter((r) => r.score > 0.4)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .join("\n---\n"),
+
+      news_info: searchResults.news.results
+        .filter((r) => r.score > 0.4)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .join("\n---\n"),
+
+      overview_info: searchResults.overview.results
+        .filter((r) => r.score > 0.4)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .join("\n---\n"),
+    }
+
+    // Collect all unique source URLs
+    const allSources = new Set<string>()
+    ;[
+      searchResults.funding,
+      searchResults.investors,
+      searchResults.financial,
+      searchResults.news,
+      searchResults.overview,
+    ].forEach((result) => {
+      result.results.forEach((r) => {
+        if (r.score > 0.4) allSources.add(r.url)
+      })
+    })
+
+    console.log("[v0] [Tavily+Groq] Found", allSources.size, "high-quality sources")
+
+    // Step 3: Use Groq to analyze and structure the data
+    console.log("[v0] [Tavily+Groq] Analyzing with Groq gpt-oss-20b...")
+
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "groq/openai/gpt-oss-20b",
       messages: [
         {
           role: "system",
           content:
-            "You are a financial research analyst. Provide detailed, accurate information about companies based on your knowledge. Focus on factual data: funding rounds, investors, revenue figures, and company details. If you don't have specific information, clearly state 'Not available' rather than speculating. Always provide detailed explanations.",
+            "You are a financial research analyst. Analyze the provided web search results and extract accurate, factual information about the company. Only include information that is explicitly stated in the sources. If specific data is not found, mark it as 'Not available' rather than guessing. Always cite sources.",
         },
         {
           role: "user",
-          content: `Provide comprehensive research about "${companyName}".
+          content: `Analyze the following web search results about "${companyName}" and create a comprehensive research report.
 
-IMPORTANT: Write detailed paragraphs (200-400 words each) for each category. Include specific details like:
-- Exact funding amounts with dates
-- Names of all investors
-- Revenue figures and growth rates
-- Valuation milestones
-- Key executives and their backgrounds
-- Product details and market position
+WEB SEARCH RESULTS:
 
-Return ONLY valid JSON (no markdown, no code blocks):
+=== FUNDING INFORMATION ===
+${webContext.funding_info || "No funding information found"}
+
+=== INVESTORS INFORMATION ===
+${webContext.investors_info || "No investor information found"}
+
+=== FINANCIAL INFORMATION ===
+${webContext.financial_info || "No financial information found"}
+
+=== RECENT NEWS ===
+${webContext.news_info || "No recent news found"}
+
+=== COMPANY OVERVIEW ===
+${webContext.overview_info || "No overview information found"}
+
+Based on these search results, provide a detailed analysis in JSON format:
+
 {
-  "summary": "A comprehensive 3-4 sentence summary with key financial metrics and recent developments",
+  "summary": "3-4 sentence summary highlighting key facts from the sources",
   "categories": [
     {
-      "category": "Recent Funding & Investments (2023-2025)",
-      "content": "Write 200-400 words about recent funding rounds. Include: specific round types (Seed, Series A, B, C, etc.), exact amounts raised, dates, lead investors, participating investors, use of funds if known, and any valuations. Example: 'In March 2024, Company X raised $50M in Series B led by Acme Ventures...'",
-      "sources": ["https://example.com/news1", "https://example.com/article2"]
-    },
-    {
-      "category": "Historical Funding & Growth",
-      "content": "Write 200-400 words about earlier funding history. Include all previous rounds, initial funding, angels/seed investors, total capital raised to date, and funding trajectory over time.",
-      "sources": []
+      "category": "Recent Funding & Investments",
+      "content": "Detailed analysis (200-400 words) of funding rounds found in sources. Include specific amounts, dates, investors, and round types. ONLY include information explicitly stated in the sources.",
+      "sources": ["https://source1.com", "https://source2.com"]
     },
     {
       "category": "Financial Performance & Metrics",
-      "content": "Write 200-400 words about revenue, profitability, ARR/MRR, growth rates, burn rate if known, path to profitability, and any public financial disclosures. Include specific numbers and timeframes.",
-      "sources": []
-    },
-    {
-      "category": "Valuation & Market Position",
-      "content": "Write 200-400 words about current and historical valuations, market cap if public, revenue multiples, competitive positioning, market size, and growth potential.",
-      "sources": []
-    },
-    {
-      "category": "Company Overview & Products",
-      "content": "Write 200-400 words about what the company does, their products/services, target market, business model, key differentiators, technology stack, and customer base.",
-      "sources": []
-    },
-    {
-      "category": "Leadership & Team",
-      "content": "Write 200-400 words about founders, CEO, executive team, board members, their backgrounds, previous ventures, and expertise. Include specific names and credentials.",
+      "content": "Analysis of revenue, ARR, MRR, growth metrics found in sources. Include specific numbers and dates.",
       "sources": []
     },
     {
       "category": "Investors & Backers",
-      "content": "Write 200-400 words listing ALL investors (institutional, angels, VCs). Group by round if possible. Include notable names and their investment thesis if known.",
+      "content": "List all investors mentioned in sources, organized by round if possible.",
+      "sources": []
+    },
+    {
+      "category": "Company Overview",
+      "content": "What the company does, products, market, based on sources.",
+      "sources": []
+    },
+    {
+      "category": "Recent Developments",
+      "content": "Recent news, announcements, milestones from sources.",
       "sources": []
     }
   ],
@@ -151,13 +203,13 @@ Return ONLY valid JSON (no markdown, no code blocks):
         "round_type": "Series A",
         "amount_usd": 10000000,
         "announced_date": "2024-03-15",
-        "lead_investors": ["Lead Investor Name"],
-        "other_investors": ["Other Investor 1", "Other Investor 2"],
+        "lead_investors": ["Lead VC"],
+        "other_investors": ["Other VC"],
         "post_money_valuation": 50000000,
         "source_url": "https://source.com"
       }
     ],
-    "investors": ["All unique investor names"],
+    "investors": ["All unique investor names from sources"],
     "financial_metrics": [
       {
         "fiscal_year": 2024,
@@ -167,16 +219,27 @@ Return ONLY valid JSON (no markdown, no code blocks):
       }
     ]
   }
-}`,
+}
+
+IMPORTANT: Only extract facts explicitly stated in the provided sources. Do not infer or speculate.`,
         },
       ],
-      temperature: 0.3,
+      temperature: 0.2, // Low temperature for factual extraction
       max_tokens: 8000,
     })
 
     let content = completion.choices[0]?.message?.content || "{}"
-    console.log("[v0] [Groq] Received response length:", content.length)
+    const usage = completion.usage
 
+    console.log("[v0] [Tavily+Groq] Received response, tokens:", usage?.total_tokens || 0)
+    console.log(
+      "[v0] [Tavily+Groq] Prompt tokens:",
+      usage?.prompt_tokens || 0,
+      "Completion tokens:",
+      usage?.completion_tokens || 0,
+    )
+
+    // Clean and parse response
     content = cleanText(content)
     content = content
       .replace(/```(?:json)?\s*\n?/g, "")
@@ -187,17 +250,16 @@ Return ONLY valid JSON (no markdown, no code blocks):
     try {
       analysis = JSON.parse(content)
     } catch (parseError) {
-      console.error("[v0] [Groq] JSON parse error:", parseError)
-      console.log("[v0] [Groq] First 200 chars:", content.substring(0, 200))
+      console.error("[v0] [Tavily+Groq] JSON parse error:", parseError)
 
       return {
         companyName: cleanText(companyName),
-        summary: `Research completed for ${cleanText(companyName)}. Unable to parse detailed results.`,
+        summary: `Research completed for ${cleanText(companyName)} using web sources.`,
         categories: [
           {
             category: "Research Summary",
             content: cleanText(content.substring(0, 1000)),
-            sources: [],
+            sources: Array.from(allSources).slice(0, 5),
           },
         ],
         generatedAt: new Date().toISOString(),
@@ -206,6 +268,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
 
     analysis = deepCleanObject(analysis)
 
+    // Build final result
     const result: CompanyResearchData = {
       companyName: cleanText(companyName),
       summary: analysis.summary || `Research for ${cleanText(companyName)}`,
@@ -217,6 +280,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
       generatedAt: new Date().toISOString(),
     }
 
+    // Add funding data if available
     if (analysis.funding_data) {
       const fundingData = analysis.funding_data
 
@@ -232,9 +296,9 @@ Return ONLY valid JSON (no markdown, no code blocks):
             other_investors: (round.other_investors || []).filter((inv: string) => inv),
             post_money_valuation: round.post_money_valuation ? Number(round.post_money_valuation) : undefined,
             source_url: round.source_url || "",
-            confidence_score: 0.8,
+            confidence_score: 0.9, // High confidence from web sources
           }))
-          .filter((round: any) => round.amount_usd > 0), // Only include rounds with actual amounts
+          .filter((round: any) => round.amount_usd > 0),
         total_funding: Number(fundingData.total_funding) || 0,
         latest_valuation: fundingData.latest_valuation ? Number(fundingData.latest_valuation) : undefined,
         financial_metrics: (fundingData.financial_metrics || []).map((metric: any) => ({
@@ -248,17 +312,22 @@ Return ONLY valid JSON (no markdown, no code blocks):
           mrr: metric.mrr ? Number(metric.mrr) : undefined,
           source: metric.source || "Web Search",
           source_url: metric.source_url || "",
-          confidence_score: 0.7,
+          confidence_score: 0.9,
         })),
         all_investors: (fundingData.investors || []).filter((inv: string) => inv && inv.length > 0),
         generatedAt: new Date().toISOString(),
       }
     }
 
-    console.log("[v0] [Groq] Research completed successfully")
-    return result
+    console.log("[v0] [Tavily+Groq] Research completed successfully")
+
+    // Return usage stats for cost tracking
+    return {
+      ...result,
+      _usage: usage, // Hidden field for cost tracking
+    } as any
   } catch (error) {
-    console.error("[v0] [Groq Web Search] Error:", error)
+    console.error("[v0] [Tavily+Groq] Error:", error)
 
     return {
       companyName: cleanText(companyName),

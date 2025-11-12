@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithGroq } from "@/lib/groq-web-research"
+import { researchCompanyWithTavilyAndGroq } from "@/lib/groq-tavily-research"
 import { auth } from "@clerk/nextjs/server"
-import { trackAIUsage } from "@/lib/ai-cost-tracker"
+import { trackAIUsage, trackTavilyUsage } from "@/lib/ai-cost-tracker"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
 
@@ -93,9 +93,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
 
-    const startTime = Date.now()
-    const research = await researchCompanyWithGroq(company.name).catch((err) => {
-      console.error("[v0] [Research API] Groq web search failed:", err)
+    const research: any = await researchCompanyWithTavilyAndGroq(company.name).catch((err) => {
+      console.error("[v0] [Research API] Tavily+Groq research failed:", err)
       return {
         companyName: company.name,
         summary: "Research data could not be fetched at this time.",
@@ -104,25 +103,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     })
 
-    // Estimate tokens for research (rough estimate based on content length)
-    const promptText = `Research ${company.name} for funding, investors, and financials`
-    const responseText = JSON.stringify(research)
-    const estimatedPromptTokens = Math.ceil(promptText.length / 4) + 2000 // +2000 for system prompt
-    const estimatedCompletionTokens = Math.ceil(responseText.length / 4)
+    await trackTavilyUsage({
+      sql,
+      accountId: userId,
+      searchCount: 5,
+      generationType: "company_research_tavily",
+    })
 
-    // Track the AI usage
+    const groqTokens = research._usage || { prompt_tokens: 15000, completion_tokens: 5000 }
     await trackAIUsage({
       sql,
       accountId: userId,
-      model: "llama-3.3-70b-versatile",
-      promptTokens: estimatedPromptTokens,
-      completionTokens: estimatedCompletionTokens,
-      generationType: "company_research",
+      model: "groq/openai/gpt-oss-20b",
+      promptTokens: groqTokens.prompt_tokens,
+      completionTokens: groqTokens.completion_tokens,
+      generationType: "company_research_groq",
     })
 
     console.log(
-      `[v0] [Research API] Tracked AI usage: ~${estimatedPromptTokens} prompt + ~${estimatedCompletionTokens} completion tokens`,
+      `[v0] [Research API] Tracked AI usage: ${groqTokens.prompt_tokens} prompt + ${groqTokens.completion_tokens} completion tokens`,
     )
+
+    delete research._usage
 
     const cleanedResearch = deepClean(research)
 

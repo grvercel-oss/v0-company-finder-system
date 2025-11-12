@@ -110,18 +110,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       generationType: "company_research_tavily",
     })
 
-    const aiTokens = research._usage || { promptTokens: 15000, completionTokens: 5000 }
+    const groqTokens = research._usage || { prompt_tokens: 15000, completion_tokens: 5000 }
     await trackAIUsage({
       sql,
       accountId: userId,
-      model: "meta-llama/llama-3.3-70b-instruct", // Free model through Vercel AI Gateway
-      promptTokens: aiTokens.promptTokens || 0,
-      completionTokens: aiTokens.completionTokens || 0,
-      generationType: "company_research_free_ai",
+      model: "groq/openai/gpt-oss-20b",
+      promptTokens: groqTokens.prompt_tokens,
+      completionTokens: groqTokens.completion_tokens,
+      generationType: "company_research_groq",
     })
 
     console.log(
-      `[v0] [Research API] Tracked AI usage: ~${aiTokens.promptTokens} prompt + ~${aiTokens.completionTokens} completion tokens`,
+      `[v0] [Research API] Tracked AI usage: ${groqTokens.prompt_tokens} prompt + ${groqTokens.completion_tokens} completion tokens`,
     )
 
     delete research._usage

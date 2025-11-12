@@ -1,10 +1,8 @@
 // Groq AI + Tavily Web Search Integration
-// Uses Tavily for real web data, Groq for analysis
+// Uses Tavily for real web data, Vercel AI Gateway for analysis
 
-import Groq from "groq-sdk"
+import { generateText } from "ai"
 import { searchCompanyWithTavily } from "./tavily-client"
-
-const groq = new Groq({ apiKey: process.env.API_KEY_GROQ_API_KEY })
 
 export interface CompanyResearchData {
   companyName: string
@@ -78,14 +76,14 @@ function deepCleanObject(obj: any): any {
 }
 
 /**
- * Research company using Tavily search + Groq analysis
+ * Research company using Tavily search + Vercel AI Gateway (Free Model)
  */
 export async function researchCompanyWithTavilyAndGroq(companyName: string): Promise<CompanyResearchData> {
-  console.log("[v0] [Tavily+Groq] Starting research for:", companyName)
+  console.log("[v0] [Tavily+AI] Starting research for:", companyName)
 
   try {
     // Step 1: Search the web with Tavily
-    console.log("[v0] [Tavily+Groq] Performing web searches...")
+    console.log("[v0] [Tavily+AI] Performing web searches...")
     const searchResults = await searchCompanyWithTavily(companyName)
 
     // Step 2: Compile all search results into context
@@ -130,22 +128,16 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
       })
     })
 
-    console.log("[v0] [Tavily+Groq] Found", allSources.size, "high-quality sources (score > 0.5)")
+    console.log("[v0] [Tavily+AI] Found", allSources.size, "high-quality sources (score > 0.5)")
 
-    // Step 3: Use Groq to analyze and structure the data
-    console.log("[v0] [Tavily+Groq] Analyzing with Groq openai/gpt-oss-20b...")
+    // Step 3: Use Vercel AI Gateway free model to analyze and structure the data
+    console.log("[v0] [Tavily+AI] Analyzing with free Llama 3.3 70B model...")
 
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a financial research analyst specializing in extracting precise funding and financial data. Analyze web search results and extract ONLY information explicitly stated in the sources. For funding amounts, extract the exact dollar values mentioned. If specific data is not found, mark it as null. Always preserve source URLs for verification.",
-        },
-        {
-          role: "user",
-          content: `Analyze the following web search results about "${companyName}" and extract ALL funding and financial information.
+    const { text, usage } = await generateText({
+      model: "meta-llama/llama-3.3-70b-instruct", // Free model through Vercel AI Gateway
+      system:
+        "You are a financial research analyst specializing in extracting precise funding and financial data. Analyze web search results and extract ONLY information explicitly stated in the sources. For funding amounts, extract the exact dollar values mentioned. If specific data is not found, mark it as null. Always preserve source URLs for verification.",
+      prompt: `Analyze the following web search results about "${companyName}" and extract ALL funding and financial information.
 
 WEB SEARCH RESULTS:
 
@@ -233,25 +225,20 @@ CRITICAL INSTRUCTIONS:
 4. If a metric is not found, use null (not 0)
 5. Preserve exact source URLs for verification
 6. Be thorough - include 300-500 words of detail in funding category`,
-        },
-      ],
-      temperature: 0.1, // Even lower temperature for more precise extraction
-      max_tokens: 10000, // Increased from 8000 to allow more comprehensive responses
+      temperature: 0.1,
+      maxTokens: 10000,
     })
 
-    let content = completion.choices[0]?.message?.content || "{}"
-    const usage = completion.usage
-
-    console.log("[v0] [Tavily+Groq] Received response, tokens:", usage?.total_tokens || 0)
+    console.log("[v0] [Tavily+AI] Received response, tokens:", usage?.totalTokens || 0)
     console.log(
-      "[v0] [Tavily+Groq] Prompt tokens:",
-      usage?.prompt_tokens || 0,
+      "[v0] [Tavily+AI] Prompt tokens:",
+      usage?.promptTokens || 0,
       "Completion tokens:",
-      usage?.completion_tokens || 0,
+      usage?.completionTokens || 0,
     )
 
     // Clean and parse response
-    content = cleanText(content)
+    let content = cleanText(text)
     content = content
       .replace(/```(?:json)?\s*\n?/g, "")
       .replace(/\n?```/g, "")
@@ -261,7 +248,7 @@ CRITICAL INSTRUCTIONS:
     try {
       analysis = JSON.parse(content)
     } catch (parseError) {
-      console.error("[v0] [Tavily+Groq] JSON parse error:", parseError)
+      console.error("[v0] [Tavily+AI] JSON parse error:", parseError)
 
       return {
         companyName: cleanText(companyName),
@@ -336,14 +323,14 @@ CRITICAL INSTRUCTIONS:
       }
 
       console.log(
-        "[v0] [Tavily+Groq] Extracted funding data:",
+        "[v0] [Tavily+AI] Extracted funding data:",
         validRounds.length,
         "rounds, total:",
         calculatedTotalFunding,
       )
     }
 
-    console.log("[v0] [Tavily+Groq] Research completed successfully")
+    console.log("[v0] [Tavily+AI] Research completed successfully")
 
     // Return usage stats for cost tracking
     return {
@@ -351,7 +338,7 @@ CRITICAL INSTRUCTIONS:
       _usage: usage, // Hidden field for cost tracking
     } as any
   } catch (error) {
-    console.error("[v0] [Tavily+Groq] Error:", error)
+    console.error("[v0] [Tavily+AI] Error:", error)
 
     return {
       companyName: cleanText(companyName),

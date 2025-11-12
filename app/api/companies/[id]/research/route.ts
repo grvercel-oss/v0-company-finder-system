@@ -37,7 +37,7 @@ function deepClean(obj: any): any {
   return obj
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId } = await auth()
     if (!userId) {
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     }
 
-    const { id } = await params
+    const { id } = params
 
     console.log("[v0] [Research API] Fetching research for company ID:", id)
 
@@ -110,18 +110,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       generationType: "company_research_tavily",
     })
 
-    const groqTokens = research._usage || { prompt_tokens: 15000, completion_tokens: 5000 }
+    const aiTokens = research._usage || { promptTokens: 15000, completionTokens: 5000 }
     await trackAIUsage({
       sql,
       accountId: userId,
-      model: "groq/openai/gpt-oss-20b",
-      promptTokens: groqTokens.prompt_tokens,
-      completionTokens: groqTokens.completion_tokens,
-      generationType: "company_research_groq",
+      model: "meta-llama/llama-3.3-70b-instruct", // Free model through Vercel AI Gateway
+      promptTokens: aiTokens.promptTokens || 0,
+      completionTokens: aiTokens.completionTokens || 0,
+      generationType: "company_research_free_ai",
     })
 
     console.log(
-      `[v0] [Research API] Tracked AI usage: ${groqTokens.prompt_tokens} prompt + ${groqTokens.completion_tokens} completion tokens`,
+      `[v0] [Research API] Tracked AI usage: ~${aiTokens.promptTokens} prompt + ~${aiTokens.completionTokens} completion tokens`,
     )
 
     delete research._usage

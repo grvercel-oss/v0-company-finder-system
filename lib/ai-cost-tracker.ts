@@ -13,6 +13,11 @@ export const AI_MODELS = {
     inputCostPer1M: 0.1,
     outputCostPer1M: 0.5,
   },
+  "meta-llama/llama-3.3-70b-instruct": {
+    provider: "Vercel AI Gateway (Free)",
+    inputCostPer1M: 0.0, // Free with $5 monthly credits
+    outputCostPer1M: 0.0,
+  },
   "perplexity/sonar": {
     provider: "Perplexity",
     inputCostPer1M: 1.0,

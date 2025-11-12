@@ -30,13 +30,12 @@ export async function searchCompanyNews(
     // Build search query
     const query = `"${companyName}" AND (${keywords.join(" OR ")})`
 
-    // Search last 6 months of news
-    const sixMonthsAgo = new Date()
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
     const params = new URLSearchParams({
       q: query,
-      from: sixMonthsAgo.toISOString().split("T")[0],
+      from: thirtyDaysAgo.toISOString().split("T")[0],
       sortBy: "relevancy",
       language: "en",
       pageSize: "20", // Get top 20 articles

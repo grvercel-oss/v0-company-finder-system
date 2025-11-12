@@ -27,58 +27,58 @@ export async function searchCompanyNews(
   }
 
   try {
-    const searchStrategies = [
-      // Strategy 1: Company name with OR keywords (broader)
-      `"${companyName}" AND (${keywords.slice(0, 5).join(" OR ")})`,
-      // Strategy 2: Just company name (even broader)
-      `"${companyName}"`,
-      // Strategy 3: Company name without quotes + funding keywords
-      `${companyName} (funding OR investment OR raised)`,
-    ]
+    const query = `"${companyName}" OR "${companyName} Inc" OR "${companyName} Ltd" OR "${companyName} startup" OR "${companyName}.com" OR "${companyName}.ai"`
 
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const fromDate = thirtyDaysAgo.toISOString().split("T")[0]
 
-    let allArticles: NewsArticle[] = []
+    const params = new URLSearchParams({
+      q: query,
+      from: fromDate,
+      sortBy: "relevancy",
+      language: "en",
+      pageSize: "10",
+      apiKey: apiKey,
+    })
 
-    // Try each search strategy until we get results
-    for (const [index, query] of searchStrategies.entries()) {
-      console.log(`[v0] [News API] Search attempt ${index + 1}: ${query}`)
+    const url = `https://newsapi.org/v2/everything?${params.toString()}`
 
-      const params = new URLSearchParams({
-        q: query,
-        from: fromDate,
-        sortBy: "relevancy",
-        language: "en",
-        pageSize: "20",
-        apiKey: apiKey,
-      })
+    console.log("[v0] [News API] Request URL:", url.replace(apiKey, "***API_KEY***"))
 
-      const response = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`)
+    const response = await fetch(url)
 
-      if (!response.ok) {
-        const error = await response.text()
-        console.error(`[v0] [News API] Error on attempt ${index + 1}: ${error}`)
-        continue // Try next strategy
-      }
-
-      const data: NewsAPIResponse = await response.json()
-      console.log(`[v0] [News API] Attempt ${index + 1} found ${data.totalResults} articles`)
-
-      if (data.articles && data.articles.length > 0) {
-        allArticles = data.articles
-        break // Found articles, stop trying other strategies
-      }
+    if (!response.ok) {
+      const error = await response.text()
+      console.error("[v0] [News API] Error:", error)
+      return []
     }
 
-    if (allArticles.length === 0) {
-      console.log("[v0] [News API] No articles found after trying all search strategies")
+    const data: NewsAPIResponse = await response.json()
+    console.log(
+      `[v0] [News API] Found ${data.totalResults} total results, received ${data.articles?.length || 0} articles`,
+    )
+
+    if (!data.articles || data.articles.length === 0) {
+      console.log(`[v0] [News API] No recent news found for '${companyName}'`)
+      return []
+    }
+
+    const companyNameLower = companyName.trim().toLowerCase()
+    const filteredArticles = data.articles.filter((article) => {
+      const titleMatch = article.title?.toLowerCase().includes(companyNameLower)
+      const descMatch = article.description?.toLowerCase().includes(companyNameLower)
+      return titleMatch || descMatch
+    })
+
+    console.log(`[v0] [News API] After filtering: ${filteredArticles.length} articles mention company name`)
+
+    if (filteredArticles.length === 0) {
+      console.log(`[v0] [News API] No recent news found for '${companyName}' (after filtering)`)
       return []
     }
 
     // Filter out articles without content
-    const articlesWithContent = allArticles.filter((article) => article.content && article.content.length > 100)
+    const articlesWithContent = filteredArticles.filter((article) => article.content && article.content.length > 100)
 
     console.log(`[v0] [News API] Using ${articlesWithContent.length} articles with content`)
 

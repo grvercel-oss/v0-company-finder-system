@@ -91,33 +91,28 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
     // Step 2: Compile all search results into context
     const webContext = {
       funding_info: searchResults.funding.results
-        .filter((r) => r.score > 0.5)
-        .slice(0, 5) // Limit to top 5 results
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 300)}\n`) // Reduced from 800 to 300
+        .filter((r) => r.score > 0.5) // Increased minimum score from 0.4 to 0.5
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`) // Increased content length from 500 to 800
         .join("\n---\n"),
 
       investors_info: searchResults.investors.results
         .filter((r) => r.score > 0.5)
-        .slice(0, 5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 300)}\n`)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
 
       financial_info: searchResults.financial.results
         .filter((r) => r.score > 0.5)
-        .slice(0, 5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 300)}\n`)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
 
       news_info: searchResults.news.results
         .filter((r) => r.score > 0.5)
-        .slice(0, 5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 300)}\n`)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
 
       overview_info: searchResults.overview.results
         .filter((r) => r.score > 0.5)
-        .slice(0, 5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 300)}\n`)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
     }
 
@@ -241,7 +236,7 @@ CRITICAL INSTRUCTIONS:
         },
       ],
       temperature: 0.1, // Even lower temperature for more precise extraction
-      max_tokens: 6000, // Reduced from 10000 to 6000 to stay within rate limits
+      max_tokens: 10000, // Increased from 8000 to allow more comprehensive responses
     })
 
     let content = completion.choices[0]?.message?.content || "{}"

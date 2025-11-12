@@ -91,32 +91,32 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
     // Step 2: Compile all search results into context
     const webContext = {
       funding_info: searchResults.funding.results
-        .filter((r) => r.score > 0.4)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .filter((r) => r.score > 0.5) // Increased minimum score from 0.4 to 0.5
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`) // Increased content length from 500 to 800
         .join("\n---\n"),
 
       investors_info: searchResults.investors.results
-        .filter((r) => r.score > 0.4)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .filter((r) => r.score > 0.5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
 
       financial_info: searchResults.financial.results
-        .filter((r) => r.score > 0.4)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .filter((r) => r.score > 0.5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
 
       news_info: searchResults.news.results
-        .filter((r) => r.score > 0.4)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .filter((r) => r.score > 0.5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
 
       overview_info: searchResults.overview.results
-        .filter((r) => r.score > 0.4)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 500)}\n`)
+        .filter((r) => r.score > 0.5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
         .join("\n---\n"),
     }
 
-    // Collect all unique source URLs
+    // Collect all unique source URLs with better filtering
     const allSources = new Set<string>()
     ;[
       searchResults.funding,
@@ -126,11 +126,11 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
       searchResults.overview,
     ].forEach((result) => {
       result.results.forEach((r) => {
-        if (r.score > 0.4) allSources.add(r.url)
+        if (r.score > 0.5) allSources.add(r.url) // Increased minimum score
       })
     })
 
-    console.log("[v0] [Tavily+Groq] Found", allSources.size, "high-quality sources")
+    console.log("[v0] [Tavily+Groq] Found", allSources.size, "high-quality sources (score > 0.5)")
 
     // Step 3: Use Groq to analyze and structure the data
     console.log("[v0] [Tavily+Groq] Analyzing with Groq openai/gpt-oss-20b...")

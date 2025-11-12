@@ -87,16 +87,31 @@ export async function searchCompanyWithTavily(companyName: string): Promise<{
   console.log("[v0] [Tavily] Starting comprehensive search for:", companyName)
 
   try {
-    // Perform 5 parallel searches for different aspects
     const [funding, investors, financial, news, overview] = await Promise.all([
-      searchWithTavily(`${companyName} funding rounds Series A B C venture capital`, 5),
-      searchWithTavily(`${companyName} investors backers venture capital firms`, 5),
-      searchWithTavily(`${companyName} revenue valuation financial metrics ARR MRR`, 5),
-      searchWithTavily(`${companyName} recent news announcements 2024 2025`, 5),
-      searchWithTavily(`${companyName} company overview products services business model`, 5),
+      // Search for funding with specific round types and financial news sources
+      searchWithTavily(
+        `"${companyName}" funding round "Series A" OR "Series B" OR "Series C" OR "seed round" OR "raised" million`,
+        10,
+      ),
+      // Search for investor information
+      searchWithTavily(`"${companyName}" investors OR backers OR "led by" OR "participated" venture capital`, 10),
+      // Search for financial metrics and valuation
+      searchWithTavily(
+        `"${companyName}" revenue OR valuation OR ARR OR MRR OR "annual recurring revenue" financial metrics`,
+        10,
+      ),
+      // Search for recent news with date focus
+      searchWithTavily(`"${companyName}" news OR announcement OR launch OR partnership 2024 OR 2025`, 10),
+      // Search for company overview
+      searchWithTavily(`"${companyName}" company overview OR about OR products OR services OR business model`, 10),
     ])
 
     console.log("[v0] [Tavily] Completed all searches")
+    console.log("[v0] [Tavily] Funding results:", funding.results.length)
+    console.log("[v0] [Tavily] Investors results:", investors.results.length)
+    console.log("[v0] [Tavily] Financial results:", financial.results.length)
+    console.log("[v0] [Tavily] News results:", news.results.length)
+    console.log("[v0] [Tavily] Overview results:", overview.results.length)
 
     return { funding, investors, financial, news, overview }
   } catch (error) {

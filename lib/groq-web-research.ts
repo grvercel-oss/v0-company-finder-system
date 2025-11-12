@@ -2,6 +2,7 @@
 // Uses ONLY Groq's built-in web search capabilities
 
 import Groq from "groq-sdk"
+import { searchCompanyNews, extractTextFromArticles } from "./newsapi-client"
 
 const groq = new Groq({ apiKey: process.env.API_KEY_GROQ_API_KEY })
 
@@ -77,69 +78,82 @@ function deepCleanObject(obj: any): any {
 }
 
 /**
- * Research company using Groq with web search tools
+ * Research company using News API + Groq analysis
  */
 export async function researchCompanyWithGroq(companyName: string): Promise<CompanyResearchData> {
   console.log("[v0] [Groq Web Search] Starting research for:", companyName)
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a financial research analyst. Provide detailed, accurate information about companies based on your knowledge. Focus on factual data: funding rounds, investors, revenue figures, and company details. If you don't have specific information, clearly state 'Not available' rather than speculating. Always provide detailed explanations.",
-        },
-        {
-          role: "user",
-          content: `Provide comprehensive research about "${companyName}".
+    console.log("[v0] [News API] Fetching news articles for:", companyName)
+    const articles = await searchCompanyNews(companyName, [
+      "funding",
+      "investment",
+      "valuation",
+      "revenue",
+      "investors",
+      "Series A",
+      "Series B",
+      "Series C",
+      "raised",
+      "financing",
+    ])
 
-IMPORTANT: Write detailed paragraphs (200-400 words each) for each category. Include specific details like:
-- Exact funding amounts with dates
-- Names of all investors
-- Revenue figures and growth rates
-- Valuation milestones
-- Key executives and their backgrounds
-- Product details and market position
+    let contextText = ""
+    if (articles.length > 0) {
+      contextText = extractTextFromArticles(articles)
+      console.log(`[v0] [News API] Using ${articles.length} articles as context (${contextText.length} chars)`)
+    } else {
+      console.log("[v0] [News API] No articles found, using Groq's knowledge")
+    }
+
+    const userPrompt = contextText
+      ? `Based on the following news articles about "${companyName}", provide comprehensive research.
+
+NEWS ARTICLES:
+${contextText}
+
+IMPORTANT: Extract ONLY factual information from the articles above. Include:
+- Exact funding amounts with dates from the articles
+- Names of all investors mentioned
+- Revenue figures and financial metrics cited
+- Valuation information
+- Key executives mentioned
+- Product and market details
+
+If information is not in the articles, clearly state "Not found in sources" rather than speculating.
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "summary": "A comprehensive 3-4 sentence summary with key financial metrics and recent developments",
+  "summary": "A comprehensive 3-4 sentence summary based on the articles with key financial metrics",
   "categories": [
     {
       "category": "Recent Funding & Investments (2023-2025)",
-      "content": "Write 200-400 words about recent funding rounds. Include: specific round types (Seed, Series A, B, C, etc.), exact amounts raised, dates, lead investors, participating investors, use of funds if known, and any valuations. Example: 'In March 2024, Company X raised $50M in Series B led by Acme Ventures...'",
-      "sources": ["https://example.com/news1", "https://example.com/article2"]
-    },
-    {
-      "category": "Historical Funding & Growth",
-      "content": "Write 200-400 words about earlier funding history. Include all previous rounds, initial funding, angels/seed investors, total capital raised to date, and funding trajectory over time.",
-      "sources": []
+      "content": "Write 200-400 words about funding rounds found in the articles. Include specific amounts, dates, investors, and valuations with citations.",
+      "sources": ["https://article-url-1.com", "https://article-url-2.com"]
     },
     {
       "category": "Financial Performance & Metrics",
-      "content": "Write 200-400 words about revenue, profitability, ARR/MRR, growth rates, burn rate if known, path to profitability, and any public financial disclosures. Include specific numbers and timeframes.",
+      "content": "Write 200-400 words about revenue, ARR, growth rates, and other financial metrics mentioned in the articles.",
       "sources": []
     },
     {
       "category": "Valuation & Market Position",
-      "content": "Write 200-400 words about current and historical valuations, market cap if public, revenue multiples, competitive positioning, market size, and growth potential.",
+      "content": "Write 200-400 words about valuations, market position, and competitive landscape from the articles.",
       "sources": []
     },
     {
       "category": "Company Overview & Products",
-      "content": "Write 200-400 words about what the company does, their products/services, target market, business model, key differentiators, technology stack, and customer base.",
+      "content": "Write 200-400 words about the company's business, products, and services from the articles.",
       "sources": []
     },
     {
       "category": "Leadership & Team",
-      "content": "Write 200-400 words about founders, CEO, executive team, board members, their backgrounds, previous ventures, and expertise. Include specific names and credentials.",
+      "content": "Write 200-400 words about executives, founders, and key team members mentioned in the articles.",
       "sources": []
     },
     {
       "category": "Investors & Backers",
-      "content": "Write 200-400 words listing ALL investors (institutional, angels, VCs). Group by round if possible. Include notable names and their investment thesis if known.",
+      "content": "Write 200-400 words listing ALL investors mentioned in the articles with details about their involvement.",
       "sources": []
     }
   ],
@@ -152,25 +166,42 @@ Return ONLY valid JSON (no markdown, no code blocks):
         "amount_usd": 10000000,
         "announced_date": "2024-03-15",
         "lead_investors": ["Lead Investor Name"],
-        "other_investors": ["Other Investor 1", "Other Investor 2"],
+        "other_investors": ["Other Investor 1"],
         "post_money_valuation": 50000000,
-        "source_url": "https://source.com"
+        "source_url": "https://article-url.com"
       }
     ],
-    "investors": ["All unique investor names"],
+    "investors": ["All unique investor names from articles"],
     "financial_metrics": [
       {
         "fiscal_year": 2024,
         "revenue": 5000000,
         "arr": 6000000,
-        "source_url": "https://source.com"
+        "source_url": "https://article-url.com"
       }
     ]
   }
-}`,
+}`
+      : `Provide comprehensive research about "${companyName}" based on your knowledge.
+
+IMPORTANT: Provide detailed information but clearly indicate this is from your training data, not recent news.
+
+Return ONLY valid JSON with the same structure as above.`
+
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a financial research analyst. Extract and analyze factual information from news articles. Be precise with numbers, dates, and names. If information is not in the provided articles, clearly state this rather than speculating.",
+        },
+        {
+          role: "user",
+          content: userPrompt,
         },
       ],
-      temperature: 0.3,
+      temperature: 0.2, // Lower temperature for more factual responses
       max_tokens: 8000,
     })
 

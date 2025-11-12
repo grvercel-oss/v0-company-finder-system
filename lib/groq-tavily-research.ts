@@ -92,27 +92,32 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
     const webContext = {
       funding_info: searchResults.funding.results
         .filter((r) => r.score > 0.5) // Increased minimum score from 0.4 to 0.5
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`) // Increased content length from 500 to 800
+        .slice(0, 5) // Limit to 5 results per category
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 400)}\n`) // Reduced content length from 800 to 400
         .join("\n---\n"),
 
       investors_info: searchResults.investors.results
         .filter((r) => r.score > 0.5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
+        .slice(0, 5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 400)}\n`)
         .join("\n---\n"),
 
       financial_info: searchResults.financial.results
         .filter((r) => r.score > 0.5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
+        .slice(0, 5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 400)}\n`)
         .join("\n---\n"),
 
       news_info: searchResults.news.results
         .filter((r) => r.score > 0.5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
+        .slice(0, 5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 400)}\n`)
         .join("\n---\n"),
 
       overview_info: searchResults.overview.results
         .filter((r) => r.score > 0.5)
-        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 800)}\n`)
+        .slice(0, 5)
+        .map((r) => `Source: ${r.url}\nTitle: ${r.title}\nContent: ${r.content.substring(0, 400)}\n`)
         .join("\n---\n"),
     }
 
@@ -225,7 +230,7 @@ IMPORTANT: Only extract facts explicitly stated in the provided sources. Do not 
         },
       ],
       temperature: 0.2, // Low temperature for factual extraction
-      max_tokens: 8000,
+      max_tokens: 5000, // Reduced from 8000 to 5000 to stay under 7500 total token limit
     })
 
     let content = completion.choices[0]?.message?.content || "{}"

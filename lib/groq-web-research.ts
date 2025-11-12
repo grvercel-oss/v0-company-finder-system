@@ -89,105 +89,89 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
         {
           role: "system",
           content:
-            "You are a financial research analyst. Use web search to find ACCURATE, VERIFIED information. ONLY include information you can verify from search results. If you cannot find specific data, say 'Not available' rather than guessing. Always include source URLs for each piece of information. Prioritize recent data from 2024-2025.",
+            "You are a financial research analyst. Provide detailed, accurate information about companies based on your knowledge. Focus on factual data: funding rounds, investors, revenue figures, and company details. If you don't have specific information, clearly state 'Not available' rather than speculating. Always provide detailed explanations.",
         },
         {
           role: "user",
-          content: `Research "${companyName}" and provide accurate, detailed information. Use web search extensively.
+          content: `Provide comprehensive research about "${companyName}".
 
-CRITICAL RULES:
-- ONLY report facts you can verify from search results
-- If data is not available, explicitly state "Not available" 
-- Include actual source URLs for each claim
-- Prioritize 2024-2025 data when available
-- Focus on FACTUAL data: funding amounts, dates, investor names, revenue figures
+IMPORTANT: Write detailed paragraphs (200-400 words each) for each category. Include specific details like:
+- Exact funding amounts with dates
+- Names of all investors
+- Revenue figures and growth rates
+- Valuation milestones
+- Key executives and their backgrounds
+- Product details and market position
 
-Search for:
-1. "${companyName} funding 2024 2025"
-2. "${companyName} Series A B C D funding"
-3. "${companyName} valuation revenue 2024"
-4. "${companyName} investors Crunchbase"
-5. "${companyName} TechCrunch funding announcement"
-
-Return ONLY valid JSON (no markdown):
+Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "summary": "2-3 sentence factual summary with key metrics",
+  "summary": "A comprehensive 3-4 sentence summary with key financial metrics and recent developments",
   "categories": [
     {
-      "category": "Recent Funding (2024-2025)",
-      "content": "Detailed paragraph with specific funding rounds, amounts, dates, and investors found. If no recent funding found, state that explicitly.",
-      "sources": ["actual URLs from search results"]
+      "category": "Recent Funding & Investments (2023-2025)",
+      "content": "Write 200-400 words about recent funding rounds. Include: specific round types (Seed, Series A, B, C, etc.), exact amounts raised, dates, lead investors, participating investors, use of funds if known, and any valuations. Example: 'In March 2024, Company X raised $50M in Series B led by Acme Ventures...'",
+      "sources": ["https://example.com/news1", "https://example.com/article2"]
     },
     {
-      "category": "Historical Funding",
-      "content": "Previous funding rounds with details",
-      "sources": ["URLs"]
+      "category": "Historical Funding & Growth",
+      "content": "Write 200-400 words about earlier funding history. Include all previous rounds, initial funding, angels/seed investors, total capital raised to date, and funding trajectory over time.",
+      "sources": []
     },
     {
-      "category": "Financial Metrics",
-      "content": "Revenue, ARR, profitability data if available",
-      "sources": ["URLs"]
+      "category": "Financial Performance & Metrics",
+      "content": "Write 200-400 words about revenue, profitability, ARR/MRR, growth rates, burn rate if known, path to profitability, and any public financial disclosures. Include specific numbers and timeframes.",
+      "sources": []
     },
     {
-      "category": "Company Overview",
-      "content": "Business model, products, market position",
-      "sources": ["URLs"]
+      "category": "Valuation & Market Position",
+      "content": "Write 200-400 words about current and historical valuations, market cap if public, revenue multiples, competitive positioning, market size, and growth potential.",
+      "sources": []
     },
     {
-      "category": "Leadership",
-      "content": "Key executives and their backgrounds",
-      "sources": ["URLs"]
+      "category": "Company Overview & Products",
+      "content": "Write 200-400 words about what the company does, their products/services, target market, business model, key differentiators, technology stack, and customer base.",
+      "sources": []
+    },
+    {
+      "category": "Leadership & Team",
+      "content": "Write 200-400 words about founders, CEO, executive team, board members, their backgrounds, previous ventures, and expertise. Include specific names and credentials.",
+      "sources": []
+    },
+    {
+      "category": "Investors & Backers",
+      "content": "Write 200-400 words listing ALL investors (institutional, angels, VCs). Group by round if possible. Include notable names and their investment thesis if known.",
+      "sources": []
     }
   ],
   "funding_data": {
-    "total_funding": number or 0 if unknown,
-    "latest_valuation": number or null,
+    "total_funding": 0,
+    "latest_valuation": null,
     "funding_rounds": [
       {
         "round_type": "Series A",
         "amount_usd": 10000000,
         "announced_date": "2024-03-15",
-        "lead_investors": ["Investor Name"],
-        "other_investors": ["Others"],
+        "lead_investors": ["Lead Investor Name"],
+        "other_investors": ["Other Investor 1", "Other Investor 2"],
         "post_money_valuation": 50000000,
-        "source_url": "actual URL"
+        "source_url": "https://source.com"
       }
     ],
-    "investors": ["all unique investors"],
+    "investors": ["All unique investor names"],
     "financial_metrics": [
       {
         "fiscal_year": 2024,
         "revenue": 5000000,
         "arr": 6000000,
-        "source_url": "actual URL"
+        "source_url": "https://source.com"
       }
     ]
   }
 }`,
         },
       ],
-      temperature: 0.2, // Lower temperature for more factual responses
+      temperature: 0.3,
       max_tokens: 8000,
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "web_search",
-            description: "Search the web for company information",
-            parameters: {
-              type: "object",
-              properties: {
-                query: {
-                  type: "string",
-                  description: "The search query",
-                },
-              },
-              required: ["query"],
-            },
-          },
-        },
-      ],
-      tool_choice: "auto",
     })
 
     let content = completion.choices[0]?.message?.content || "{}"

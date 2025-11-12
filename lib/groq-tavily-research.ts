@@ -133,10 +133,10 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
     console.log("[v0] [Tavily+Groq] Found", allSources.size, "high-quality sources")
 
     // Step 3: Use Groq to analyze and structure the data
-    console.log("[v0] [Tavily+Groq] Analyzing with Groq gpt-oss-20b...")
+    console.log("[v0] [Tavily+Groq] Analyzing with Groq llama-3.1-8b-instant...")
 
     const completion = await groq.chat.completions.create({
-      model: "groq/openai/gpt-oss-20b",
+      model: "llama-3.1-8b-instant",
       messages: [
         {
           role: "system",

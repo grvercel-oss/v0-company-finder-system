@@ -141,11 +141,11 @@ export async function researchCompanyWithTavilyAndGroq(companyName: string): Pro
         {
           role: "system",
           content:
-            "You are a financial research analyst. Analyze the provided web search results and extract accurate, factual information about the company. Only include information that is explicitly stated in the sources. If specific data is not found, mark it as 'Not available' rather than guessing. Always cite sources.",
+            "You are a financial research analyst specializing in extracting precise funding and financial data. Analyze web search results and extract ONLY information explicitly stated in the sources. For funding amounts, extract the exact dollar values mentioned. If specific data is not found, mark it as null. Always preserve source URLs for verification.",
         },
         {
           role: "user",
-          content: `Analyze the following web search results about "${companyName}" and create a comprehensive research report.
+          content: `Analyze the following web search results about "${companyName}" and extract ALL funding and financial information.
 
 WEB SEARCH RESULTS:
 
@@ -164,68 +164,79 @@ ${webContext.news_info || "No recent news found"}
 === COMPANY OVERVIEW ===
 ${webContext.overview_info || "No overview information found"}
 
-Based on these search results, provide a detailed analysis in JSON format:
+Extract ALL information in JSON format:
 
 {
-  "summary": "3-4 sentence summary highlighting key facts from the sources",
+  "summary": "3-4 sentence executive summary with key facts about the company, funding, and recent developments",
   "categories": [
     {
       "category": "Recent Funding & Investments",
-      "content": "Detailed analysis (200-400 words) of funding rounds found in sources. Include specific amounts, dates, investors, and round types. ONLY include information explicitly stated in the sources.",
-      "sources": ["https://source1.com", "https://source2.com"]
+      "content": "DETAILED analysis (300-500 words) of ALL funding rounds mentioned. For EACH round include: round type (Seed/Series A/B/C/etc), exact amount in millions/billions, date, ALL investors mentioned (lead and participating), and any valuation mentioned. Extract EVERY dollar amount and investor name found in sources. Be comprehensive - don't summarize, include all details.",
+      "sources": ["URL1", "URL2"]
     },
     {
-      "category": "Financial Performance & Metrics",
-      "content": "Analysis of revenue, ARR, MRR, growth metrics found in sources. Include specific numbers and dates.",
-      "sources": []
+      "category": "Financial Performance & Revenue",
+      "content": "DETAILED analysis (200-400 words) of revenue, ARR, MRR, profit, growth rates, customer count, and any other financial metrics mentioned. Include specific numbers, dates, and year-over-year comparisons if available.",
+      "sources": ["URL1"]
     },
     {
       "category": "Investors & Backers",
-      "content": "List all investors mentioned in sources, organized by round if possible.",
-      "sources": []
+      "content": "COMPREHENSIVE list of ALL investors mentioned across all sources. Organize by round if possible. Include venture capital firms, angel investors, strategic investors, and corporate investors.",
+      "sources": ["URL1"]
     },
     {
-      "category": "Company Overview",
-      "content": "What the company does, products, market, based on sources.",
-      "sources": []
+      "category": "Company Overview & Market",
+      "content": "What the company does, products/services, target market, competitive advantages, and market position based on sources.",
+      "sources": ["URL1"]
     },
     {
-      "category": "Recent Developments",
-      "content": "Recent news, announcements, milestones from sources.",
-      "sources": []
+      "category": "Recent News & Developments",
+      "content": "Recent announcements, product launches, partnerships, acquisitions, leadership changes, or other significant events.",
+      "sources": ["URL1"]
     }
   ],
   "funding_data": {
-    "total_funding": 0,
-    "latest_valuation": null,
     "funding_rounds": [
+      // For EACH funding round mentioned in sources:
       {
-        "round_type": "Series A",
-        "amount_usd": 10000000,
-        "announced_date": "2024-03-15",
-        "lead_investors": ["Lead VC"],
-        "other_investors": ["Other VC"],
-        "post_money_valuation": 50000000,
-        "source_url": "https://source.com"
+        "round_type": "Series C",  // Extract exact round type from source
+        "amount_usd": 80000000,    // Convert to USD numeric value (e.g., $80M = 80000000)
+        "announced_date": "2024-03-15",  // Extract date in YYYY-MM-DD format
+        "lead_investors": ["Lead VC Name"],  // Extract ALL lead investors mentioned
+        "other_investors": ["Other VC 1", "Other VC 2"],  // Extract ALL other investors
+        "post_money_valuation": 500000000,  // If valuation mentioned, extract it
+        "source_url": "https://exact-source-url.com"  // URL where this round was mentioned
       }
+      // Include ALL rounds found in sources - Seed, Series A, Series B, Series C, etc.
     ],
-    "investors": ["All unique investor names from sources"],
+    "investors": ["Alphabetical list of ALL unique investor names across all rounds"],
     "financial_metrics": [
+      // Extract ALL financial metrics mentioned:
       {
         "fiscal_year": 2024,
-        "revenue": 5000000,
-        "arr": 6000000,
-        "source_url": "https://source.com"
+        "revenue": 20000000,  // If "$20M revenue" mentioned
+        "arr": 25000000,      // If ARR mentioned
+        "mrr": 2000000,       // If MRR mentioned
+        "profit": -5000000,   // If profit/loss mentioned (negative for loss)
+        "revenue_growth_pct": 150,  // If growth rate mentioned (e.g., "150% growth")
+        "user_count": 500000,  // If user/customer count mentioned
+        "source_url": "https://source-url.com"
       }
     ]
   }
 }
 
-IMPORTANT: Only extract facts explicitly stated in the provided sources. Do not infer or speculate.`,
+CRITICAL INSTRUCTIONS:
+1. Extract EVERY funding amount mentioned - don't skip any rounds
+2. Convert ALL amounts to numeric USD (e.g., "$5M" = 5000000, "$1.2B" = 1200000000)
+3. Include EVERY investor name mentioned - be comprehensive
+4. If a metric is not found, use null (not 0)
+5. Preserve exact source URLs for verification
+6. Be thorough - include 300-500 words of detail in funding category`,
         },
       ],
-      temperature: 0.2, // Low temperature for factual extraction
-      max_tokens: 8000,
+      temperature: 0.1, // Even lower temperature for more precise extraction
+      max_tokens: 10000, // Increased from 8000 to allow more comprehensive responses
     })
 
     let content = completion.choices[0]?.message?.content || "{}"
@@ -284,39 +295,52 @@ IMPORTANT: Only extract facts explicitly stated in the provided sources. Do not 
     if (analysis.funding_data) {
       const fundingData = analysis.funding_data
 
+      const validRounds = (fundingData.funding_rounds || [])
+        .map((round: any) => ({
+          round_type: round.round_type || "Unknown",
+          amount_usd: Number(round.amount_usd) || 0,
+          currency: "USD",
+          announced_date: round.announced_date || "",
+          lead_investors: (round.lead_investors || []).filter((inv: string) => inv && inv.trim().length > 0),
+          other_investors: (round.other_investors || []).filter((inv: string) => inv && inv.trim().length > 0),
+          post_money_valuation: round.post_money_valuation ? Number(round.post_money_valuation) : undefined,
+          source_url: round.source_url || "",
+          confidence_score: 0.9,
+        }))
+        .filter((round: any) => round.amount_usd > 0)
+
+      const calculatedTotalFunding = validRounds.reduce((sum: number, round: any) => sum + round.amount_usd, 0)
+
       result.funding = {
         companyName: cleanText(companyName),
-        funding_rounds: (fundingData.funding_rounds || [])
-          .map((round: any) => ({
-            round_type: round.round_type || "Unknown",
-            amount_usd: Number(round.amount_usd) || 0,
-            currency: "USD",
-            announced_date: round.announced_date || "",
-            lead_investors: (round.lead_investors || []).filter((inv: string) => inv),
-            other_investors: (round.other_investors || []).filter((inv: string) => inv),
-            post_money_valuation: round.post_money_valuation ? Number(round.post_money_valuation) : undefined,
-            source_url: round.source_url || "",
-            confidence_score: 0.9, // High confidence from web sources
-          }))
-          .filter((round: any) => round.amount_usd > 0),
-        total_funding: Number(fundingData.total_funding) || 0,
+        funding_rounds: validRounds,
+        total_funding: calculatedTotalFunding, // Use calculated sum instead of extracted value
         latest_valuation: fundingData.latest_valuation ? Number(fundingData.latest_valuation) : undefined,
-        financial_metrics: (fundingData.financial_metrics || []).map((metric: any) => ({
-          fiscal_year: Number(metric.fiscal_year) || new Date().getFullYear(),
-          fiscal_quarter: metric.fiscal_quarter ? Number(metric.fiscal_quarter) : undefined,
-          revenue: metric.revenue ? Number(metric.revenue) : undefined,
-          profit: metric.profit ? Number(metric.profit) : undefined,
-          revenue_growth_pct: metric.revenue_growth_pct ? Number(metric.revenue_growth_pct) : undefined,
-          user_count: metric.user_count ? Number(metric.user_count) : undefined,
-          arr: metric.arr ? Number(metric.arr) : undefined,
-          mrr: metric.mrr ? Number(metric.mrr) : undefined,
-          source: metric.source || "Web Search",
-          source_url: metric.source_url || "",
-          confidence_score: 0.9,
-        })),
-        all_investors: (fundingData.investors || []).filter((inv: string) => inv && inv.length > 0),
+        financial_metrics: (fundingData.financial_metrics || [])
+          .map((metric: any) => ({
+            fiscal_year: Number(metric.fiscal_year) || new Date().getFullYear(),
+            fiscal_quarter: metric.fiscal_quarter ? Number(metric.fiscal_quarter) : undefined,
+            revenue: metric.revenue ? Number(metric.revenue) : undefined,
+            profit: metric.profit ? Number(metric.profit) : undefined,
+            revenue_growth_pct: metric.revenue_growth_pct ? Number(metric.revenue_growth_pct) : undefined,
+            user_count: metric.user_count ? Number(metric.user_count) : undefined,
+            arr: metric.arr ? Number(metric.arr) : undefined,
+            mrr: metric.mrr ? Number(metric.mrr) : undefined,
+            source: metric.source || "Web Search",
+            source_url: metric.source_url || "",
+            confidence_score: 0.9,
+          }))
+          .filter((m: any) => m.revenue || m.arr || m.mrr || m.profit), // Only include metrics with actual data
+        all_investors: (fundingData.investors || []).filter((inv: string) => inv && inv.trim().length > 0).sort(), // Sort investors alphabetically
         generatedAt: new Date().toISOString(),
       }
+
+      console.log(
+        "[v0] [Tavily+Groq] Extracted funding data:",
+        validRounds.length,
+        "rounds, total:",
+        calculatedTotalFunding,
+      )
     }
 
     console.log("[v0] [Tavily+Groq] Research completed successfully")

@@ -91,11 +91,11 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
       "valuation",
       "revenue",
       "investors",
-      "Series A",
-      "Series B",
-      "Series C",
       "raised",
       "financing",
+      "acquisition",
+      "IPO",
+      "merger",
     ])
 
     let contextText = ""

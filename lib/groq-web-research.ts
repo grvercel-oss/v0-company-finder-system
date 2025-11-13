@@ -1,5 +1,5 @@
-// Groq AI with Web Search Tools - NO Common Crawl, NO Brave, NO Tavily
-// Uses ONLY Groq's built-in web search capabilities
+// Groq Built-in Web Search
+// Uses Groq's native web search capabilities with compound models
 
 import Groq from "groq-sdk"
 
@@ -73,206 +73,125 @@ export interface CompanyResearchData {
   } | null
 }
 
-/**
- * ULTIMATE clean text - strips EVERYTHING except basic ASCII
- */
-function cleanText(text: string): string {
-  if (!text) return ""
-
-  const buffer = Buffer.from(text, "utf8")
-  let cleaned = buffer.toString("utf8")
-
-  // Remove ALL non-printable characters
-  cleaned = cleaned
-    .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // All control characters
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // Zero-width characters
-    .replace(/[\u2000-\u206F]/g, " ") // All special spaces to regular space
-    .replace(/[\u2018\u2019]/g, "'") // Smart quotes
-    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
-    .replace(/[\u2013\u2014]/g, "-") // Dashes
-    .replace(/\u2026/g, "...") // Ellipsis
-
-  // Keep only: letters, numbers, basic punctuation, space, newline
-  cleaned = cleaned.replace(/[^\x20-\x7E\n\r\t]/g, " ")
-
-  // Normalize whitespace
-  cleaned = cleaned.replace(/\s+/g, " ").trim()
-
-  return cleaned
-}
-
-/**
- * ULTRA AGGRESSIVE clean - removes EVERYTHING except basic safe characters
- */
 function ultraClean(text: string): string {
   if (!text || typeof text !== "string") return ""
 
-  // Convert to array and filter character by character
-  const cleaned = Array.from(text)
+  return Array.from(text)
     .map((char) => {
       const code = char.charCodeAt(0)
-      // ONLY allow: space(32), basic punctuation and numbers(33-64), letters(65-90, 97-122)
-      if (
-        code === 32 || // space
-        code === 10 || // newline
-        (code >= 33 && code <= 126) // printable ASCII
-      ) {
+      if (code === 32 || code === 10 || (code >= 33 && code <= 126)) {
         return char
       }
-      return " " // Replace everything else with space
+      return " "
     })
     .join("")
-    .replace(/\s+/g, " ") // collapse multiple spaces
+    .replace(/\s+/g, " ")
     .trim()
-
-  return cleaned
 }
 
 /**
- * Ultra-safe JSON stringification with character-by-character validation
- */
-function safeStringify(obj: any): string {
-  const replacer = (key: string, value: any) => {
-    if (typeof value === "string") {
-      // Clean every single character
-      return Array.from(value)
-        .map((char) => {
-          const code = char.charCodeAt(0)
-          // Only allow: space (32), printable ASCII (33-126), newline (10), carriage return (13), tab (9)
-          if (code === 32 || (code >= 33 && code <= 126) || code === 10 || code === 13 || code === 9) {
-            return char
-          }
-          return " " // Replace any other character with space
-        })
-        .join("")
-        .replace(/\s+/g, " ")
-        .trim()
-    }
-    return value
-  }
-
-  return JSON.stringify(obj, replacer, 2)
-}
-
-/**
- * Research company using ONLY Groq's web search tools
+ * Research company using Groq's BUILT-IN web search tool
+ * Uses groq/compound model which has native web search capabilities
  */
 export async function researchCompanyWithGroq(companyName: string): Promise<CompanyResearchData> {
-  console.log("[v0] [Groq Web Search] Starting research for:", companyName)
+  console.log("[v0] [Groq Web Search] Starting research with built-in web search for:", companyName)
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "groq/compound", // Built-in web search support
       messages: [
         {
           role: "system",
-          content: cleanText(
-            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. You have access to web search capabilities. CRITICAL: You MUST ONLY extract information that is explicitly stated in web search results with VERIFIED SOURCE URLS. Do NOT infer, assume, or generate any information that isn't directly found in sources. If information is not available from web sources, return a minimal JSON structure with 'Not available' for missing fields. Always cite specific sources for funding amounts, dates, and investor names. Prioritize data from 2024 and 2025.",
+          content: ultraClean(
+            "You are a company research expert with web search capabilities. Search the web for current information about companies. Extract factual data with verified source URLs. Include news articles with complete URLs, employee data with growth trends, and funding information with investor names and amounts.",
           ),
         },
         {
           role: "user",
-          content: cleanText(`IMPORTANT: Use your web search capabilities to find information about "${companyName}". 
+          content: ultraClean(`Research "${companyName}" and return a comprehensive JSON report with:
 
-Search the web for:
-1. Recent news articles about ${companyName} from 2024-2025 (TechCrunch, VentureBeat, company blog, etc.)
-2. Employee count and growth data (LinkedIn, Crunchbase)
-3. Funding rounds and investors (Crunchbase, PitchBook, news articles)
-4. Company basics (founded date, ownership type, revenue estimates)
+1. News articles (recent, with real URLs and dates)
+2. Employee information (headcount, growth timeline, department/location breakdown)
+3. Funding data (rounds, amounts, investors with source URLs)
+4. Company info (ownership, founded year, estimated revenue)
 
-Provide a comprehensive report based ONLY on verified information from web sources with REAL, CLICKABLE URLS. Do NOT make up or infer any data.
-
-Return ONLY a valid JSON object (no markdown, no code blocks) with this structure:
+Search the web for recent information (2024-2025) and return ONLY valid JSON in this exact structure:
 {
   "companyName": "${companyName}",
-  "summary": "Brief company description from official source",
-  "ownership": "Private" or "Public" or "n/a",
-  "founded": "2019" or "n/a",
-  "est_revenue": "$50M" or "n/a",
+  "summary": "Brief company description",
+  "ownership": "Private/Public/n/a",
+  "founded": "YYYY or n/a",
+  "est_revenue": "$XM or n/a",
   "news_articles": [
     {
-      "title": "EXACT title from actual article",
-      "url": "https://REAL-COMPLETE-URL.com/article",
-      "publishedDate": "Nov 5, 2025",
-      "source": "techinasia.com",
-      "category": "Competition"
+      "title": "Article headline",
+      "url": "https://complete-url.com/article",
+      "publishedDate": "YYYY-MM-DD",
+      "source": "sitename.com",
+      "category": "Funding/Product/Partnership/Competition"
     }
   ],
   "employees": {
-    "total": 343,
+    "total": 150,
     "growth_6mo": 23,
     "growth_yoy": 40,
-    "timeline": [{ "date": "2024-11", "count": 343 }],
-    "by_location": [{ "location": "Singapore", "percentage": 26, "count": 89 }],
-    "by_department": [{ "department": "Engineering", "percentage": 37, "count": 128 }],
-    "by_seniority": [{ "level": "10-20 Years", "percentage": 42, "count": 143 }]
+    "timeline": [
+      {"date": "2024-01", "count": 100},
+      {"date": "2024-06", "count": 120},
+      {"date": "2025-01", "count": 150}
+    ],
+    "by_location": [{"location": "US", "percentage": 60, "count": 90}],
+    "by_department": [{"department": "Engineering", "percentage": 40, "count": 60}],
+    "by_seniority": [{"level": "Senior", "percentage": 30, "count": 45}]
   },
   "funding_data": {
-    "total_funding": 150000000,
-    "latest_valuation": 500000000,
+    "total_funding": 50000000,
+    "latest_valuation": 200000000,
     "funding_rounds": [{
-      "round_type": "Series C",
-      "amount_usd": 75000000,
+      "round_type": "Series B",
+      "amount_usd": 25000000,
       "announced_date": "2024-06-15",
       "lead_investors": ["Sequoia Capital"],
-      "other_investors": ["Andreessen Horowitz"],
-      "source_url": "https://REAL-URL.com"
+      "other_investors": ["a16z"],
+      "source_url": "https://source-url.com"
     }],
-    "investors": ["ALL verified investors"],
-    "financial_metrics": []
+    "investors": ["Sequoia Capital", "a16z"],
+    "financial_metrics": [{
+      "fiscal_year": 2024,
+      "revenue": 10000000,
+      "source": "TechCrunch",
+      "source_url": "https://source-url.com"
+    }]
   }
 }
 
-If you cannot find ANY information about this company through web search, return:
-{
-  "companyName": "${companyName}",
-  "summary": "No verified information available",
-  "ownership": "n/a",
-  "founded": "n/a",
-  "est_revenue": "n/a",
-  "news_articles": [],
-  "employees": null,
-  "funding_data": null
-}`),
+CRITICAL: All URLs must be real and complete. Search the web for this company's information.`),
         },
       ],
-      temperature: 0.0, // Lowest possible temperature for most deterministic, factual output
-      max_tokens: 8000,
-      top_p: 0.1, // Very low top_p to further reduce creative/hallucinatory responses
+      temperature: 0.1,
+      max_tokens: 7500,
     })
 
-    let content = completion.choices[0]?.message?.content || "{}"
-    console.log("[v0] [Groq] Received response, cleaning...")
+    const content = completion.choices[0]?.message?.content || "{}"
+    console.log("[v0] [Groq] Received web search response")
 
-    content = ultraClean(content)
-    content = content.replace(/```(?:json)?\s*\n?/g, "").replace(/\n?```/g, "")
+    const executedTools = (completion.choices[0]?.message as any)?.executed_tools
+    if (executedTools && executedTools.length > 0) {
+      console.log(`[v0] [Groq] Web search performed, ${executedTools[0]?.search_results?.length || 0} sources found`)
+    }
 
-    console.log("[v0] [Groq] Parsing JSON response...")
+    const cleanedContent = ultraClean(content)
+      .replace(/```(?:json)?\s*\n?/g, "")
+      .replace(/\n?```/g, "")
 
     let analysis: any
     try {
-      analysis = JSON.parse(content)
+      analysis = JSON.parse(cleanedContent)
     } catch (parseError) {
-      if (content.includes("Not available") || content.includes("not available") || content.length < 50) {
-        console.log("[v0] [Groq] No data found for company, returning empty structure")
-        return {
-          companyName: ultraClean(companyName),
-          summary: "No verified information found for this company.",
-          ownership: "n/a",
-          founded: "n/a",
-          est_revenue: "n/a",
-          news_articles: [],
-          categories: [],
-          generatedAt: new Date().toISOString(),
-        }
-      }
-
-      console.error("[v0] [Groq] JSON parse error:", parseError)
-      console.log("[v0] [Groq] Raw content preview:", content.substring(0, 200))
-
+      console.log("[v0] [Groq] Failed to parse, returning empty structure")
       return {
         companyName: ultraClean(companyName),
-        summary: "Unable to parse research data for this company.",
+        summary: "No verified information available",
         ownership: "n/a",
         founded: "n/a",
         est_revenue: "n/a",
@@ -284,10 +203,7 @@ If you cannot find ANY information about this company through web search, return
 
     const result: CompanyResearchData = {
       companyName: ultraClean(companyName),
-      summary: ultraClean(
-        analysis.summary ||
-          `Comprehensive research compiled for ${companyName} covering funding, investors, and financials.`,
-      ),
+      summary: ultraClean(analysis.summary || `Research for ${companyName}`),
       ownership: ultraClean(analysis.ownership || "n/a"),
       founded: ultraClean(analysis.founded || "n/a"),
       est_revenue: ultraClean(analysis.est_revenue || "n/a"),
@@ -331,8 +247,6 @@ If you cannot find ANY information about this company through web search, return
           count: Number(sen.count) || 0,
         })),
       }
-    } else {
-      result.employees = null
     }
 
     if (analysis.funding_data) {
@@ -359,7 +273,7 @@ If you cannot find ANY information about this company through web search, return
           revenue: metric.revenue ? Number(metric.revenue) : undefined,
           profit: metric.profit ? Number(metric.profit) : undefined,
           revenue_growth_pct: metric.revenue_growth_pct ? Number(metric.revenue_growth_pct) : undefined,
-          user_count: metric.user_count || metric.employees ? Number(metric.user_count || metric.employees) : undefined,
+          user_count: metric.user_count ? Number(metric.user_count) : undefined,
           arr: metric.arr ? Number(metric.arr) : undefined,
           mrr: metric.mrr ? Number(metric.mrr) : undefined,
           source: ultraClean(metric.source || "Web Search"),
@@ -369,20 +283,16 @@ If you cannot find ANY information about this company through web search, return
         all_investors: (analysis.funding_data.investors || []).map((inv: string) => ultraClean(inv)),
         generatedAt: new Date().toISOString(),
       }
-    } else {
-      result.funding = null
     }
 
-    console.log("[v0] [Groq] Research completed successfully")
+    console.log("[v0] [Groq] Research completed with web search")
     return result
   } catch (error) {
     console.error("[v0] [Groq Web Search] Error:", error)
 
     return {
       companyName: ultraClean(companyName),
-      summary: ultraClean(
-        `Unable to complete research for ${companyName}. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-      ),
+      summary: ultraClean(`Error researching ${companyName}: ${error instanceof Error ? error.message : "Unknown"}`),
       ownership: "n/a",
       founded: "n/a",
       est_revenue: "n/a",

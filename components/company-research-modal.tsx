@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import {
   Loader2,
   Calendar,
-  Sparkles,
   AlertCircle,
   X,
   TrendingUp,
@@ -20,8 +19,24 @@ import {
   ExternalLink,
   Shield,
   UserCheck,
+  ChevronDown,
+  Briefcase,
+  MapPin,
+  Award,
 } from "lucide-react"
 import { FundingCharts } from "@/components/funding-charts"
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts"
 
 interface ResearchCategory {
   category: string
@@ -75,9 +90,35 @@ interface CompanyFundingData {
   generatedAt: string
 }
 
+interface NewsArticle {
+  title: string
+  url: string
+  publishedDate: string
+  source: string
+  category?: string
+}
+
+interface EmployeeData {
+  total: number
+  growth_6mo: number
+  growth_yoy: number
+  timeline: Array<{
+    date: string
+    count: number
+  }>
+  by_location: Array<{ location: string; percentage: number; count: number }>
+  by_department: Array<{ department: string; percentage: number; count: number }>
+  by_seniority: Array<{ level: string; percentage: number; count: number }>
+}
+
 interface CompanyResearchData {
   companyName: string
   summary: string
+  ownership: string
+  founded: string
+  est_revenue: string
+  employees?: EmployeeData
+  news_articles: NewsArticle[]
   categories: ResearchCategory[]
   generatedAt: string
   registryData?: CorporateRegistryData | null
@@ -97,6 +138,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
   const [cached, setCached] = useState(false)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showAllNews, setShowAllNews] = useState(false)
 
   const fetchResearch = async () => {
     setLoading(true)
@@ -167,6 +209,14 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
     return metrics.slice(0, 4) // Max 4 metrics
   }
 
+  const PIE_COLORS = [
+    "hsl(var(--chart-1))",
+    "hsl(var(--chart-2))",
+    "hsl(var(--chart-3))",
+    "hsl(var(--chart-4))",
+    "hsl(var(--chart-5))",
+  ]
+
   if (!open) return null
 
   return (
@@ -176,7 +226,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
 
       {/* Modal */}
       <div className="fixed inset-4 md:inset-8 lg:inset-12 z-50 flex items-center justify-center">
-        <div className="w-full max-w-6xl h-full bg-background border rounded-lg shadow-lg flex flex-col">
+        <div className="w-full max-w-7xl h-full bg-background border rounded-lg shadow-lg flex flex-col">
           {/* Header */}
           <div className="flex items-start justify-between p-6 border-b bg-muted/30 flex-shrink-0">
             <div className="flex-1">
@@ -186,9 +236,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 </div>
                 <div>
                   <h2 className="text-xl font-bold">{companyName}</h2>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    AI-powered research using Common Crawl archives + Groq AI
-                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">AI-powered research with verified sources</p>
                 </div>
               </div>
             </div>
@@ -204,7 +252,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium">Researching {companyName}...</p>
-                  <p className="text-sm text-muted-foreground">Analyzing archived web pages with Groq AI</p>
+                  <p className="text-sm text-muted-foreground">Gathering verified data from web sources</p>
                   <p className="text-xs text-muted-foreground">This may take 30-60 seconds</p>
                 </div>
               </div>
@@ -229,13 +277,278 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
 
             {research && !loading && (
               <div className="p-6 space-y-6">
-                {/* Timestamp Badge */}
-                <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="gap-2">
-                    <Calendar className="h-3 w-3 text-primary" />
-                    {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
-                  </Badge>
+                {/* Company Description */}
+                {research.summary && <div className="text-muted-foreground leading-relaxed">{research.summary}</div>}
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Users className="h-4 w-4" />
+                      <span className="text-xs font-medium">Employees</span>
+                    </div>
+                    <p className="text-2xl font-bold">{research.employees?.total || "n/a"}</p>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Building2 className="h-4 w-4" />
+                      <span className="text-xs font-medium">Ownership</span>
+                    </div>
+                    <p className="text-2xl font-bold">{research.ownership}</p>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <Calendar className="h-4 w-4" />
+                      <span className="text-xs font-medium">Founded</span>
+                    </div>
+                    <p className="text-2xl font-bold">{research.founded}</p>
+                  </div>
+
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                      <DollarSign className="h-4 w-4" />
+                      <span className="text-xs font-medium">Est. revenue</span>
+                    </div>
+                    <p className="text-2xl font-bold">{research.est_revenue}</p>
+                  </div>
                 </div>
+
+                {research.news_articles && research.news_articles.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Globe className="h-4 w-4 text-primary" />
+                        <h3 className="text-sm font-medium">News & activity ({research.news_articles.length})</h3>
+                      </div>
+                      <Button variant="ghost" size="sm" className="text-xs">
+                        Filter <ChevronDown className="h-3 w-3 ml-1" />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {research.news_articles.slice(0, showAllNews ? undefined : 3).map((article, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <h4 className="font-medium mb-1">{article.title}</h4>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <a
+                                href={article.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline flex items-center gap-1"
+                              >
+                                {article.source}
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                              <span>|</span>
+                              <span>{article.publishedDate}</span>
+                            </div>
+                          </div>
+                          {article.category && (
+                            <Badge variant="secondary" className="ml-3">
+                              {article.category}
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {research.news_articles.length > 3 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAllNews(!showAllNews)}
+                        className="w-full mt-3"
+                      >
+                        {showAllNews ? "Show less" : "Show all"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {research.employees && research.employees.timeline && research.employees.timeline.length > 0 && (
+                  <div className="rounded-lg border bg-card p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Users className="h-4 w-4 text-primary" />
+                          <h3 className="text-sm font-medium">Total headcount</h3>
+                        </div>
+                        <div className="flex items-baseline gap-3">
+                          <span className="text-3xl font-bold">{research.employees.total}</span>
+                          <span className="text-sm text-green-600 flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3" />
+                            {research.employees.growth_6mo}% 6 mo growth
+                          </span>
+                          <span className="text-sm text-green-600 flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3" />
+                            {research.employees.growth_yoy}% YoY growth
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={research.employees.timeline}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                        <XAxis
+                          dataKey="date"
+                          stroke="hsl(var(--muted-foreground))"
+                          tick={{ fill: "hsl(var(--muted-foreground))" }}
+                        />
+                        <YAxis stroke="hsl(var(--muted-foreground))" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "hsl(var(--popover))",
+                            border: "1px solid hsl(var(--border))",
+                            borderRadius: "8px",
+                          }}
+                          labelFormatter={(value) => `Date: ${value}`}
+                          formatter={(value: any) => [`Headcount: ${value}`, ""]}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="count"
+                          stroke="hsl(var(--primary))"
+                          strokeWidth={2}
+                          fill="hsl(var(--primary))"
+                          fillOpacity={0.2}
+                          dot={{ fill: "hsl(var(--primary))", r: 4 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+
+                    {(research.employees.by_location.length > 0 ||
+                      research.employees.by_department.length > 0 ||
+                      research.employees.by_seniority.length > 0) && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6 pt-6 border-t">
+                        {/* Location Distribution */}
+                        {research.employees.by_location.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
+                              <MapPin className="h-4 w-4" />
+                              Headcount by location
+                            </h4>
+                            <ResponsiveContainer width="100%" height={200}>
+                              <PieChart>
+                                <Pie
+                                  data={research.employees.by_location}
+                                  dataKey="percentage"
+                                  nameKey="location"
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius={80}
+                                >
+                                  {research.employees.by_location.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <Tooltip formatter={(value: any) => `${value}%`} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            <div className="space-y-1 text-xs">
+                              {research.employees.by_location.map((loc, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                                  />
+                                  <span>
+                                    {loc.location} {loc.percentage}%
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Department Distribution */}
+                        {research.employees.by_department.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
+                              <Briefcase className="h-4 w-4" />
+                              Split by department
+                            </h4>
+                            <ResponsiveContainer width="100%" height={200}>
+                              <PieChart>
+                                <Pie
+                                  data={research.employees.by_department}
+                                  dataKey="percentage"
+                                  nameKey="department"
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius={80}
+                                >
+                                  {research.employees.by_department.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <Tooltip formatter={(value: any) => `${value}%`} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            <div className="space-y-1 text-xs">
+                              {research.employees.by_department.map((dept, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                                  />
+                                  <span>
+                                    {dept.percentage}% {dept.department}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Seniority Distribution */}
+                        {research.employees.by_seniority.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
+                              <Award className="h-4 w-4" />
+                              Seniority distribution
+                            </h4>
+                            <ResponsiveContainer width="100%" height={200}>
+                              <PieChart>
+                                <Pie
+                                  data={research.employees.by_seniority}
+                                  dataKey="percentage"
+                                  nameKey="level"
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius={80}
+                                >
+                                  {research.employees.by_seniority.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <Tooltip formatter={(value: any) => `${value}%`} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            <div className="space-y-1 text-xs">
+                              {research.employees.by_seniority.map((sen, idx) => (
+                                <div key={idx} className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full"
+                                    style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+                                  />
+                                  <span>
+                                    {sen.percentage}% {sen.level}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Corporate Registry Section */}
                 {research.registryData && (
@@ -403,19 +716,6 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                           </div>
                         )
                       })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Executive Summary */}
-                {research.summary && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-3">EXECUTIVE SUMMARY</h3>
-                    <div className="rounded-lg bg-gradient-to-br from-primary/10 via-primary/5 to-background p-6 border border-primary/20">
-                      <div className="flex gap-3">
-                        <Sparkles className="h-5 w-5 text-primary flex-shrink-0 mt-1" />
-                        <p className="text-base leading-relaxed">{research.summary}</p>
-                      </div>
                     </div>
                   </div>
                 )}

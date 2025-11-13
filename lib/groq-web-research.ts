@@ -5,9 +5,35 @@ import Groq from "groq-sdk"
 
 const groq = new Groq({ apiKey: process.env.API_KEY_GROQ_API_KEY })
 
+export interface NewsArticle {
+  title: string
+  url: string
+  publishedDate: string
+  source: string
+  category?: string
+}
+
+export interface EmployeeData {
+  total: number
+  growth_6mo: number
+  growth_yoy: number
+  timeline: Array<{
+    date: string
+    count: number
+  }>
+  by_location: Array<{ location: string; percentage: number; count: number }>
+  by_department: Array<{ department: string; percentage: number; count: number }>
+  by_seniority: Array<{ level: string; percentage: number; count: number }>
+}
+
 export interface CompanyResearchData {
   companyName: string
   summary: string
+  employees?: EmployeeData
+  news_articles: NewsArticle[]
+  ownership: string
+  founded: string
+  est_revenue: string
   categories: Array<{
     category: string
     content: string
@@ -141,122 +167,93 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
         {
           role: "system",
           content: cleanText(
-            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. Use web search to find the most comprehensive and up-to-date information. Provide EXTENSIVE, DETAILED information with complete context, specific examples, and thorough explanations. Do NOT summarize or compress information - provide full details. ALWAYS prioritize data from 2024 and 2025.",
+            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. CRITICAL: You MUST ONLY extract information that is explicitly stated in web search results with VERIFIED SOURCE URLS. Do NOT infer, assume, or generate any information that isn't directly found in sources. If information is not available from web sources, explicitly state 'Not available' or 'No data found'. Always cite specific sources for funding amounts, dates, and investor names. Prioritize data from 2024 and 2025.",
           ),
         },
         {
           role: "user",
           content:
-            cleanText(`Research "${companyName}" and provide a comprehensive, HIGHLY DETAILED report with EXTENSIVE information. Be thorough and verbose - include ALL details you find. CRITICAL: Prioritize the most recent data from 2024-2025.
+            cleanText(`Research "${companyName}" and provide a comprehensive report based ONLY on verified information from web sources with REAL, CLICKABLE URLS. Do NOT make up or infer any data. CRITICAL: Prioritize the most recent data from 2024-2025.
 
-PRIORITY 1 - RECENT FUNDING & INVESTORS (2024-2025 FIRST) - BE EXTREMELY DETAILED:
-- Search for funding announcements from 2024 and 2025 FIRST
-- All funding rounds (Seed, Series A/B/C/D, etc.) with specific amounts in USD
-- Exact dates of funding announcements (MUST include 2024-2025 if any exist)
-- Lead investors and participating investors for each round - include ALL names
-- Total funding raised to date with breakdown by year
-- Current company valuation (post-money valuation from latest round)
-- Recent investor additions and cap table changes
-- Notable angel investors with their backgrounds
-- Details about each funding round - why they raised, what they plan to use it for
-- Investor quotes and statements about the funding
-- Dilution details if available
-- Pre-money and post-money valuations for each round
+CRITICAL ACCURACY RULES:
+- ONLY include information explicitly found in web search results
+- EVERY piece of data MUST have a REAL source URL
+- URLs MUST be complete, working links (https://...)
+- Do NOT create fake or placeholder URLs
+- If no verified source exists, state "Not available" instead of making up data
 
-PRIORITY 2 - RECENT FINANCIAL METRICS (2024-2025) - COMPREHENSIVE DETAILS:
-- Latest Annual Recurring Revenue (ARR) - prioritize 2024/2025 data with growth rates
-- Latest Monthly Recurring Revenue (MRR) with month-over-month trends
-- Most recent revenue figures and growth rate with detailed breakdown
-- Current profitability status - detailed P&L information if available
-- Latest employee count with department breakdown if available
-- Recent acquisitions or exits with deal terms
-- Burn rate and runway information if available
-- Customer acquisition costs and lifetime value
-- Churn rates and retention metrics
-- Key performance indicators specific to their industry
+PRIORITY 1 - NEWS & RECENT ACTIVITY (2024-2025):
+- Find AT LEAST 10-20 recent news articles from 2024-2025
+- Each article MUST have:
+  - Exact title from the article
+  - Complete source URL (https://...)
+  - Publication date (must be real)
+  - Source domain name
+  - Category tag (Competition, Partnerships, Funding, Product, etc.)
+- Sources to search: TechCrunch, VentureBeat, Bloomberg, Reuters, company blog, industry news sites
+- NEVER create fake URLs - only include articles you actually found
 
-PRIORITY 3 - CURRENT COMPANY INFORMATION - EXTENSIVE DETAILS:
-- Company overview and current mission - include full backstory
-- Latest products and services with detailed feature descriptions
-- Current market position with competitive analysis
-- Key competitors with detailed comparison
-- Current leadership team (CEO, CFO, CTO, etc.) with full bios and backgrounds
-- Recent news from 2024-2025 with detailed summaries
-- Latest press releases - include full quotes
-- Customer testimonials and case studies
-- Company culture and values
-- Office locations and geographic presence
-- Technology stack if relevant
-- Partnerships and strategic relationships
+PRIORITY 2 - EMPLOYEE DATA & GROWTH:
+- Current employee count from LinkedIn, Crunchbase, or company website
+- Historical employee counts with dates (for growth chart):
+  - Monthly or quarterly data points if available
+  - At least 5-10 data points over past 2-3 years
+  - Format: { "date": "2024-01", "count": 343 }
+- Employee breakdown by location (percentages and counts)
+- Employee breakdown by department (Engineering, Marketing, Sales, etc.)
+- Employee breakdown by seniority level (0-5 years, 5-10 years, 10-20 years, etc.)
+- 6-month growth percentage
+- Year-over-year growth percentage
 
-SEARCH STRATEGY:
-1. First search for "${companyName} funding 2025"
-2. Then search for "${companyName} funding 2024"
-3. Then search for "${companyName} Series [A/B/C/D] 2024 2025"
-4. Search "${companyName} valuation 2024 2025"
-5. Search "${companyName} revenue 2024"
-6. Search "${companyName} investors 2024 2025"
-7. Search "${companyName} financial metrics 2024"
+PRIORITY 3 - COMPANY BASICS:
+- Ownership type (Private, Public, Subsidiary)
+- Founded year
+- Estimated revenue or "n/a"
 
-Use sources like:
-- TechCrunch (search: "${companyName} funding 2024 2025")
-- Crunchbase (most recent funding)
-- PitchBook
-- Company press releases from 2024-2025
-- SEC filings if public
-- Company blog and news pages
-- Industry reports and analysis
-
-IMPORTANT INSTRUCTIONS FOR DETAILED CONTENT:
-- Write LONG, DETAILED paragraphs (minimum 5-7 sentences per category)
-- Include specific numbers, dates, names, and facts
-- Provide context and background for every piece of information
-- Include quotes from executives and investors when available
-- Explain the significance of each funding round or metric
-- Add industry context and competitive comparisons
-- Be thorough - aim for 300-500 words per major category
-- Do NOT use bullet points or short summaries - write full prose
+PRIORITY 4 - FUNDING & INVESTORS:
+- All funding rounds with EXACT amounts and REAL source URLs
+- List of all investors
+- Total funding raised
+- Latest valuation
 
 Return ONLY a valid JSON object (no markdown, no code blocks) with this structure:
 {
-  "summary": "A comprehensive 4-6 sentence executive summary highlighting latest funding, 2024-2025 metrics, and company trajectory with specific numbers and details",
-  "categories": [
+  "companyName": "${companyName}",
+  "summary": "Brief company description from official source",
+  "ownership": "Private" or "Public" or "Subsidiary",
+  "founded": "2019" or "n/a",
+  "est_revenue": "$50M" or "n/a",
+  "news_articles": [
     {
-      "category": "Recent Funding & Investors (2024-2025)",
-      "content": "EXTENSIVE detailed paragraph (300+ words) covering most recent funding rounds with full context, investor backgrounds, deal terms, use of proceeds, and market impact. Include all specific details.",
-      "sources": ["https://source1.com", "https://source2.com"]
-    },
-    {
-      "category": "Historical Funding & Growth Timeline",
-      "content": "DETAILED chronological account (300+ words) of all previous funding rounds with context about company growth, milestones achieved, and strategic decisions. Include full details of each round.",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Latest Financial Metrics (2024-2025)",
-      "content": "COMPREHENSIVE analysis (300+ words) of recent revenue, ARR, MRR, profitability with trends, growth rates, and detailed breakdown of financial performance. Include all available metrics with context.",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Company Overview & Business Model",
-      "content": "THOROUGH description (300+ words) of current products, services, market position, competitive landscape, and business strategy with specific examples and details.",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Leadership & Team",
-      "content": "DETAILED profiles (200+ words) of current executives and key personnel with backgrounds, previous companies, and their roles in company strategy.",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Market Position & Competition",
-      "content": "EXTENSIVE competitive analysis (300+ words) comparing the company to key competitors with market share, differentiation factors, and strategic positioning.",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Recent News & Developments (2024-2025)",
-      "content": "COMPREHENSIVE summary (300+ words) of latest company news, product launches, partnerships, and strategic moves with full context and implications.",
-      "sources": ["https://source1.com"]
+      "title": "EXACT title from actual article",
+      "url": "https://REAL-COMPLETE-URL.com/article",
+      "publishedDate": "Nov 5, 2025" or "2025-11-05",
+      "source": "techinasia.com",
+      "category": "Competition" or "Partnerships" or "Funding" or "Product"
     }
   ],
+  "employees": {
+    "total": 343,
+    "growth_6mo": 23,
+    "growth_yoy": 40,
+    "timeline": [
+      { "date": "2024-11", "count": 343 },
+      { "date": "2024-08", "count": 335 },
+      { "date": "2024-05", "count": 310 }
+    ],
+    "by_location": [
+      { "location": "Singapore", "percentage": 26, "count": 89 },
+      { "location": "Spain", "percentage": 16, "count": 55 }
+    ],
+    "by_department": [
+      { "department": "Engineering & R&D", "percentage": 37.4, "count": 128 },
+      { "department": "Marketing & Comms", "percentage": 18.1, "count": 62 }
+    ],
+    "by_seniority": [
+      { "level": "10 To 20 Years", "percentage": 41.8, "count": 143 },
+      { "level": "5 To 10 Years", "percentage": 32.1, "count": 110 }
+    ]
+  },
   "funding_data": {
     "total_funding": 150000000,
     "latest_valuation": 500000000,
@@ -266,33 +263,27 @@ Return ONLY a valid JSON object (no markdown, no code blocks) with this structur
         "amount_usd": 75000000,
         "announced_date": "2024-06-15",
         "lead_investors": ["Sequoia Capital"],
-        "other_investors": ["Andreessen Horowitz", "Index Ventures", "Other investors"],
-        "post_money_valuation": 500000000
+        "other_investors": ["Andreessen Horowitz"],
+        "source_url": "https://REAL-COMPLETE-SOURCE-URL.com"
       }
     ],
-    "investors": ["List ALL investors found"],
-    "financial_metrics": [
-      {
-        "fiscal_year": 2024,
-        "revenue": 50000000,
-        "arr": 60000000,
-        "employees": 250
-      }
-    ]
-  }
+    "investors": ["ALL verified investors"],
+    "financial_metrics": []
+  },
+  "categories": []
 }
 
-IMPORTANT: 
-- Each category content should be 200-500 words of detailed prose
-- Include ALL funding rounds you find, list 2024-2025 rounds FIRST
-- Be extremely thorough and verbose - more detail is always better
-- Include specific names, dates, numbers, and quotes
-- Provide full context for every fact
-- Write in complete, detailed paragraphs`),
+CRITICAL REMINDERS:
+- ALL URLs must be complete, real, working links
+- Do NOT create fake or placeholder URLs
+- ONLY include news articles you actually found from real sources
+- Employee data must come from LinkedIn, Crunchbase, or official sources
+- State "Not available" when real data cannot be found`),
         },
       ],
-      temperature: 0.3,
+      temperature: 0.0, // Lowest possible temperature for most deterministic, factual output
       max_tokens: 8000,
+      top_p: 0.1, // Very low top_p to further reduce creative/hallucinatory responses
     })
 
     let content = completion.choices[0]?.message?.content || "{}"
@@ -313,6 +304,10 @@ IMPORTANT:
       return {
         companyName: ultraClean(companyName),
         summary: ultraClean(content.substring(0, 500)),
+        ownership: "n/a",
+        founded: "n/a",
+        est_revenue: "n/a",
+        news_articles: [],
         categories: [
           {
             category: "Research Results",
@@ -330,12 +325,49 @@ IMPORTANT:
         analysis.summary ||
           `Comprehensive research compiled for ${companyName} covering funding, investors, and financials.`,
       ),
+      ownership: ultraClean(analysis.ownership || "n/a"),
+      founded: ultraClean(analysis.founded || "n/a"),
+      est_revenue: ultraClean(analysis.est_revenue || "n/a"),
+      news_articles: (analysis.news_articles || []).map((article: any) => ({
+        title: ultraClean(article.title || ""),
+        url: ultraClean(article.url || ""),
+        publishedDate: ultraClean(article.publishedDate || ""),
+        source: ultraClean(article.source || ""),
+        category: ultraClean(article.category || ""),
+      })),
       categories: (analysis.categories || []).map((cat: any) => ({
         category: ultraClean(cat.category || "Information"),
         content: ultraClean(cat.content || ""),
         sources: (cat.sources || []).map((s: string) => ultraClean(s)),
       })),
       generatedAt: new Date().toISOString(),
+    }
+
+    if (analysis.employees) {
+      result.employees = {
+        total: Number(analysis.employees.total) || 0,
+        growth_6mo: Number(analysis.employees.growth_6mo) || 0,
+        growth_yoy: Number(analysis.employees.growth_yoy) || 0,
+        timeline: (analysis.employees.timeline || []).map((point: any) => ({
+          date: ultraClean(point.date || ""),
+          count: Number(point.count) || 0,
+        })),
+        by_location: (analysis.employees.by_location || []).map((loc: any) => ({
+          location: ultraClean(loc.location || ""),
+          percentage: Number(loc.percentage) || 0,
+          count: Number(loc.count) || 0,
+        })),
+        by_department: (analysis.employees.by_department || []).map((dept: any) => ({
+          department: ultraClean(dept.department || ""),
+          percentage: Number(dept.percentage) || 0,
+          count: Number(dept.count) || 0,
+        })),
+        by_seniority: (analysis.employees.by_seniority || []).map((sen: any) => ({
+          level: ultraClean(sen.level || ""),
+          percentage: Number(sen.percentage) || 0,
+          count: Number(sen.count) || 0,
+        })),
+      }
     }
 
     if (analysis.funding_data) {
@@ -384,6 +416,10 @@ IMPORTANT:
       summary: ultraClean(
         `Unable to complete research for ${companyName}. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
       ),
+      ownership: "n/a",
+      founded: "n/a",
+      est_revenue: "n/a",
+      news_articles: [],
       categories: [
         {
           category: "Error",

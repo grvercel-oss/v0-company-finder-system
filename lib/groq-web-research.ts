@@ -179,7 +179,7 @@ CRITICAL ACCURACY RULES:
 - ONLY include information explicitly found in web search results
 - EVERY piece of data MUST have a REAL source URL
 - URLs MUST be complete, working links (https://...)
-- Do NOT create fake or placeholder URLs
+- NEVER create fake or placeholder URLs
 - If no verified source exists, state "Not available" instead of making up data
 
 PRIORITY 1 - NEWS & RECENT ACTIVITY (2024-2025):
@@ -301,20 +301,15 @@ CRITICAL REMINDERS:
       console.error("[v0] [Groq] JSON parse error:", parseError)
       console.log("[v0] [Groq] Raw content:", content.substring(0, 500))
 
+      // Return empty default structure instead of partial data
       return {
         companyName: ultraClean(companyName),
-        summary: ultraClean(content.substring(0, 500)),
+        summary: "No verified information found for this company.",
         ownership: "n/a",
         founded: "n/a",
         est_revenue: "n/a",
         news_articles: [],
-        categories: [
-          {
-            category: "Research Results",
-            content: ultraClean(content),
-            sources: [],
-          },
-        ],
+        categories: [],
         generatedAt: new Date().toISOString(),
       }
     }
@@ -420,13 +415,7 @@ CRITICAL REMINDERS:
       founded: "n/a",
       est_revenue: "n/a",
       news_articles: [],
-      categories: [
-        {
-          category: "Error",
-          content: ultraClean(`Research failed: ${error instanceof Error ? error.message : "Unknown error"}`),
-          sources: [],
-        },
-      ],
+      categories: [],
       generatedAt: new Date().toISOString(),
     }
   }

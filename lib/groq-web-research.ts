@@ -29,7 +29,7 @@ export interface EmployeeData {
 export interface CompanyResearchData {
   companyName: string
   summary: string
-  employees?: EmployeeData
+  employees?: EmployeeData | null
   news_articles: NewsArticle[]
   ownership: string
   founded: string
@@ -70,7 +70,7 @@ export interface CompanyResearchData {
     }>
     all_investors: string[]
     generatedAt: string
-  }
+  } | null
 }
 
 /**
@@ -167,118 +167,73 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
         {
           role: "system",
           content: cleanText(
-            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. CRITICAL: You MUST ONLY extract information that is explicitly stated in web search results with VERIFIED SOURCE URLS. Do NOT infer, assume, or generate any information that isn't directly found in sources. If information is not available from web sources, explicitly state 'Not available' or 'No data found'. Always cite specific sources for funding amounts, dates, and investor names. Prioritize data from 2024 and 2025.",
+            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. You have access to web search capabilities. CRITICAL: You MUST ONLY extract information that is explicitly stated in web search results with VERIFIED SOURCE URLS. Do NOT infer, assume, or generate any information that isn't directly found in sources. If information is not available from web sources, return a minimal JSON structure with 'Not available' for missing fields. Always cite specific sources for funding amounts, dates, and investor names. Prioritize data from 2024 and 2025.",
           ),
         },
         {
           role: "user",
-          content:
-            cleanText(`Research "${companyName}" and provide a comprehensive report based ONLY on verified information from web sources with REAL, CLICKABLE URLS. Do NOT make up or infer any data. CRITICAL: Prioritize the most recent data from 2024-2025.
+          content: cleanText(`IMPORTANT: Use your web search capabilities to find information about "${companyName}". 
 
-CRITICAL ACCURACY RULES:
-- ONLY include information explicitly found in web search results
-- EVERY piece of data MUST have a REAL source URL
-- URLs MUST be complete, working links (https://...)
-- NEVER create fake or placeholder URLs
-- If no verified source exists, state "Not available" instead of making up data
+Search the web for:
+1. Recent news articles about ${companyName} from 2024-2025 (TechCrunch, VentureBeat, company blog, etc.)
+2. Employee count and growth data (LinkedIn, Crunchbase)
+3. Funding rounds and investors (Crunchbase, PitchBook, news articles)
+4. Company basics (founded date, ownership type, revenue estimates)
 
-PRIORITY 1 - NEWS & RECENT ACTIVITY (2024-2025):
-- Find AT LEAST 10-20 recent news articles from 2024-2025
-- Each article MUST have:
-  - Exact title from the article
-  - Complete source URL (https://...)
-  - Publication date (must be real)
-  - Source domain name
-  - Category tag (Competition, Partnerships, Funding, Product, etc.)
-- Sources to search: TechCrunch, VentureBeat, Bloomberg, Reuters, company blog, industry news sites
-- NEVER create fake URLs - only include articles you actually found
-
-PRIORITY 2 - EMPLOYEE DATA & GROWTH:
-- Current employee count from LinkedIn, Crunchbase, or company website
-- Historical employee counts with dates (for growth chart):
-  - Monthly or quarterly data points if available
-  - At least 5-10 data points over past 2-3 years
-  - Format: { "date": "2024-01", "count": 343 }
-- Employee breakdown by location (percentages and counts)
-- Employee breakdown by department (Engineering, Marketing, Sales, etc.)
-- Employee breakdown by seniority level (0-5 years, 5-10 years, 10-20 years, etc.)
-- 6-month growth percentage
-- Year-over-year growth percentage
-
-PRIORITY 3 - COMPANY BASICS:
-- Ownership type (Private, Public, Subsidiary)
-- Founded year
-- Estimated revenue or "n/a"
-
-PRIORITY 4 - FUNDING & INVESTORS:
-- All funding rounds with EXACT amounts and REAL source URLs
-- List of all investors
-- Total funding raised
-- Latest valuation
+Provide a comprehensive report based ONLY on verified information from web sources with REAL, CLICKABLE URLS. Do NOT make up or infer any data.
 
 Return ONLY a valid JSON object (no markdown, no code blocks) with this structure:
 {
   "companyName": "${companyName}",
   "summary": "Brief company description from official source",
-  "ownership": "Private" or "Public" or "Subsidiary",
+  "ownership": "Private" or "Public" or "n/a",
   "founded": "2019" or "n/a",
   "est_revenue": "$50M" or "n/a",
   "news_articles": [
     {
       "title": "EXACT title from actual article",
       "url": "https://REAL-COMPLETE-URL.com/article",
-      "publishedDate": "Nov 5, 2025" or "2025-11-05",
+      "publishedDate": "Nov 5, 2025",
       "source": "techinasia.com",
-      "category": "Competition" or "Partnerships" or "Funding" or "Product"
+      "category": "Competition"
     }
   ],
   "employees": {
     "total": 343,
     "growth_6mo": 23,
     "growth_yoy": 40,
-    "timeline": [
-      { "date": "2024-11", "count": 343 },
-      { "date": "2024-08", "count": 335 },
-      { "date": "2024-05", "count": 310 }
-    ],
-    "by_location": [
-      { "location": "Singapore", "percentage": 26, "count": 89 },
-      { "location": "Spain", "percentage": 16, "count": 55 }
-    ],
-    "by_department": [
-      { "department": "Engineering & R&D", "percentage": 37.4, "count": 128 },
-      { "department": "Marketing & Comms", "percentage": 18.1, "count": 62 }
-    ],
-    "by_seniority": [
-      { "level": "10 To 20 Years", "percentage": 41.8, "count": 143 },
-      { "level": "5 To 10 Years", "percentage": 32.1, "count": 110 }
-    ]
+    "timeline": [{ "date": "2024-11", "count": 343 }],
+    "by_location": [{ "location": "Singapore", "percentage": 26, "count": 89 }],
+    "by_department": [{ "department": "Engineering", "percentage": 37, "count": 128 }],
+    "by_seniority": [{ "level": "10-20 Years", "percentage": 42, "count": 143 }]
   },
   "funding_data": {
     "total_funding": 150000000,
     "latest_valuation": 500000000,
-    "funding_rounds": [
-      {
-        "round_type": "Series C",
-        "amount_usd": 75000000,
-        "announced_date": "2024-06-15",
-        "lead_investors": ["Sequoia Capital"],
-        "other_investors": ["Andreessen Horowitz"],
-        "source_url": "https://REAL-COMPLETE-SOURCE-URL.com"
-      }
-    ],
+    "funding_rounds": [{
+      "round_type": "Series C",
+      "amount_usd": 75000000,
+      "announced_date": "2024-06-15",
+      "lead_investors": ["Sequoia Capital"],
+      "other_investors": ["Andreessen Horowitz"],
+      "source_url": "https://REAL-URL.com"
+    }],
     "investors": ["ALL verified investors"],
     "financial_metrics": []
-  },
-  "categories": []
+  }
 }
 
-CRITICAL REMINDERS:
-- ALL URLs must be complete, real, working links
-- Do NOT create fake or placeholder URLs
-- ONLY include news articles you actually found from real sources
-- Employee data must come from LinkedIn, Crunchbase, or official sources
-- State "Not available" when real data cannot be found`),
+If you cannot find ANY information about this company through web search, return:
+{
+  "companyName": "${companyName}",
+  "summary": "No verified information available",
+  "ownership": "n/a",
+  "founded": "n/a",
+  "est_revenue": "n/a",
+  "news_articles": [],
+  "employees": null,
+  "funding_data": null
+}`),
         },
       ],
       temperature: 0.0, // Lowest possible temperature for most deterministic, factual output
@@ -298,13 +253,26 @@ CRITICAL REMINDERS:
     try {
       analysis = JSON.parse(content)
     } catch (parseError) {
-      console.error("[v0] [Groq] JSON parse error:", parseError)
-      console.log("[v0] [Groq] Raw content:", content.substring(0, 500))
+      if (content.includes("Not available") || content.includes("not available") || content.length < 50) {
+        console.log("[v0] [Groq] No data found for company, returning empty structure")
+        return {
+          companyName: ultraClean(companyName),
+          summary: "No verified information found for this company.",
+          ownership: "n/a",
+          founded: "n/a",
+          est_revenue: "n/a",
+          news_articles: [],
+          categories: [],
+          generatedAt: new Date().toISOString(),
+        }
+      }
 
-      // Return empty default structure instead of partial data
+      console.error("[v0] [Groq] JSON parse error:", parseError)
+      console.log("[v0] [Groq] Raw content preview:", content.substring(0, 200))
+
       return {
         companyName: ultraClean(companyName),
-        summary: "No verified information found for this company.",
+        summary: "Unable to parse research data for this company.",
         ownership: "n/a",
         founded: "n/a",
         est_revenue: "n/a",
@@ -363,6 +331,8 @@ CRITICAL REMINDERS:
           count: Number(sen.count) || 0,
         })),
       }
+    } else {
+      result.employees = null
     }
 
     if (analysis.funding_data) {
@@ -399,6 +369,8 @@ CRITICAL REMINDERS:
         all_investors: (analysis.funding_data.investors || []).map((inv: string) => ultraClean(inv)),
         generatedAt: new Date().toISOString(),
       }
+    } else {
+      result.funding = null
     }
 
     console.log("[v0] [Groq] Research completed successfully")

@@ -3,18 +3,11 @@ import { sql } from "@/lib/db"
 import { checkDatabaseSetup, initializeDatabase } from "@/lib/db-init"
 import { searchCompaniesWithPerplexity } from "@/lib/perplexity"
 import { enrichCompanyDataWithOpenAI } from "@/lib/openai"
-import { trackAIUsage } from "@/lib/ai-cost-tracker"
-import { auth } from "@clerk/nextjs/server"
 
 export async function POST(request: NextRequest) {
   console.log("[v0] Search API called")
 
   try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const dbCheck = await checkDatabaseSetup()
     console.log("[v0] Database setup status:", dbCheck)
 
@@ -53,18 +46,6 @@ export async function POST(request: NextRequest) {
     const searchResults = await searchCompaniesWithPerplexity(query, filters)
     console.log("[v0] Perplexity search completed, found", searchResults.companies.length, "companies")
 
-    if (searchResults.usage) {
-      await trackAIUsage({
-        sql,
-        accountId: userId,
-        model: "perplexity/sonar",
-        promptTokens: searchResults.usage.input_tokens,
-        completionTokens: searchResults.usage.output_tokens,
-        generationType: "company_search",
-      })
-      console.log("[v0] Perplexity cost tracked: $", searchResults.usage.cost.toFixed(6))
-    }
-
     let totalOpenAICost = 0
     let totalOpenAIInputTokens = 0
     let totalOpenAIOutputTokens = 0
@@ -96,16 +77,6 @@ export async function POST(request: NextRequest) {
             totalOpenAICost += enrichment.usage.cost
             totalOpenAIInputTokens += enrichment.usage.input_tokens
             totalOpenAIOutputTokens += enrichment.usage.output_tokens
-
-            await trackAIUsage({
-              sql,
-              accountId: userId,
-              model: "gpt-4o-mini",
-              promptTokens: enrichment.usage.input_tokens,
-              completionTokens: enrichment.usage.output_tokens,
-              generationType: "company_enrichment",
-            })
-            console.log("[v0] OpenAI enrichment cost tracked: $", enrichment.usage.cost.toFixed(6))
           }
 
           console.log("[v0] Saving company to database:", company.name)

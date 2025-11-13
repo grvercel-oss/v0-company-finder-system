@@ -98,78 +98,15 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
 
   try {
     const completion = await groq.chat.completions.create({
-      model: "groq/compound", // Built-in web search support
+      model: "groq/compound",
       messages: [
         {
-          role: "system",
-          content: ultraClean(
-            "You are a company research expert with web search capabilities. Search the web for current information about companies. Extract factual data with verified source URLs. Include news articles with complete URLs, employee data with growth trends, and funding information with investor names and amounts.",
-          ),
-        },
-        {
           role: "user",
-          content: ultraClean(`Research "${companyName}" and return a comprehensive JSON report with:
-
-1. News articles (recent, with real URLs and dates)
-2. Employee information (headcount, growth timeline, department/location breakdown)
-3. Funding data (rounds, amounts, investors with source URLs)
-4. Company info (ownership, founded year, estimated revenue)
-
-Search the web for recent information (2024-2025) and return ONLY valid JSON in this exact structure:
-{
-  "companyName": "${companyName}",
-  "summary": "Brief company description",
-  "ownership": "Private/Public/n/a",
-  "founded": "YYYY or n/a",
-  "est_revenue": "$XM or n/a",
-  "news_articles": [
-    {
-      "title": "Article headline",
-      "url": "https://complete-url.com/article",
-      "publishedDate": "YYYY-MM-DD",
-      "source": "sitename.com",
-      "category": "Funding/Product/Partnership/Competition"
-    }
-  ],
-  "employees": {
-    "total": 150,
-    "growth_6mo": 23,
-    "growth_yoy": 40,
-    "timeline": [
-      {"date": "2024-01", "count": 100},
-      {"date": "2024-06", "count": 120},
-      {"date": "2025-01", "count": 150}
-    ],
-    "by_location": [{"location": "US", "percentage": 60, "count": 90}],
-    "by_department": [{"department": "Engineering", "percentage": 40, "count": 60}],
-    "by_seniority": [{"level": "Senior", "percentage": 30, "count": 45}]
-  },
-  "funding_data": {
-    "total_funding": 50000000,
-    "latest_valuation": 200000000,
-    "funding_rounds": [{
-      "round_type": "Series B",
-      "amount_usd": 25000000,
-      "announced_date": "2024-06-15",
-      "lead_investors": ["Sequoia Capital"],
-      "other_investors": ["a16z"],
-      "source_url": "https://source-url.com"
-    }],
-    "investors": ["Sequoia Capital", "a16z"],
-    "financial_metrics": [{
-      "fiscal_year": 2024,
-      "revenue": 10000000,
-      "source": "TechCrunch",
-      "source_url": "https://source-url.com"
-    }]
-  }
-}
-
-CRITICAL: All URLs must be real and complete. Search the web for this company's information.`),
+          content: `Search web for "${companyName}" company. Return JSON with: news (title, url, date, source), employees (total, growth, timeline), funding (rounds, amounts, investors, URLs), ownership, founded year, revenue. Use real URLs from web search. JSON only.`,
         },
       ],
       temperature: 0.1,
-      max_tokens: 7500,
+      max_tokens: 6000, // Reduced from 7500
     })
 
     const content = completion.choices[0]?.message?.content || "{}"

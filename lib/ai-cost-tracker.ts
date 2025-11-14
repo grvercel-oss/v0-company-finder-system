@@ -18,6 +18,11 @@ export const AI_MODELS = {
     inputCostPer1M: 1.0,
     outputCostPer1M: 1.0,
   },
+  "gpt-4o": {
+    provider: "OpenAI",
+    inputCostPer1M: 2.5,
+    outputCostPer1M: 10.0,
+  },
 } as const
 
 export type AIModel = keyof typeof AI_MODELS

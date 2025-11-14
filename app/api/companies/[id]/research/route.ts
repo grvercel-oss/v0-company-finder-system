@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithPerplexity } from "@/lib/perplexity-research"
+import { researchCompanyWithOpenAI } from "@/lib/openai-research"
 import { auth } from "@clerk/nextjs/server"
 import { trackAIUsage } from "@/lib/ai-cost-tracker"
 
@@ -37,7 +37,7 @@ function deepClean(obj: any): any {
   return obj
 }
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId } = await auth()
     if (!userId) {
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       })
     }
 
-    const { id } = params
+    const { id } = await params
 
     console.log("[v0] [Research API] Fetching research for company ID:", id)
 
@@ -93,8 +93,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
 
-    const research = await researchCompanyWithPerplexity(company.name).catch((err) => {
-      console.error("[v0] [Research API] Perplexity research failed:", err)
+    const research = await researchCompanyWithOpenAI(company.name).catch((err) => {
+      console.error("[v0] [Research API] OpenAI research failed:", err)
       return {
         companyName: company.name,
         summary: "Research data could not be fetched at this time.",
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     await trackAIUsage({
       sql,
       accountId: userId,
-      model: "llama-3.1-sonar-large-128k-online",
+      model: "gpt-4o",
       promptTokens: estimatedPromptTokens,
       completionTokens: estimatedCompletionTokens,
       generationType: "company_research",

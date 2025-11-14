@@ -57,7 +57,7 @@
     "next": "16.0.0",
     "next-themes": "latest",
     "nodemailer": "7.0.10",
-    "openai": "6.7.0",
+    "openai": "latest",
     "react": "19.2.0",
     "react-day-picker": "9.8.0",
     "react-dom": "19.2.0",
@@ -69,6 +69,7 @@
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
+    "ws": "latest",
     "zod": "3.25.76"
   },
   "devDependencies": {

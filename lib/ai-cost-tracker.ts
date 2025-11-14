@@ -13,6 +13,11 @@ export const AI_MODELS = {
     inputCostPer1M: 0.1,
     outputCostPer1M: 0.5,
   },
+  "llama-3.1-sonar-large-128k-online": {
+    provider: "Perplexity",
+    inputCostPer1M: 1.0,
+    outputCostPer1M: 1.0,
+  },
 } as const
 
 export type AIModel = keyof typeof AI_MODELS

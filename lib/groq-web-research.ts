@@ -141,106 +141,119 @@ export async function researchCompanyWithGroq(companyName: string): Promise<Comp
         {
           role: "system",
           content: cleanText(
-            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. CRITICAL: You MUST ONLY extract information that is explicitly stated in web search results. Do NOT infer, assume, or generate any information that isn't directly found in sources. If information is not available from web sources, explicitly state 'Not available' or 'No data found'. Always cite specific sources for funding amounts, dates, and investor names. Prioritize data from 2024 and 2025.",
+            "You are an expert financial analyst specializing in venture capital, startup funding, and company research. Use web search to find the most comprehensive and up-to-date information. Provide EXTENSIVE, DETAILED information with complete context, specific examples, and thorough explanations. Do NOT summarize or compress information - provide full details. ALWAYS prioritize data from 2024 and 2025.",
           ),
         },
         {
           role: "user",
           content:
-            cleanText(`Research "${companyName}" and provide a comprehensive report based ONLY on verified information from web sources. Do NOT make up or infer any data. CRITICAL: Prioritize the most recent data from 2024-2025.
+            cleanText(`Research "${companyName}" and provide a comprehensive, HIGHLY DETAILED report with EXTENSIVE information. Be thorough and verbose - include ALL details you find. CRITICAL: Prioritize the most recent data from 2024-2025.
 
-CRITICAL RULES FOR ACCURACY:
-- ONLY include information explicitly found in web search results
-- For funding amounts: MUST have exact dollar amount from a source
-- For investors: MUST be explicitly named in a credible source
-- For dates: MUST be specific dates from sources (no estimates)
-- If ANY piece of information is not found, write "Not available" or "No verified data found"
-- Include source URLs for every claim
-- Do NOT infer or calculate values unless explicitly shown in sources
-
-PRIORITY 1 - RECENT FUNDING & INVESTORS (2024-2025 FIRST) - VERIFIED DATA ONLY:
+PRIORITY 1 - RECENT FUNDING & INVESTORS (2024-2025 FIRST) - BE EXTREMELY DETAILED:
 - Search for funding announcements from 2024 and 2025 FIRST
-- All funding rounds (Seed, Series A/B/C/D, etc.) with EXACT amounts in USD from sources
-- EXACT dates of funding announcements from sources (MUST include 2024-2025 if any exist)
-- Lead investors and participating investors - ONLY those explicitly named in sources
-- Total funding raised - calculate ONLY from verified funding rounds
-- Current company valuation - ONLY if explicitly stated in recent sources
-- Source URL required for EVERY funding round
-- If no recent funding found, state: "No verified funding data found for 2024-2025"
+- All funding rounds (Seed, Series A/B/C/D, etc.) with specific amounts in USD
+- Exact dates of funding announcements (MUST include 2024-2025 if any exist)
+- Lead investors and participating investors for each round - include ALL names
+- Total funding raised to date with breakdown by year
+- Current company valuation (post-money valuation from latest round)
+- Recent investor additions and cap table changes
+- Notable angel investors with their backgrounds
+- Details about each funding round - why they raised, what they plan to use it for
+- Investor quotes and statements about the funding
+- Dilution details if available
+- Pre-money and post-money valuations for each round
 
-PRIORITY 2 - FINANCIAL METRICS (2024-2025) - VERIFIED DATA ONLY:
-- Latest Annual Recurring Revenue (ARR) - ONLY if explicitly stated in source
-- Latest Monthly Recurring Revenue (MRR) - ONLY if explicitly stated
-- Revenue figures - ONLY exact numbers from credible sources with dates
-- Profitability status - ONLY if explicitly mentioned
-- Employee count - ONLY if from official source or reliable database
-- If metric not found, explicitly state "Not available"
+PRIORITY 2 - RECENT FINANCIAL METRICS (2024-2025) - COMPREHENSIVE DETAILS:
+- Latest Annual Recurring Revenue (ARR) - prioritize 2024/2025 data with growth rates
+- Latest Monthly Recurring Revenue (MRR) with month-over-month trends
+- Most recent revenue figures and growth rate with detailed breakdown
+- Current profitability status - detailed P&L information if available
+- Latest employee count with department breakdown if available
+- Recent acquisitions or exits with deal terms
+- Burn rate and runway information if available
+- Customer acquisition costs and lifetime value
+- Churn rates and retention metrics
+- Key performance indicators specific to their industry
 
-PRIORITY 3 - COMPANY INFORMATION - VERIFIED DATA ONLY:
-- Company overview from official sources (company website, press releases)
-- Products and services from official descriptions
-- Market position from credible industry sources
-- Leadership team from official company page or LinkedIn
-- Recent news from 2024-2025 from credible news sources
-- NO speculation or inference allowed
+PRIORITY 3 - CURRENT COMPANY INFORMATION - EXTENSIVE DETAILS:
+- Company overview and current mission - include full backstory
+- Latest products and services with detailed feature descriptions
+- Current market position with competitive analysis
+- Key competitors with detailed comparison
+- Current leadership team (CEO, CFO, CTO, etc.) with full bios and backgrounds
+- Recent news from 2024-2025 with detailed summaries
+- Latest press releases - include full quotes
+- Customer testimonials and case studies
+- Company culture and values
+- Office locations and geographic presence
+- Technology stack if relevant
+- Partnerships and strategic relationships
 
 SEARCH STRATEGY:
 1. First search for "${companyName} funding 2025"
-2. Then search for "${companyName} funding 2024"  
+2. Then search for "${companyName} funding 2024"
 3. Then search for "${companyName} Series [A/B/C/D] 2024 2025"
 4. Search "${companyName} valuation 2024 2025"
 5. Search "${companyName} revenue 2024"
 6. Search "${companyName} investors 2024 2025"
+7. Search "${companyName} financial metrics 2024"
 
-TRUSTED SOURCES (prioritize these):
-- TechCrunch funding announcements
-- Crunchbase verified data
-- PitchBook reports
-- Company official press releases
-- SEC filings (if public company)
-- VentureBeat, The Information, Bloomberg
-- Company official website and blog
+Use sources like:
+- TechCrunch (search: "${companyName} funding 2024 2025")
+- Crunchbase (most recent funding)
+- PitchBook
+- Company press releases from 2024-2025
+- SEC filings if public
+- Company blog and news pages
+- Industry reports and analysis
 
-FORMATTING INSTRUCTIONS:
-- Write detailed paragraphs (200-400 words per major category)
-- Include specific numbers, dates, names with source citations
-- Provide context from sources
-- Include direct quotes when available
-- State "Not available" or "No verified data found" for missing information
-- ALWAYS include source URLs
+IMPORTANT INSTRUCTIONS FOR DETAILED CONTENT:
+- Write LONG, DETAILED paragraphs (minimum 5-7 sentences per category)
+- Include specific numbers, dates, names, and facts
+- Provide context and background for every piece of information
+- Include quotes from executives and investors when available
+- Explain the significance of each funding round or metric
+- Add industry context and competitive comparisons
+- Be thorough - aim for 300-500 words per major category
+- Do NOT use bullet points or short summaries - write full prose
 
 Return ONLY a valid JSON object (no markdown, no code blocks) with this structure:
 {
-  "summary": "Executive summary with ONLY verified information about funding, metrics, and company status. Include disclaimer if limited data available.",
+  "summary": "A comprehensive 4-6 sentence executive summary highlighting latest funding, 2024-2025 metrics, and company trajectory with specific numbers and details",
   "categories": [
     {
       "category": "Recent Funding & Investors (2024-2025)",
-      "content": "Detailed paragraph with ONLY verified funding data. State 'No verified funding data found' if no recent funding information available from sources. Include source URLs for all claims.",
+      "content": "EXTENSIVE detailed paragraph (300+ words) covering most recent funding rounds with full context, investor backgrounds, deal terms, use of proceeds, and market impact. Include all specific details.",
       "sources": ["https://source1.com", "https://source2.com"]
     },
     {
-      "category": "Historical Funding & Growth",
-      "content": "Chronological account of verified previous funding rounds with sources. State 'Limited historical data available' if sources are scarce.",
+      "category": "Historical Funding & Growth Timeline",
+      "content": "DETAILED chronological account (300+ words) of all previous funding rounds with context about company growth, milestones achieved, and strategic decisions. Include full details of each round.",
       "sources": ["https://source1.com"]
     },
     {
-      "category": "Financial Metrics (2024-2025)",
-      "content": "ONLY include metrics explicitly found in sources (ARR, MRR, revenue). State 'No verified financial metrics available' if not found.",
+      "category": "Latest Financial Metrics (2024-2025)",
+      "content": "COMPREHENSIVE analysis (300+ words) of recent revenue, ARR, MRR, profitability with trends, growth rates, and detailed breakdown of financial performance. Include all available metrics with context.",
       "sources": ["https://source1.com"]
     },
     {
-      "category": "Company Overview",
-      "content": "Description based on official sources (website, press releases). Clearly distinguish between verified facts and company claims.",
+      "category": "Company Overview & Business Model",
+      "content": "THOROUGH description (300+ words) of current products, services, market position, competitive landscape, and business strategy with specific examples and details.",
       "sources": ["https://source1.com"]
     },
     {
       "category": "Leadership & Team",
-      "content": "Executive information from official sources. State 'Limited leadership information available' if sources are limited.",
+      "content": "DETAILED profiles (200+ words) of current executives and key personnel with backgrounds, previous companies, and their roles in company strategy.",
       "sources": ["https://source1.com"]
     },
     {
-      "category": "Recent News (2024-2025)",
-      "content": "Recent developments from credible news sources. Include publication dates and source names.",
+      "category": "Market Position & Competition",
+      "content": "EXTENSIVE competitive analysis (300+ words) comparing the company to key competitors with market share, differentiation factors, and strategic positioning.",
+      "sources": ["https://source1.com"]
+    },
+    {
+      "category": "Recent News & Developments (2024-2025)",
+      "content": "COMPREHENSIVE summary (300+ words) of latest company news, product launches, partnerships, and strategic moves with full context and implications.",
       "sources": ["https://source1.com"]
     }
   ],
@@ -253,11 +266,11 @@ Return ONLY a valid JSON object (no markdown, no code blocks) with this structur
         "amount_usd": 75000000,
         "announced_date": "2024-06-15",
         "lead_investors": ["Sequoia Capital"],
-        "other_investors": ["Andreessen Horowitz"],
+        "other_investors": ["Andreessen Horowitz", "Index Ventures", "Other investors"],
         "post_money_valuation": 500000000
       }
     ],
-    "investors": ["ALL verified investors"],
+    "investors": ["List ALL investors found"],
     "financial_metrics": [
       {
         "fiscal_year": 2024,
@@ -269,17 +282,17 @@ Return ONLY a valid JSON object (no markdown, no code blocks) with this structur
   }
 }
 
-CRITICAL REMINDERS:
-- Do NOT make up funding amounts, dates, or investor names
-- Do NOT infer or calculate values unless they come from sources
-- State "Not available" or "No verified data" when information is missing
-- Include source URLs for ALL factual claims
-- Prioritize 2024-2025 data but only if it exists in sources`),
+IMPORTANT: 
+- Each category content should be 200-500 words of detailed prose
+- Include ALL funding rounds you find, list 2024-2025 rounds FIRST
+- Be extremely thorough and verbose - more detail is always better
+- Include specific names, dates, numbers, and quotes
+- Provide full context for every fact
+- Write in complete, detailed paragraphs`),
         },
       ],
-      temperature: 0.0, // Lowest possible temperature for most deterministic, factual output
+      temperature: 0.3,
       max_tokens: 8000,
-      top_p: 0.1, // Very low top_p to further reduce creative/hallucinatory responses
     })
 
     let content = completion.choices[0]?.message?.content || "{}"

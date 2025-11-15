@@ -27,13 +27,9 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Starting Gemini search for:", query)
 
-    const strictPrompt = `You are a company research API that returns ONLY valid JSON. NO explanations, NO markdown, NO text outside the JSON array.
+    const strictPrompt = `You are a company research API. Search the web and find real companies matching this query: "${query}"
 
-Query: "${query}"
-
-Return a JSON array of real companies matching this query. Use web search to find accurate, up-to-date information.
-
-Required JSON format (return ONLY this, nothing else):
+Return a JSON array with this exact structure (no markdown, no explanations, ONLY the JSON array):
 [
   {
     "name": "Company Name",
@@ -51,14 +47,34 @@ Required JSON format (return ONLY this, nothing else):
   }
 ]
 
-Rules:
-- Return ONLY the JSON array, no other text
-- Start with [ and end with ]
-- Use real companies from web search
-- If no results found, return: []
-- No markdown, no explanations`
+CRITICAL: Return ONLY the JSON array starting with [ and ending with ]. No other text.`
 
     const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+
+    const responseSchema = {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          domain: { type: "string" },
+          website: { type: "string" },
+          description: { type: "string" },
+          industry: { type: "string" },
+          location: { type: "string" },
+          employee_count: { type: "string" },
+          founded_year: { type: "integer" },
+          revenue_range: { type: "string" },
+          funding_stage: { type: "string" },
+          technologies: {
+            type: "array",
+            items: { type: "string" }
+          },
+          confidence_score: { type: "number" }
+        },
+        required: ["name", "domain"]
+      }
+    }
 
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
@@ -78,7 +94,7 @@ Rules:
         generationConfig: {
           temperature: 0.2,
           maxOutputTokens: 4096,
-          response_mime_type: "application/json",
+          responseSchema: responseSchema,
         },
       }),
     })
@@ -104,10 +120,8 @@ Rules:
     try {
       let jsonString = rawText.trim()
 
-      // Remove any potential markdown code blocks
       jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
 
-      // Find JSON array boundaries
       const arrayStart = jsonString.indexOf("[")
       const arrayEnd = jsonString.lastIndexOf("]")
 
@@ -115,7 +129,6 @@ Rules:
         jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
       }
 
-      // Parse the JSON
       parsedResults = JSON.parse(jsonString)
 
       if (!Array.isArray(parsedResults)) {

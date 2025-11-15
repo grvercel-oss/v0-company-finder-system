@@ -129,6 +129,23 @@ START JSON NOW:`
         jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
       }
 
+      // Method 3: Sanitize common JSON issues from LLM responses
+      // Fix trailing commas in arrays and objects
+      jsonString = jsonString.replace(/,\s*]/g, "]").replace(/,\s*}/g, "}")
+      
+      // Fix invalid number fields with text (e.g., "2018 (Ubigi brand), 2000 (Transatel)")
+      // Match patterns like: "field": number (text), number, or "field": number (text)
+      jsonString = jsonString.replace(
+        /"founded_year":\s*(\d{4})\s*$$[^)]+$$[^,}]*/g,
+        '"founded_year": $1'
+      )
+      
+      // Remove any remaining parenthetical notes in number fields
+      jsonString = jsonString.replace(
+        /("(?:founded_year|investment_year|employee_count)":\s*\d+)\s*$$[^)]+$$/g,
+        "$1"
+      )
+
       // Try to parse
       parsedResults = JSON.parse(jsonString)
 

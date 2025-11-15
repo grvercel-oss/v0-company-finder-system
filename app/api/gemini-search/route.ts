@@ -63,10 +63,31 @@ Return the results as a JSON array with this exact structure:
 
     let results
     try {
-      // Extract JSON from markdown code blocks if present
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\[[\s\S]*\]/)
-      const jsonText = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text
-      results = JSON.parse(jsonText)
+      // Try multiple extraction methods
+      let jsonText = text
+      
+      // Method 1: Extract from markdown code blocks
+      const codeBlockMatch = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/)
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1]
+      } else {
+        // Method 2: Find JSON array in text (look for [ ... ])
+        const arrayMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/)
+        if (arrayMatch) {
+          jsonText = arrayMatch[0]
+        } else {
+          // Method 3: Try to find where JSON starts (after any preamble text)
+          const jsonStartIndex = text.indexOf('[{')
+          if (jsonStartIndex !== -1) {
+            const jsonEndIndex = text.lastIndexOf('}]')
+            if (jsonEndIndex !== -1) {
+              jsonText = text.substring(jsonStartIndex, jsonEndIndex + 2)
+            }
+          }
+        }
+      }
+      
+      results = JSON.parse(jsonText.trim())
     } catch (parseError) {
       console.error("[v0] Failed to parse Gemini response:", text)
       throw new Error("Failed to parse company data from Gemini")

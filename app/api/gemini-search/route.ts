@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
+import { sql } from "@/lib/db"
+import { getAccountIdFromRequest } from "@/lib/rls-helper"
+import { getFaviconUrl } from "@/lib/favicon"
 import type { Company } from "@/lib/db"
 
 export const runtime = "edge"
 
 export async function POST(request: NextRequest) {
   try {
+    const accountId = await getAccountIdFromRequest(request)
+    if (!accountId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const { query } = await request.json()
 
     if (!query) {
@@ -17,13 +25,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Gemini API key not configured" }, { status: 500 })
     }
 
+    console.log("[v0] Starting Gemini search for:", query)
+
+    const strictPrompt = `You are a JSON-ONLY API. Return ONLY valid JSON. NO explanations, NO markdown, NO code blocks, NO extra text.
+
+User query: "${query}"
+
+Task:
+1. Normalize query: extract industry, region, company count (default 10).
+2. Use Google Search grounding to find REAL companies matching the criteria.
+3. Return ONLY this JSON array structure (no other text):
+
+[
+  {
+    "name": "string (required)",
+    "domain": "string (domain only, e.g., 'company.com')",
+    "website": "string (full URL, e.g., 'https://company.com')",
+    "description": "string (brief description)",
+    "industry": "string",
+    "location": "string (city, country)",
+    "employee_count": "string (e.g., '100-500')",
+    "founded_year": number,
+    "revenue_range": "string (e.g., '$10M-$50M')",
+    "funding_stage": "string (e.g., 'Series A')",
+    "technologies": ["string"],
+    "confidence_score": number (0.0-1.0)
+  }
+]
+
+CRITICAL:
+- Start with [ and end with ]
+- NO text before or after the JSON
+- Use real company data from search
+- If no results: return []
+
+START JSON NOW:`
+
     const GEMINI_URL =
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
-
-    const prompt = `Search the web and find 10 real companies matching: "${query}". 
-For each company, provide: name, industry, location (city, country), approximate employee count, founded year, estimated revenue, description, and website URL.
-Return the results as a JSON array with this exact structure:
-[{"name":"Company Name","industry":"Industry","location":"City, Country","employees":100,"founded":2020,"revenue":"$10M","funding":"$5M","description":"Brief description","website":"https://example.com"}]`
 
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
@@ -32,16 +71,17 @@ Return the results as a JSON array with this exact structure:
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }]
-          }
+            parts: [{ text: strictPrompt }],
+          },
         ],
         tools: [
           {
-            google_search: {}
-          }
+            google_search: {},
+          },
         ],
         generationConfig: {
-          temperature: 0.3,
+          temperature: 0.2,
+          maxOutputTokens: 4096,
         },
       }),
     })
@@ -54,75 +94,111 @@ Return the results as a JSON array with this exact structure:
       throw new Error(`Gemini API error: ${errorMessage}`)
     }
 
-    const text = responseData.candidates?.[0]?.content?.parts?.[0]?.text
+    const rawText = responseData.candidates?.[0]?.content?.parts?.[0]?.text
 
-    if (!text) {
+    if (!rawText) {
       console.error("[v0] No text in Gemini response:", JSON.stringify(responseData, null, 2))
       throw new Error("No response from Gemini")
     }
 
-    let results
+    console.log("[v0] Raw Gemini response:", rawText.substring(0, 500))
+
+    let parsedResults: any[]
     try {
-      // Try multiple extraction methods
-      let jsonText = text
-      
-      // Method 1: Extract from markdown code blocks
-      const codeBlockMatch = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/)
-      if (codeBlockMatch) {
-        jsonText = codeBlockMatch[1]
-      } else {
-        // Method 2: Find JSON array in text (look for [ ... ])
-        const arrayMatch = text.match(/\[\s*\{[\s\S]*?\}\s*\]/)
-        if (arrayMatch) {
-          jsonText = arrayMatch[0]
-        } else {
-          // Method 3: Try to find where JSON starts (after any preamble text)
-          const jsonStartIndex = text.indexOf('[{')
-          if (jsonStartIndex !== -1) {
-            const jsonEndIndex = text.lastIndexOf('}]')
-            if (jsonEndIndex !== -1) {
-              jsonText = text.substring(jsonStartIndex, jsonEndIndex + 2)
-            }
-          }
-        }
+      let jsonString = rawText.trim()
+
+      // Method 1: Remove markdown code blocks
+      jsonString = jsonString.replace(/```json\s*/g, "").replace(/```\s*/g, "")
+
+      // Method 2: Find JSON array boundaries
+      const arrayStart = jsonString.indexOf("[")
+      const arrayEnd = jsonString.lastIndexOf("]")
+
+      if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+        jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
       }
-      
-      results = JSON.parse(jsonText.trim())
+
+      // Try to parse
+      parsedResults = JSON.parse(jsonString)
+
+      if (!Array.isArray(parsedResults)) {
+        throw new Error("Response is not an array")
+      }
     } catch (parseError) {
-      console.error("[v0] Failed to parse Gemini response:", text)
+      console.error("[v0] Failed to parse Gemini response:", rawText)
+      console.error("[v0] Parse error:", parseError)
       throw new Error("Failed to parse company data from Gemini")
     }
 
-    if (!Array.isArray(results)) {
-      throw new Error("Invalid response format from Gemini")
+    console.log("[v0] Successfully parsed", parsedResults.length, "companies from Gemini")
+
+    const savedCompanies: Company[] = []
+
+    for (const company of parsedResults) {
+      try {
+        const domain = company.domain || company.name.toLowerCase().replace(/\s+/g, "")
+        const website = company.website || (company.domain ? `https://${company.domain}` : null)
+        const faviconUrl = getFaviconUrl(website || domain)
+
+        const inserted = await sql`
+          INSERT INTO companies (
+            account_id, name, domain, description, industry, location, website,
+            employee_count, revenue_range, funding_stage, founded_year,
+            technologies, data_quality_score, logo_url, verified
+          ) VALUES (
+            ${accountId},
+            ${company.name},
+            ${domain},
+            ${company.description || null},
+            ${company.industry || null},
+            ${company.location || null},
+            ${website},
+            ${company.employee_count || null},
+            ${company.revenue_range || null},
+            ${company.funding_stage || null},
+            ${company.founded_year || null},
+            ${company.technologies || []},
+            ${company.confidence_score ? Math.round(company.confidence_score * 100) : 70},
+            ${faviconUrl},
+            false
+          )
+          ON CONFLICT (domain, account_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = COALESCE(EXCLUDED.description, companies.description),
+            industry = COALESCE(EXCLUDED.industry, companies.industry),
+            location = COALESCE(EXCLUDED.location, companies.location),
+            website = COALESCE(EXCLUDED.website, companies.website),
+            employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
+            logo_url = COALESCE(EXCLUDED.logo_url, companies.logo_url),
+            last_updated = now()
+          RETURNING *
+        `
+
+        savedCompanies.push(inserted[0])
+        console.log("[v0] Saved company:", company.name)
+      } catch (dbError: any) {
+        console.error("[v0] Error saving company:", company.name, dbError.message)
+      }
     }
 
-    const companies: Company[] = results.map((r: any, i: number) => ({
-      id: -(i + 1),
-      name: r.name || "Unknown",
-      domain: r.website || undefined,
-      description: r.description || "",
-      industry: r.industry || "Unknown",
-      size: `${r.employees || 0} employees`,
-      location: r.location || "Unknown",
-      founded_year: r.founded || null,
-      website: r.website || undefined,
-      employee_count: String(r.employees || 0),
-      revenue_range: r.revenue || null,
-      total_funding: r.funding || null,
-      ai_summary: r.description || null,
-      last_updated: new Date(),
-      created_at: new Date(),
-      data_quality_score: 0.8,
-      verified: false,
-    }))
+    try {
+      await sql`
+        INSERT INTO search_history (account_id, query, results_count, search_timestamp)
+        VALUES (${accountId}, ${query}, ${savedCompanies.length}, NOW())
+      `
+    } catch (historyError) {
+      console.error("[v0] Error saving search history:", historyError)
+    }
 
-    return NextResponse.json({ companies })
+    console.log("[v0] Gemini search completed:", savedCompanies.length, "companies saved")
+
+    return NextResponse.json({
+      success: true,
+      companies: savedCompanies,
+      count: savedCompanies.length,
+    })
   } catch (error: any) {
     console.error("[v0] Gemini search error:", error)
-    return NextResponse.json(
-      { error: error.message || "Search failed", companies: [] },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: error.message || "Search failed", companies: [] }, { status: 500 })
   }
 }

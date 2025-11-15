@@ -19,47 +19,46 @@ export async function POST(request: NextRequest) {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
     if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: "Gemini API key not configured" }, { status: 500 })
+      console.error("[v0] GEMINI_API_KEY is not set in environment variables")
+      return NextResponse.json({ 
+        error: "Gemini API key not configured. Please add GEMINI_API_KEY to your environment variables." 
+      }, { status: 500 })
     }
 
     console.log("[v0] Starting Gemini search for:", query)
 
-    const strictPrompt = `You are a JSON-ONLY API. Return ONLY valid JSON. NO explanations, NO markdown, NO code blocks, NO extra text.
+    const strictPrompt = `You are a company research API that returns ONLY valid JSON. NO explanations, NO markdown, NO text outside the JSON array.
 
-User query: "${query}"
+Query: "${query}"
 
-Task:
-1. Normalize query: extract industry, region, company count (default 10).
-2. Use Google Search grounding to find REAL companies matching the criteria.
-3. Return ONLY this JSON array structure (no other text):
+Return a JSON array of real companies matching this query. Use web search to find accurate, up-to-date information.
 
+Required JSON format (return ONLY this, nothing else):
 [
   {
-    "name": "string (required)",
-    "domain": "string (domain only, e.g., 'company.com')",
-    "website": "string (full URL, e.g., 'https://company.com')",
-    "description": "string (brief description)",
-    "industry": "string",
-    "location": "string (city, country)",
-    "employee_count": "string (e.g., '100-500')",
-    "founded_year": number,
-    "revenue_range": "string (e.g., '$10M-$50M')",
-    "funding_stage": "string (e.g., 'Series A')",
-    "technologies": ["string"],
-    "confidence_score": number (0.0-1.0)
+    "name": "Company Name",
+    "domain": "company.com",
+    "website": "https://company.com",
+    "description": "Brief company description",
+    "industry": "Industry sector",
+    "location": "City, Country",
+    "employee_count": "100-500",
+    "founded_year": 2020,
+    "revenue_range": "$10M-$50M",
+    "funding_stage": "Series A",
+    "technologies": ["Tech1", "Tech2"],
+    "confidence_score": 0.95
   }
 ]
 
-CRITICAL:
+Rules:
+- Return ONLY the JSON array, no other text
 - Start with [ and end with ]
-- NO text before or after the JSON
-- Use real company data from search
-- If no results: return []
+- Use real companies from web search
+- If no results found, return: []
+- No markdown, no explanations`
 
-START JSON NOW:`
-
-    const GEMINI_URL =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+    const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
@@ -73,12 +72,18 @@ START JSON NOW:`
         ],
         tools: [
           {
-            google_search: {},
+            google_search_retrieval: {
+              dynamic_retrieval_config: {
+                mode: "MODE_DYNAMIC",
+                dynamic_threshold: 0.7
+              }
+            },
           },
         ],
         generationConfig: {
           temperature: 0.2,
           maxOutputTokens: 4096,
+          response_mime_type: "application/json",
         },
       }),
     })
@@ -104,10 +109,10 @@ START JSON NOW:`
     try {
       let jsonString = rawText.trim()
 
-      // Method 1: Remove markdown code blocks
-      jsonString = jsonString.replace(/```json\s*/g, "").replace(/```\s*/g, "")
+      // Remove any potential markdown code blocks
+      jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
 
-      // Method 2: Find JSON array boundaries
+      // Find JSON array boundaries
       const arrayStart = jsonString.indexOf("[")
       const arrayEnd = jsonString.lastIndexOf("]")
 
@@ -115,7 +120,7 @@ START JSON NOW:`
         jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
       }
 
-      // Try to parse
+      // Parse the JSON
       parsedResults = JSON.parse(jsonString)
 
       if (!Array.isArray(parsedResults)) {

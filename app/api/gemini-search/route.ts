@@ -9,10 +9,7 @@ export const runtime = "edge"
 export async function POST(request: NextRequest) {
   try {
     const accountId = await getAccountIdFromRequest(request)
-    if (!accountId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
+    
     const { query } = await request.json()
 
     if (!query) {
@@ -142,11 +139,10 @@ START JSON NOW:`
 
         const inserted = await sql`
           INSERT INTO companies (
-            account_id, name, domain, description, industry, location, website,
+            name, domain, description, industry, location, website,
             employee_count, revenue_range, funding_stage, founded_year,
             technologies, data_quality_score, logo_url, verified
           ) VALUES (
-            ${accountId},
             ${company.name},
             ${domain},
             ${company.description || null},
@@ -162,7 +158,7 @@ START JSON NOW:`
             ${faviconUrl},
             false
           )
-          ON CONFLICT (domain, account_id) DO UPDATE SET
+          ON CONFLICT (domain) DO UPDATE SET
             name = EXCLUDED.name,
             description = COALESCE(EXCLUDED.description, companies.description),
             industry = COALESCE(EXCLUDED.industry, companies.industry),
@@ -183,8 +179,8 @@ START JSON NOW:`
 
     try {
       await sql`
-        INSERT INTO search_history (account_id, query, results_count, search_timestamp)
-        VALUES (${accountId}, ${query}, ${savedCompanies.length}, NOW())
+        INSERT INTO search_history (query, results_count, search_timestamp)
+        VALUES (${query}, ${savedCompanies.length}, NOW())
       `
     } catch (historyError) {
       console.error("[v0] Error saving search history:", historyError)

@@ -31,7 +31,8 @@ User query: "${query}"
 Task:
 1. Normalize query: extract industry, region, company count (default 10).
 2. Use Google Search grounding to find REAL companies matching the criteria.
-3. Return ONLY this JSON array structure (no other text):
+3. For EACH company, also search for their investors and funding information.
+4. Return ONLY this JSON array structure (no other text):
 
 [
   {
@@ -46,20 +47,33 @@ Task:
     "revenue_range": "string (e.g., '$10M-$50M')",
     "funding_stage": "string (e.g., 'Series A')",
     "technologies": ["string"],
-    "confidence_score": number (0.0-1.0)
+    "confidence_score": number (0.0-1.0),
+    "investors": [
+      {
+        "investor_name": "string (VC fund, angel investor, or corporate name)",
+        "investor_type": "string (VC, Angel, Corporate, PE, etc.)",
+        "investor_website": "string (investor's website URL if available)",
+        "investment_amount": "string (e.g., '$10M', 'Undisclosed')",
+        "investment_round": "string (e.g., 'Seed', 'Series A', 'Series B')",
+        "investment_date": "string (YYYY-MM-DD format if known)",
+        "investment_year": number (year only if full date unknown)
+      }
+    ]
   }
 ]
 
 CRITICAL:
 - Start with [ and end with ]
 - NO text before or after the JSON
-- Use real company data from search
-- If no results: return []
+- Use real company AND investor data from search
+- Include as many investors as you can find for each company
+- If no investors found for a company: set "investors": []
+- If no companies found: return []
 
 START JSON NOW:`
 
     const GEMINI_URL =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
@@ -78,7 +92,7 @@ START JSON NOW:`
         ],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192, // Increased for investor data
         },
       }),
     })
@@ -105,7 +119,7 @@ START JSON NOW:`
       let jsonString = rawText.trim()
 
       // Method 1: Remove markdown code blocks
-      jsonString = jsonString.replace(/```json\s*/g, "").replace(/```\s*/g, "")
+      jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
 
       // Method 2: Find JSON array boundaries
       const arrayStart = jsonString.indexOf("[")
@@ -170,8 +184,48 @@ START JSON NOW:`
           RETURNING *
         `
 
-        savedCompanies.push(inserted[0])
-        console.log("[v0] Saved company:", company.name)
+        const savedCompany = inserted[0]
+
+        const investors = company.investors || []
+        const savedInvestors = []
+
+        for (const investor of investors) {
+          try {
+            const investorInserted = await sql`
+              INSERT INTO investors (
+                company_id, investor_name, investor_type, investor_website,
+                investment_amount, investment_round, investment_date, investment_year,
+                source, confidence_score
+              ) VALUES (
+                ${savedCompany.id},
+                ${investor.investor_name},
+                ${investor.investor_type || null},
+                ${investor.investor_website || null},
+                ${investor.investment_amount || null},
+                ${investor.investment_round || null},
+                ${investor.investment_date || null},
+                ${investor.investment_year || null},
+                ${'Gemini Search'},
+                ${company.confidence_score || 0.7}
+              )
+              ON CONFLICT (company_id, investor_name, investment_round) DO UPDATE SET
+                investor_type = COALESCE(EXCLUDED.investor_type, investors.investor_type),
+                investor_website = COALESCE(EXCLUDED.investor_website, investors.investor_website),
+                investment_amount = COALESCE(EXCLUDED.investment_amount, investors.investment_amount),
+                investment_date = COALESCE(EXCLUDED.investment_date, investors.investment_date),
+                updated_at = now()
+              RETURNING *
+            `
+            savedInvestors.push(investorInserted[0])
+          } catch (investorError: any) {
+            console.error("[v0] Error saving investor:", investor.investor_name, investorError.message)
+          }
+        }
+
+        savedCompany.investors = savedInvestors
+        savedCompanies.push(savedCompany)
+        
+        console.log("[v0] Saved company:", company.name, "with", savedInvestors.length, "investors")
       } catch (dbError: any) {
         console.error("[v0] Error saving company:", company.name, dbError.message)
       }

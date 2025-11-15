@@ -1,17 +1,10 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/db"
 import { generateText } from "ai"
-import { trackAIUsage } from "@/lib/ai-cost-tracker"
-import { auth } from "@clerk/nextjs/server"
 
 // POST regenerate email for a contact
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const contactId = Number.parseInt(params.id)
 
     // Get contact and campaign details
@@ -134,16 +127,22 @@ Remember:
       finalBody += `\n\n${profile.signature}`
     }
 
-    const cost = await trackAIUsage({
-      sql,
-      accountId: userId,
-      model: "groq/openai/gpt-oss-20b",
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      generationType: "regenerate",
-      campaignId: contact.campaign_id,
-      contactId,
-    })
+    const inputCost = (usage.promptTokens / 1000000) * 0.1
+    const outputCost = (usage.completionTokens / 1000000) * 0.5
+    const totalCost = (inputCost + outputCost).toFixed(6)
+
+    await sql`
+      INSERT INTO ai_usage_tracking (
+        campaign_id, contact_id, model, 
+        prompt_tokens, completion_tokens, total_tokens,
+        cost_usd, generation_type
+      )
+      VALUES (
+        ${contact.campaign_id}, ${contactId}, 'groq/openai/gpt-oss-20b',
+        ${usage.promptTokens}, ${usage.completionTokens}, ${usage.totalTokens},
+        ${totalCost}, 'regenerate'
+      )
+    `
 
     const result = await sql`
       UPDATE contacts
@@ -156,7 +155,7 @@ Remember:
       RETURNING *
     `
 
-    return NextResponse.json({ contact: result[0], cost: cost.toFixed(6) })
+    return NextResponse.json({ contact: result[0], cost: totalCost })
   } catch (error) {
     console.error("Error regenerating email:", error)
     return NextResponse.json({ error: "Failed to regenerate email" }, { status: 500 })

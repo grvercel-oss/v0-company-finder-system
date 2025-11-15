@@ -1,39 +1,35 @@
 import type { NextRequest } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithOpenAI } from "@/lib/openai-research"
+import { researchCompanyWithGroq } from "@/lib/groq-web-research"
 import { auth } from "@clerk/nextjs/server"
-import { trackAIUsage } from "@/lib/ai-cost-tracker"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
 
-function deepClean(obj: any): any {
+function sanitizeForJSON(obj: any): any {
   if (typeof obj === "string") {
-    // Character-by-character filtering - only keep safe ASCII
-    return Array.from(obj)
+    // Only keep basic printable ASCII
+    return obj
+      .split("")
       .map((char) => {
         const code = char.charCodeAt(0)
-        if (code === 32 || (code >= 33 && code <= 126) || code === 10) {
-          return char
-        }
+        if (code >= 32 && code <= 126) return char
+        if (code === 10 || code === 13) return " " // newlines to spaces
         return " "
       })
       .join("")
       .replace(/\s+/g, " ")
       .trim()
   }
-
   if (Array.isArray(obj)) {
-    return obj.map((item) => deepClean(item))
+    return obj.map(sanitizeForJSON)
   }
-
   if (obj !== null && typeof obj === "object") {
-    const cleaned: any = {}
+    const result: any = {}
     for (const key in obj) {
-      cleaned[key] = deepClean(obj[key])
+      result[key] = sanitizeForJSON(obj[key])
     }
-    return cleaned
+    return result
   }
-
   return obj
 }
 
@@ -73,28 +69,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (company.tavily_research && now - fetchedAt < cacheExpiry) {
       console.log(`[v0] [Research API] Using cached research for company ${id}`)
 
-      const cleaned = deepClean(company.tavily_research)
+      const sanitizedData = sanitizeForJSON(company.tavily_research)
 
-      return new Response(
-        JSON.stringify({
-          cached: true,
-          data: cleaned,
-          fetchedAt: company.tavily_research_fetched_at,
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json; charset=utf-8",
-            "Cache-Control": "public, max-age=3600",
-          },
+      const jsonString = JSON.stringify({
+        cached: true,
+        data: sanitizedData,
+        fetchedAt: company.tavily_research_fetched_at,
+      })
+
+      return new Response(jsonString, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, max-age=3600",
         },
-      )
+      })
     }
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
 
-    const research = await researchCompanyWithOpenAI(company.name).catch((err) => {
-      console.error("[v0] [Research API] OpenAI research failed:", err)
+    const research = await researchCompanyWithGroq(company.name).catch((err) => {
+      console.error("[v0] [Research API] Groq web search failed:", err)
       return {
         companyName: company.name,
         summary: "Research data could not be fetched at this time.",
@@ -103,51 +98,60 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     })
 
-    const promptText = `Research ${company.name} for funding, investors, and financials`
-    const responseText = JSON.stringify(research)
-    const estimatedPromptTokens = Math.ceil(promptText.length / 4) + 500
-    const estimatedCompletionTokens = Math.ceil(responseText.length / 4)
-
-    await trackAIUsage({
-      sql,
-      accountId: userId,
-      model: "gpt-4o",
-      promptTokens: estimatedPromptTokens,
-      completionTokens: estimatedCompletionTokens,
-      generationType: "company_research",
-    })
-
-    console.log(
-      `[v0] [Research API] Tracked AI usage: ~${estimatedPromptTokens} prompt + ~${estimatedCompletionTokens} completion tokens`,
-    )
-
-    const cleanedResearch = deepClean(research)
+    const sanitizedResearch = sanitizeForJSON(research)
 
     console.log("[v0] [Research API] Research completed, saving to database")
 
     await sql`
       UPDATE companies
       SET 
-        tavily_research = ${JSON.stringify(cleanedResearch)},
+        tavily_research = ${JSON.stringify(sanitizedResearch)},
         tavily_research_fetched_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
     `
 
+    if (research.funding && research.funding.funding_rounds && research.funding.funding_rounds.length > 0) {
+      for (const round of research.funding.funding_rounds) {
+        try {
+          await sql`
+            INSERT INTO company_funding (
+              company_id, round_type, amount_usd, currency, announced_date,
+              lead_investors, other_investors, post_money_valuation,
+              source_url, confidence_score
+            ) VALUES (
+              ${id},
+              ${round.round_type},
+              ${round.amount_usd},
+              ${round.currency},
+              ${round.announced_date},
+              ${round.lead_investors},
+              ${round.other_investors},
+              ${round.post_money_valuation || null},
+              ${round.source_url},
+              ${round.confidence_score}
+            )
+            ON CONFLICT DO NOTHING
+          `
+        } catch (error) {
+          console.error("[v0] [Research API] Error storing funding round:", error)
+        }
+      }
+    }
+
     console.log(`[v0] [Research API] Successfully saved research for company ${id}`)
 
-    return new Response(
-      JSON.stringify({
-        cached: false,
-        data: cleanedResearch,
-        fetchedAt: new Date().toISOString(),
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-        },
+    const jsonString = JSON.stringify({
+      cached: false,
+      data: sanitizedResearch,
+      fetchedAt: new Date().toISOString(),
+    })
+
+    return new Response(jsonString, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
       },
-    )
+    })
   } catch (error) {
     console.error("[v0] [Research API] Error fetching company research:", error)
     return new Response(

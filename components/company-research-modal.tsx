@@ -114,18 +114,18 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
       const text = await response.text()
       console.log("[v0] [Research Modal] Response length:", text.length)
 
-      let responseData
+      let data
       try {
-        responseData = JSON.parse(text)
+        data = JSON.parse(text)
       } catch (parseError) {
         console.error("[v0] [Research Modal] JSON parse error:", parseError)
         console.error("[v0] [Research Modal] Response text (first 500 chars):", text.substring(0, 500))
         throw new Error("Invalid JSON response from server")
       }
 
-      setResearch(responseData.data)
-      setCached(responseData.cached)
-      setFetchedAt(responseData.fetchedAt)
+      setResearch(data.data)
+      setCached(data.cached)
+      setFetchedAt(data.fetchedAt)
     } catch (err) {
       console.error("[v0] [Research Modal] Error:", err)
       setError(err instanceof Error ? err.message : "An error occurred")
@@ -232,7 +232,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 {/* Timestamp Badge */}
                 <div className="flex items-center justify-between">
                   <Badge variant="outline" className="gap-2">
-                    <Calendar className="h-3 w-3 text-primary" />
+                    <Calendar className="h-3 w-3" />
                     {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
                   </Badge>
                 </div>

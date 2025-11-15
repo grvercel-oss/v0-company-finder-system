@@ -20,31 +20,62 @@ export async function POST(request: NextRequest) {
     const GEMINI_URL =
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
-    const prompt = `Find 10 real companies matching: "${query}". Return ONLY valid JSON array:
-[{"name":"Company","industry":"Tech","location":"City, Country","employees":100,"founded":2020,"revenue":"$10M","funding":"$5M","description":"Brief description","website":"https://example.com"}]`
+    const prompt = `Search the web and find 10 real companies matching: "${query}". 
+For each company, provide: name, industry, location (city, country), approximate employee count, founded year, estimated revenue, description, and website URL.
+Return the results as a JSON array with this exact structure:
+[{"name":"Company Name","industry":"Industry","location":"City, Country","employees":100,"founded":2020,"revenue":"$10M","funding":"$5M","description":"Brief description","website":"https://example.com"}]`
 
     const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ google_search_retrieval: { dynamic_retrieval_config: { mode: "MODE_DYNAMIC" } } }],
-        generationConfig: { response_mime_type: "application/json", temperature: 0.3 },
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ],
+        tools: [
+          {
+            google_search: {}
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+        },
       }),
     })
 
+    const responseData = await response.json()
+
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`)
+      console.error("[v0] Gemini API error:", JSON.stringify(responseData, null, 2))
+      const errorMessage = responseData.error?.message || response.statusText
+      throw new Error(`Gemini API error: ${errorMessage}`)
     }
 
-    const data = await response.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    const text = responseData.candidates?.[0]?.content?.parts?.[0]?.text
 
     if (!text) {
+      console.error("[v0] No text in Gemini response:", JSON.stringify(responseData, null, 2))
       throw new Error("No response from Gemini")
     }
 
-    const results = JSON.parse(text)
+    let results
+    try {
+      // Extract JSON from markdown code blocks if present
+      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\[[\s\S]*\]/)
+      const jsonText = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text
+      results = JSON.parse(jsonText)
+    } catch (parseError) {
+      console.error("[v0] Failed to parse Gemini response:", text)
+      throw new Error("Failed to parse company data from Gemini")
+    }
+
+    if (!Array.isArray(results)) {
+      throw new Error("Invalid response format from Gemini")
+    }
+
     const companies: Company[] = results.map((r: any, i: number) => ({
       id: -(i + 1),
       name: r.name || "Unknown",
@@ -67,6 +98,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ companies })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Search failed", companies: [] }, { status: 500 })
+    console.error("[v0] Gemini search error:", error)
+    return NextResponse.json(
+      { error: error.message || "Search failed", companies: [] },
+      { status: 500 }
+    )
   }
 }

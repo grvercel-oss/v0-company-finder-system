@@ -27,16 +27,78 @@ export async function POST(request: NextRequest) {
 
     console.log("[v0] Starting Gemini search for:", query)
 
-    const strictPrompt = `You are a company research API. Search the web and find real companies matching this query: "${query}"
+    const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
-Return a JSON array with this exact structure (no markdown, no explanations, ONLY the JSON array):
+    const searchPrompt = `Search the web and find 10 real companies matching this query: "${query}"
+
+For each company, provide:
+- Company name
+- Website domain (e.g., example.com)
+- Full website URL (e.g., https://example.com)
+- Brief description
+- Industry sector
+- Location (City, Country)
+- Employee count range (e.g., 100-500)
+- Founded year
+- Revenue range (e.g., $10M-$50M)
+- Funding stage (e.g., Series A, Bootstrapped)
+- Technologies used (list)
+
+Provide real, verified information for each company.`
+
+    console.log("[v0] Step 1: Fetching grounded search results...")
+    
+    const searchResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: searchPrompt }],
+          },
+        ],
+        tools: [
+          {
+            google_search: {},
+          },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+        },
+      }),
+    })
+
+    const searchData = await searchResponse.json()
+
+    if (!searchResponse.ok) {
+      console.error("[v0] Gemini search error:", JSON.stringify(searchData, null, 2))
+      const errorMessage = searchData.error?.message || searchResponse.statusText
+      throw new Error(`Gemini API error: ${errorMessage}`)
+    }
+
+    const groundedText = searchData.candidates?.[0]?.content?.parts?.[0]?.text
+
+    if (!groundedText) {
+      console.error("[v0] No text in Gemini search response:", JSON.stringify(searchData, null, 2))
+      throw new Error("No response from Gemini search")
+    }
+
+    console.log("[v0] Step 2: Converting to structured JSON...")
+
+    const formatPrompt = `Convert the following company research data into a JSON array with this exact structure:
+
+${groundedText}
+
+Return ONLY a JSON array (no markdown, no explanations) with this structure:
 [
   {
     "name": "Company Name",
     "domain": "company.com",
     "website": "https://company.com",
-    "description": "Brief company description",
-    "industry": "Industry sector",
+    "description": "Brief description",
+    "industry": "Industry",
     "location": "City, Country",
     "employee_count": "100-500",
     "founded_year": 2020,
@@ -47,80 +109,48 @@ Return a JSON array with this exact structure (no markdown, no explanations, ONL
   }
 ]
 
-CRITICAL: Return ONLY the JSON array starting with [ and ending with ]. No other text.`
+CRITICAL: Return ONLY valid JSON starting with [ and ending with ].`
 
-    const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-
-    const responseSchema = {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          domain: { type: "string" },
-          website: { type: "string" },
-          description: { type: "string" },
-          industry: { type: "string" },
-          location: { type: "string" },
-          employee_count: { type: "string" },
-          founded_year: { type: "integer" },
-          revenue_range: { type: "string" },
-          funding_stage: { type: "string" },
-          technologies: {
-            type: "array",
-            items: { type: "string" }
-          },
-          confidence_score: { type: "number" }
-        },
-        required: ["name", "domain"]
-      }
-    }
-
-    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+    const formatResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [
           {
             role: "user",
-            parts: [{ text: strictPrompt }],
-          },
-        ],
-        tools: [
-          {
-            google_search: {},
+            parts: [{ text: formatPrompt }],
           },
         ],
         generationConfig: {
-          temperature: 0.2,
+          temperature: 0.1,
           maxOutputTokens: 4096,
-          responseSchema: responseSchema,
+          responseMimeType: "application/json",
         },
       }),
     })
 
-    const responseData = await response.json()
+    const formatData = await formatResponse.json()
 
-    if (!response.ok) {
-      console.error("[v0] Gemini API error:", JSON.stringify(responseData, null, 2))
-      const errorMessage = responseData.error?.message || response.statusText
-      throw new Error(`Gemini API error: ${errorMessage}`)
+    if (!formatResponse.ok) {
+      console.error("[v0] Gemini format error:", JSON.stringify(formatData, null, 2))
+      const errorMessage = formatData.error?.message || formatResponse.statusText
+      throw new Error(`Gemini format error: ${errorMessage}`)
     }
 
-    const rawText = responseData.candidates?.[0]?.content?.parts?.[0]?.text
+    const jsonText = formatData.candidates?.[0]?.content?.parts?.[0]?.text
 
-    if (!rawText) {
-      console.error("[v0] No text in Gemini response:", JSON.stringify(responseData, null, 2))
-      throw new Error("No response from Gemini")
+    if (!jsonText) {
+      console.error("[v0] No text in Gemini format response:", JSON.stringify(formatData, null, 2))
+      throw new Error("No formatted response from Gemini")
     }
 
-    console.log("[v0] Raw Gemini response:", rawText.substring(0, 500))
+    console.log("[v0] Raw JSON response:", jsonText.substring(0, 500))
 
     let parsedResults: any[]
     try {
-      let jsonString = rawText.trim()
+      let jsonString = jsonText.trim()
 
-      jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
+      jsonString = jsonString.replace(/```json\s*/g, "").replace(/```\s*/g, "")
 
       const arrayStart = jsonString.indexOf("[")
       const arrayEnd = jsonString.lastIndexOf("]")
@@ -135,12 +165,12 @@ CRITICAL: Return ONLY the JSON array starting with [ and ending with ]. No other
         throw new Error("Response is not an array")
       }
     } catch (parseError) {
-      console.error("[v0] Failed to parse Gemini response:", rawText)
+      console.error("[v0] Failed to parse JSON response:", jsonText)
       console.error("[v0] Parse error:", parseError)
       throw new Error("Failed to parse company data from Gemini")
     }
 
-    console.log("[v0] Successfully parsed", parsedResults.length, "companies from Gemini")
+    console.log("[v0] Successfully parsed", parsedResults.length, "companies")
 
     const savedCompanies: Company[] = []
 

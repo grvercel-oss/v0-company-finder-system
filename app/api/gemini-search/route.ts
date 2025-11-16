@@ -64,24 +64,11 @@ export async function POST(request: NextRequest) {
         }
 
         const BATCH_SIZE = 5
-        const BUFFER_MULTIPLIER = 1.2
-        const requestCount = Math.ceil(totalCompanies * BUFFER_MULTIPLIER)
-        const numBatches = Math.ceil(requestCount / BATCH_SIZE)
+        const MAX_ATTEMPTS = 10 // Prevent infinite loops
         
-        console.log(`[v0] Starting Gemini search: "${query}" - Target: ${totalCompanies}, Requesting: ${requestCount}, Batches: ${numBatches}`)
+        console.log(`[v0] Starting Gemini search: "${query}" - Target: ${totalCompanies} companies`)
 
-        // const existingCompanies = await sql`
-        //   SELECT DISTINCT domain 
-        //   FROM companies 
-        //   WHERE 
-        //     name ILIKE ${`%${query}%`} OR 
-        //     description ILIKE ${`%${query}%`} OR
-        //     industry ILIKE ${`%${query}%`}
-        //   LIMIT 100
-        // `
-        // const existingDomains = new Set(existingCompanies.map(c => c.domain.toLowerCase()))
-        const existingDomains = new Set<string>() // Empty set - no exclusions
-        console.log(`[v0] Database pre-check disabled for testing - allowing duplicate companies`)
+        const existingDomains = new Set<string>()
 
         const searchRequest = await sql`
           INSERT INTO search_requests (account_id, raw_query, desired_count, status)
@@ -95,89 +82,73 @@ export async function POST(request: NextRequest) {
             type: "start", 
             searchId,
             totalCompanies, 
-            requestCount,
-            numBatches,
             batchSize: BATCH_SIZE 
           })}\n\n`)
         )
 
         let totalSaved = 0
         const foundDomains = new Set<string>()
-        const savedCompanies: any[] = []
+        let attemptCount = 0
         const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
-        const processBatch = async (batchIndex: number, companiesNeeded: number) => {
-          console.log(`[v0] Batch ${batchIndex + 1} starting (${companiesNeeded} companies)`)
+        while (totalSaved < totalCompanies && attemptCount < MAX_ATTEMPTS) {
+          attemptCount++
+          const remaining = totalCompanies - totalSaved
+          const companiesInThisBatch = Math.min(BATCH_SIZE, remaining)
+          
+          console.log(`[v0] Attempt ${attemptCount}: Need ${remaining} more companies (requesting ${companiesInThisBatch})`)
           
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ 
               type: "batch_start", 
-              batchIndex: batchIndex + 1,
-              companiesInBatch: companiesNeeded
+              attemptNumber: attemptCount,
+              totalSaved,
+              remaining,
+              companiesRequested: companiesInThisBatch
             })}\n\n`)
           )
 
           try {
-            const excludedDomains = Array.from(new Set([...existingDomains, ...foundDomains]))
+            const excludedDomains = Array.from(foundDomains)
             const exclusionPrompt = excludedDomains.length > 0 
-              ? `\n\nIMPORTANT: EXCLUDE these companies (already found):\n${excludedDomains.slice(0, 20).join(', ')}`
+              ? `\n\nIMPORTANT: EXCLUDE these companies (already found):\n${excludedDomains.slice(0, 50).join(', ')}`
               : ''
 
-            const searchPrompt = `You are a precise firmographics extractor. Return ONLY JSON array of up to ${companiesNeeded} companies.
+            const searchPrompt = `Find ${companiesInThisBatch} UNIQUE companies matching: ${query}${exclusionPrompt}
 
-User query: "${query}"${exclusionPrompt}
+Return ONLY a valid JSON array with this exact structure:
+[{
+  "name": "Company Name",
+  "domain": "example.com",
+  "website": "https://example.com",
+  "description": "Brief 1-2 sentence description",
+  "industry": "Industry",
+  "location": "City, Country",
+  "employee_count": "50-200",
+  "founded_year": 2020,
+  "revenue_range": "$1M-$10M",
+  "funding_stage": "Series A",
+  "technologies": "React, Node.js, AWS",
+  "confidence_score": 0.85,
+  "investors": [
+    {
+      "investor_name": "Investor Name",
+      "investor_type": "VC Fund",
+      "investment_amount": "$5M",
+      "investment_round": "Series A",
+      "investment_date": "2023-01-15",
+      "investment_year": 2023
+    }
+  ]
+}]
 
 Rules:
-- Use Google Search grounding to DEEPLY search these sources for EACH company:
-  * Crunchbase (funding, investors, detailed firmographics)
-  * LinkedIn (exact employee count, location, verified company data)
-  * Company website (official info, technologies used)
-  * PitchBook (funding rounds, valuations, investors)
-  * News articles (recent funding, growth, revenue mentions)
-  * CB Insights, AngelList, Product Hunt
-- PRIORITIZE finding: employee_count (exact range from LinkedIn), founded_year (exact), revenue_range (from reports/news), funding_stage, location (city, country), industry (detailed)
-- If data exists online, INCLUDE it. Do NOT guess – VERIFY from sources
-- If not found after thorough search: use null or "N/A"
-- Each company MUST have a unique domain
-- Include detailed investor information with amounts, rounds, dates, and investor websites when available
-
-Structure (MUST include all fields):
-[
-  {
-    "name": "string (official company name)",
-    "domain": "string (primary domain only, e.g. 'example.com')",
-    "website": "string (full URL with https://)",
-    "description": "string (1-2 sentences, verified from official sources)",
-    "industry": "string (detailed, e.g. 'Fintech - Payment Processing' or 'SaaS - CRM')",
-    "location": "string (format: 'City, Country', e.g. 'San Francisco, USA' or 'Madrid, Spain')",
-    "employee_count": "string (exact range from LinkedIn, e.g. '51-200' or '1001-5000' or 'N/A')",
-    "founded_year": number (exact year, e.g. 2019) or null,
-    "revenue_range": "string (from reports/news, e.g. '$10M-$50M' or '$100M+' or 'N/A')",
-    "funding_stage": "string (e.g. 'Series B', 'Seed', 'Bootstrapped', 'Public' or 'N/A')",
-    "technologies": "string (comma-separated, e.g. 'React, Node.js, AWS, PostgreSQL')",
-    "confidence_score": number (0.0-1.0 based on data quality and source reliability),
-    "investors": [
-      {
-        "investor_name": "string (full investor name)",
-        "investor_type": "string (e.g. 'VC Fund', 'Angel', 'Corporate VC', 'PE Firm')",
-        "investment_amount": "string (e.g. '$5M', '$25M', 'Undisclosed')",
-        "investment_round": "string (e.g. 'Seed', 'Series A', 'Series B')",
-        "investment_date": "string (ISO format YYYY-MM-DD, e.g. '2023-06-15' or null)",
-        "investment_year": number (e.g. 2023 or null)
-      }
-    ]
-  }
-]
-
-CRITICAL RULES:
-- NO markdown formatting (no \`\`\`json)
-- NO explanations or text before/after JSON
-- START with [ and END with ]
-- DO NOT include companies from the exclusion list
-- Ensure ALL fields are present for each company
-- Use null for unknown values, "N/A" for strings
-- Maximum 3 top investors per company (prioritize largest/most recent rounds)
-- Cross-reference multiple sources to verify accuracy`
+- Return ONLY the JSON array, no markdown, no explanation
+- DO NOT include any companies from the exclusion list
+- Each company must have a unique domain
+- Include top 3 investors per company
+- Keep descriptions under 2 sentences
+- Use null for unknown fields`
 
             const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
               method: "POST",
@@ -189,7 +160,7 @@ CRITICAL RULES:
                 }],
                 tools: [{ google_search: {} }],
                 generationConfig: {
-                  temperature: 0.2, // Low temperature for consistent, factual responses
+                  temperature: 0.3,
                   maxOutputTokens: 4096,
                 },
               }),
@@ -207,6 +178,8 @@ CRITICAL RULES:
               throw new Error("No response from Gemini")
             }
 
+            console.log(`[v0] Attempt ${attemptCount} raw response length: ${responseText.length}`)
+
             const repairedJSON = repairJSON(responseText)
             
             let parsedResults: any[]
@@ -217,24 +190,25 @@ CRITICAL RULES:
                 throw new Error("Response is not an array")
               }
               
-              console.log(`[v0] Batch ${batchIndex + 1}: parsed ${parsedResults.length} companies`)
+              console.log(`[v0] Attempt ${attemptCount}: parsed ${parsedResults.length} companies`)
             } catch (parseError: any) {
-              console.error(`[v0] Batch ${batchIndex + 1} parse error:`, parseError.message)
+              console.error(`[v0] Attempt ${attemptCount} parse error:`, parseError.message)
               
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ 
                   type: "batch_error", 
-                  batchIndex: batchIndex + 1,
+                  attemptNumber: attemptCount,
                   error: "Failed to parse JSON response" 
                 })}\n\n`)
               )
-              return []
+              continue // Continue to next attempt
             }
 
             const uniqueResults = parsedResults.filter(company => {
               const domain = (company.domain || company.name.toLowerCase().replace(/\s+/g, "")).toLowerCase()
               
-              if (existingDomains.has(domain) || foundDomains.has(domain)) {
+              if (foundDomains.has(domain)) {
+                console.log(`[v0] Skipping duplicate: ${domain}`)
                 return false
               }
               
@@ -242,13 +216,11 @@ CRITICAL RULES:
               return true
             })
 
-            console.log(`[v0] Batch ${batchIndex + 1}: ${uniqueResults.length} unique companies after deduplication`)
-
-            const batchSavedCompanies = []
+            console.log(`[v0] Attempt ${attemptCount}: ${uniqueResults.length} unique companies`)
 
             for (const company of uniqueResults) {
               if (totalSaved >= totalCompanies) {
-                console.log(`[v0] Target reached (${totalCompanies}), stopping save`)
+                console.log(`[v0] Target reached (${totalCompanies}), stopping`)
                 break
               }
 
@@ -290,13 +262,12 @@ CRITICAL RULES:
                 await sql`
                   INSERT INTO search_results (search_id, company_id, source, score)
                   VALUES (${searchId}, ${savedCompany.id}, ${'Gemini Search'}, ${company.confidence_score || 0.7})
-                  ON CONFLICT (search_id, company_id) DO NOTHING
                 `
 
                 const investors = company.investors || []
                 const savedInvestors = []
 
-                for (const investor of investors) {
+                for (const investor of investors.slice(0, 3)) {
                   try {
                     const investorInserted = await sql`
                       INSERT INTO investors (
@@ -325,16 +296,18 @@ CRITICAL RULES:
 
                 savedCompany.investors = savedInvestors
                 totalSaved++
-                batchSavedCompanies.push(savedCompany)
 
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({ 
                     type: "company", 
                     company: savedCompany,
-                    batchIndex: batchIndex + 1,
-                    totalSaved
+                    attemptNumber: attemptCount,
+                    totalSaved,
+                    remaining: totalCompanies - totalSaved
                   })}\n\n`)
                 )
+
+                console.log(`[v0] Saved company ${totalSaved}/${totalCompanies}: ${company.name}`)
               } catch (dbError: any) {
                 console.error(`[v0] Error saving company:`, company.name, dbError.message)
               }
@@ -343,55 +316,26 @@ CRITICAL RULES:
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ 
                 type: "batch_complete", 
-                batchIndex: batchIndex + 1,
-                companiesSaved: batchSavedCompanies.length
+                attemptNumber: attemptCount,
+                companiesSaved: uniqueResults.length,
+                totalSaved,
+                targetMet: totalSaved >= totalCompanies
               })}\n\n`)
             )
 
-            return batchSavedCompanies
-
           } catch (batchError: any) {
-            console.error(`[v0] Batch ${batchIndex + 1} error:`, batchError.message)
+            console.error(`[v0] Attempt ${attemptCount} error:`, batchError.message)
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ 
                 type: "batch_error", 
-                batchIndex: batchIndex + 1,
+                attemptNumber: attemptCount,
                 error: batchError.message 
               })}\n\n`)
             )
-            return []
           }
         }
 
-        const batchPromises = Array.from({ length: numBatches }, (_, i) => 
-          processBatch(i, Math.min(BATCH_SIZE, requestCount - (i * BATCH_SIZE)))
-        )
-
-        await Promise.all(batchPromises)
-
-        console.log(`[v0] Initial batches complete: ${totalSaved}/${totalCompanies} companies`)
-
-        let backupBatchIndex = numBatches
-        while (totalSaved < totalCompanies && backupBatchIndex < numBatches + 5) {
-          const gap = totalCompanies - totalSaved
-          console.log(`[v0] Gap detected: need ${gap} more companies. Starting backup batch ${backupBatchIndex + 1}`)
-          
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ 
-              type: "backup_batch", 
-              gap,
-              batchIndex: backupBatchIndex + 1
-            })}\n\n`)
-          )
-
-          await processBatch(backupBatchIndex, Math.min(BATCH_SIZE, gap + 2))
-          backupBatchIndex++
-
-          if (totalSaved >= totalCompanies) {
-            console.log(`[v0] Target reached after backup batch`)
-            break
-          }
-        }
+        const targetMet = totalSaved >= totalCompanies
 
         await sql`
           UPDATE search_requests 
@@ -403,12 +347,13 @@ CRITICAL RULES:
           encoder.encode(`data: ${JSON.stringify({ 
             type: "complete", 
             totalSaved,
-            targetMet: totalSaved >= totalCompanies,
-            searchId
+            searchId,
+            targetMet,
+            attempts: attemptCount
           })}\n\n`)
         )
 
-        console.log(`[v0] Search complete: ${totalSaved}/${totalCompanies} companies saved`)
+        console.log(`[v0] Search complete: ${totalSaved}/${totalCompanies} companies (${attemptCount} attempts)`)
         controller.close()
 
       } catch (error: any) {

@@ -11,9 +11,9 @@ import { Progress } from "@/components/ui/progress"
 import { Card } from "@/components/ui/card"
 
 interface BatchProgress {
-  currentBatch: number
-  totalBatches: number
-  companiesFound: number
+  attemptNumber: number
+  totalSaved: number
+  remaining: number
   totalCompanies: number
 }
 
@@ -79,19 +79,17 @@ export function GeminiSearchContent() {
         const chunk = decoder.decode(value, { stream: true })
         buffer += chunk
 
-        // Process complete messages (separated by \n\n)
         const messages = buffer.split("\n\n")
-        buffer = messages.pop() || "" // Keep incomplete message in buffer
+        buffer = messages.pop() || ""
 
         for (const message of messages) {
           if (!message.trim() || message.trim() === "data: [DONE]") continue
 
-          // Extract data from SSE format: "data: {...}"
           const lines = message.split("\n")
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue
 
-            const dataStr = line.slice(6) // Remove "data: " prefix
+            const dataStr = line.slice(6)
             if (!dataStr.trim()) continue
 
             try {
@@ -100,66 +98,55 @@ export function GeminiSearchContent() {
               switch (data.type) {
                 case "start":
                   setBatchProgress({
-                    currentBatch: 0,
-                    totalBatches: data.numBatches,
-                    companiesFound: 0,
+                    attemptNumber: 0,
+                    totalSaved: 0,
+                    remaining: data.totalCompanies,
                     totalCompanies: data.totalCompanies,
                   })
                   break
 
                 case "batch_start":
-                  setBatchProgress((prev) => ({
-                    currentBatch: data.batchIndex,
-                    totalBatches: data.totalBatches,
-                    companiesFound: prev?.companiesFound || 0,
-                    totalCompanies: prev?.totalCompanies || companyCount,
-                  }))
+                  setBatchProgress({
+                    attemptNumber: data.attemptNumber,
+                    totalSaved: data.totalSaved,
+                    remaining: data.remaining,
+                    totalCompanies: companyCount,
+                  })
                   break
 
                 case "company":
                   setCompanies((prev) => [...prev, data.company])
-                  setBatchProgress((prev) => ({
-                    currentBatch: prev?.currentBatch || data.batchIndex,
-                    totalBatches: prev?.totalBatches || 1,
-                    companiesFound: data.totalSaved,
-                    totalCompanies: prev?.totalCompanies || companyCount,
-                  }))
+                  setBatchProgress({
+                    attemptNumber: data.attemptNumber,
+                    totalSaved: data.totalSaved,
+                    remaining: data.remaining,
+                    totalCompanies: companyCount,
+                  })
                   break
 
                 case "batch_complete":
-                  console.log(`[v0] Batch ${data.batchIndex} complete`)
+                  console.log(`[v0] Attempt ${data.attemptNumber} complete, target met: ${data.targetMet}`)
                   break
 
                 case "batch_error":
-                  console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
-                  break
-
-                case "backup_batch":
-                  console.log(`[v0] Backup batch ${data.batchIndex}: need ${data.gap} more companies`)
-                  setBatchProgress((prev) => ({
-                    currentBatch: data.batchIndex,
-                    totalBatches: prev?.totalBatches || 1,
-                    companiesFound: prev?.companiesFound || 0,
-                    totalCompanies: prev?.totalCompanies || companyCount,
-                  }))
+                  console.error(`[v0] Attempt ${data.attemptNumber} error:`, data.error)
                   break
 
                 case "complete":
-                  console.log(`[v0] Search complete: ${data.totalSaved} companies`)
+                  console.log(`[v0] Search complete: ${data.totalSaved} companies in ${data.attempts} attempts`)
                   setIsLoading(false)
                   setBatchProgress(null)
-                  if (!data.targetMet && data.totalSaved < companyCount) {
-                    setError(`Found ${data.totalSaved} companies (requested ${companyCount}). Some companies may not match criteria or exist in the database.`)
-                  }
                   await loadSearchHistory()
+                  if (!data.targetMet) {
+                    setError(`Found ${data.totalSaved} companies but requested ${companyCount}. Try a broader search query.`)
+                  }
                   break
 
                 case "error":
                   throw new Error(data.message)
               }
             } catch (parseError: any) {
-              console.error("[v0] Error parsing SSE data:", parseError.message, "Data:", dataStr.substring(0, 100))
-              // Don't throw - continue processing other messages
+              console.error("[v0] Error parsing SSE data:", parseError.message)
             }
           }
         }
@@ -222,14 +209,15 @@ export function GeminiSearchContent() {
               <Card className="p-4 space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">
-                    Batch {batchProgress.currentBatch} of {batchProgress.totalBatches}
+                    Attempt {batchProgress.attemptNumber}
                   </span>
                   <span className="text-muted-foreground">
-                    {batchProgress.companiesFound} / {batchProgress.totalCompanies} companies found
+                    {batchProgress.totalSaved} / {batchProgress.totalCompanies} companies found
+                    {batchProgress.remaining > 0 && ` (${batchProgress.remaining} remaining)`}
                   </span>
                 </div>
                 <Progress 
-                  value={(batchProgress.companiesFound / batchProgress.totalCompanies) * 100} 
+                  value={(batchProgress.totalSaved / batchProgress.totalCompanies) * 100} 
                   className="h-2"
                 />
               </Card>

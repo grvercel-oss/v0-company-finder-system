@@ -70,17 +70,18 @@ export async function POST(request: NextRequest) {
         
         console.log(`[v0] Starting Gemini search: "${query}" - Target: ${totalCompanies}, Requesting: ${requestCount}, Batches: ${numBatches}`)
 
-        const existingCompanies = await sql`
-          SELECT DISTINCT domain 
-          FROM companies 
-          WHERE 
-            name ILIKE ${`%${query}%`} OR 
-            description ILIKE ${`%${query}%`} OR
-            industry ILIKE ${`%${query}%`}
-          LIMIT 100
-        `
-        const existingDomains = new Set(existingCompanies.map(c => c.domain.toLowerCase()))
-        console.log(`[v0] Found ${existingDomains.size} existing companies in database`)
+        // const existingCompanies = await sql`
+        //   SELECT DISTINCT domain 
+        //   FROM companies 
+        //   WHERE 
+        //     name ILIKE ${`%${query}%`} OR 
+        //     description ILIKE ${`%${query}%`} OR
+        //     industry ILIKE ${`%${query}%`}
+        //   LIMIT 100
+        // `
+        // const existingDomains = new Set(existingCompanies.map(c => c.domain.toLowerCase()))
+        const existingDomains = new Set<string>() // Empty set - no exclusions
+        console.log(`[v0] Database pre-check disabled for testing - allowing duplicate companies`)
 
         const searchRequest = await sql`
           INSERT INTO search_requests (account_id, raw_query, desired_count, status)
@@ -281,15 +282,6 @@ CRITICAL RULES:
                     ${faviconUrl},
                     false
                   )
-                  ON CONFLICT (domain) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    description = COALESCE(EXCLUDED.description, companies.description),
-                    industry = COALESCE(EXCLUDED.industry, companies.industry),
-                    location = COALESCE(EXCLUDED.location, companies.location),
-                    website = COALESCE(EXCLUDED.website, companies.website),
-                    employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
-                    logo_url = COALESCE(EXCLUDED.logo_url, companies.logo_url),
-                    last_updated = now()
                   RETURNING *
                 `
 
@@ -323,11 +315,6 @@ CRITICAL RULES:
                         ${'Gemini Search'},
                         ${company.confidence_score || 0.7}
                       )
-                      ON CONFLICT (company_id, investor_name, investment_round) DO UPDATE SET
-                        investor_type = COALESCE(EXCLUDED.investor_type, investors.investor_type),
-                        investment_amount = COALESCE(EXCLUDED.investment_amount, investors.investment_amount),
-                        investment_date = COALESCE(EXCLUDED.investment_date, investors.investment_date),
-                        updated_at = now()
                       RETURNING *
                     `
                     savedInvestors.push(investorInserted[0])

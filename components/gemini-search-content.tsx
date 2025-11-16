@@ -7,6 +7,15 @@ import { SearchResults } from "@/components/search-results"
 import type { Company } from "@/lib/db"
 import { Badge } from "@/components/ui/badge"
 import { Sparkles } from 'lucide-react'
+import { Progress } from "@/components/ui/progress"
+import { Card } from "@/components/ui/card"
+
+interface BatchProgress {
+  currentBatch: number
+  totalBatches: number
+  companiesFound: number
+  totalCompanies: number
+}
 
 export function GeminiSearchContent() {
   const [companies, setCompanies] = useState<Company[]>([])
@@ -14,6 +23,8 @@ export function GeminiSearchContent() {
   const [error, setError] = useState<string>()
   const [searchPerformed, setSearchPerformed] = useState(false)
   const [searchHistory, setSearchHistory] = useState<any[]>([])
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null)
+  const [totalCompanies, setTotalCompanies] = useState(10)
 
   useEffect(() => {
     loadSearchHistory()
@@ -31,87 +42,105 @@ export function GeminiSearchContent() {
     }
   }
 
-  const handleSearch = async (query: string) => {
-    if (!query || query.trim().length < 3) {
-      setError("Please enter a search query with at least 3 characters")
-      return
-    }
-
+  const handleSearch = async (query: string, companyCount: number) => {
     setIsLoading(true)
     setError(undefined)
     setSearchPerformed(true)
     setCompanies([])
+    setBatchProgress(null)
+    setTotalCompanies(companyCount)
 
     try {
-      console.log("[v0] Starting Gemini search:", query)
+      console.log("[v0] Starting Gemini search:", query, "companies:", companyCount)
 
       const response = await fetch("/api/gemini-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ query, totalCompanies: companyCount }),
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Search failed")
+        throw new Error("Search request failed")
       }
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
-      const foundCompanies: Company[] = []
 
       if (!reader) {
         throw new Error("No response stream")
       }
 
-      let buffer = ""
-      
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split("\n\n")
-        
-        // Keep the last incomplete chunk in buffer
-        buffer = lines.pop() || ""
+        const chunk = decoder.decode(value)
+        const lines = chunk.split("\n")
 
-        for (const chunk of lines) {
-          if (!chunk.trim()) continue
-          
-          const eventMatch = chunk.match(/event:\s*(\w+)/)
-          const dataMatch = chunk.match(/data:\s*(.+)/)
-          
-          if (eventMatch && dataMatch) {
-            const event = eventMatch[1]
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
             try {
-              const data = JSON.parse(dataMatch[1])
-              
-              if (event === 'new_company') {
-                foundCompanies.push(data.company)
-                setCompanies([...foundCompanies])
-                console.log("[v0] New company:", data.company.name)
-              } else if (event === 'error') {
-                throw new Error(data.message)
-              } else if (event === 'search_completed') {
-                console.log("[v0] Search completed:", data.total, "companies")
-              } else if (event === 'status') {
-                console.log("[v0] Status:", data.message)
+              const data = JSON.parse(line.slice(6))
+
+              switch (data.type) {
+                case "start":
+                  setBatchProgress({
+                    currentBatch: 0,
+                    totalBatches: data.numBatches,
+                    companiesFound: 0,
+                    totalCompanies: data.totalCompanies,
+                  })
+                  break
+
+                case "batch_start":
+                  setBatchProgress((prev) => ({
+                    currentBatch: data.batchIndex,
+                    totalBatches: data.totalBatches,
+                    companiesFound: prev?.companiesFound || 0,
+                    totalCompanies: prev?.totalCompanies || companyCount,
+                  }))
+                  break
+
+                case "company":
+                  setCompanies((prev) => [...prev, data.company])
+                  setBatchProgress((prev) => ({
+                    currentBatch: prev?.currentBatch || data.batchIndex,
+                    totalBatches: prev?.totalBatches || 1,
+                    companiesFound: data.totalSaved,
+                    totalCompanies: prev?.totalCompanies || companyCount,
+                  }))
+                  break
+
+                case "batch_complete":
+                  console.log(`[v0] Batch ${data.batchIndex} complete`)
+                  break
+
+                case "batch_error":
+                  console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
+                  break
+
+                case "complete":
+                  console.log(`[v0] Search complete: ${data.totalSaved} companies`)
+                  setIsLoading(false)
+                  setBatchProgress(null)
+                  loadSearchHistory()
+                  break
+
+                case "error":
+                  throw new Error(data.message)
               }
-            } catch (e: any) {
-              console.error("[v0] Error parsing SSE data:", e.message)
+            } catch (parseError) {
+              console.error("[v0] Error parsing SSE data:", parseError)
             }
           }
         }
       }
-
-      await loadSearchHistory()
     } catch (err: any) {
       console.error("[v0] Search error:", err)
       setError(err.message || "An error occurred while searching")
       setCompanies([])
-    } finally {
       setIsLoading(false)
+      setBatchProgress(null)
     }
   }
 
@@ -157,7 +186,25 @@ export function GeminiSearchContent() {
                 Search companies using Gemini 2.0 Flash with Google Search grounding
               </p>
             </div>
+            
             <SearchBar onSearch={handleSearch} isLoading={isLoading} />
+
+            {isLoading && batchProgress && (
+              <Card className="p-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">
+                    Batch {batchProgress.currentBatch} of {batchProgress.totalBatches}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {batchProgress.companiesFound} / {batchProgress.totalCompanies} companies found
+                  </span>
+                </div>
+                <Progress 
+                  value={(batchProgress.companiesFound / batchProgress.totalCompanies) * 100} 
+                  className="h-2"
+                />
+              </Card>
+            )}
 
             {!isLoading && searchHistory.length > 0 && (
               <SearchHistory

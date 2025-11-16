@@ -3,24 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  Loader2,
-  Calendar,
-  Sparkles,
-  AlertCircle,
-  X,
-  TrendingUp,
-  Users,
-  DollarSign,
-  Globe,
-  Building2,
-  NewspaperIcon,
-  FileText,
-  CheckCircle,
-  ExternalLink,
-  Shield,
-  UserCheck,
-} from "lucide-react"
+import { Loader2, Calendar, Sparkles, AlertCircle, X, TrendingUp, Users, DollarSign, Globe, Building2, NewspaperIcon, FileText, CheckCircle, ExternalLink, Shield, UserCheck } from 'lucide-react'
 import { FundingCharts } from "@/components/funding-charts"
 
 interface ResearchCategory {
@@ -187,7 +170,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 <div>
                   <h2 className="text-xl font-bold">{companyName}</h2>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    AI-powered research using Common Crawl archives + Groq AI
+                    AI-powered research using Google Search + Gemini AI
                   </p>
                 </div>
               </div>
@@ -204,7 +187,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium">Researching {companyName}...</p>
-                  <p className="text-sm text-muted-foreground">Analyzing archived web pages with Groq AI</p>
+                  <p className="text-sm text-muted-foreground">Analyzing web data with Gemini AI</p>
                   <p className="text-xs text-muted-foreground">This may take 30-60 seconds</p>
                 </div>
               </div>

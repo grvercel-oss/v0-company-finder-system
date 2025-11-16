@@ -3,11 +3,10 @@ import { CompanyHeader } from "@/components/company-header"
 import { CompanyOverview } from "@/components/company-overview"
 import { CompanyUpdates } from "@/components/company-updates"
 import { CompanyContacts } from "@/components/company-contacts"
-import { CompanyInvestors } from "@/components/company-investors"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
-import { notFound } from 'next/navigation'
+import { notFound } from "next/navigation"
 
 export default async function CompanyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: idString } = await params
@@ -38,16 +37,6 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
     SELECT * FROM company_contacts
     WHERE company_id = ${id}
     ORDER BY confidence_score DESC, created_at DESC
-  `
-
-  const investors = await sql`
-    SELECT * FROM investors
-    WHERE company_id = ${id}
-    ORDER BY 
-      CASE 
-        WHEN investment_date IS NOT NULL THEN investment_date 
-        ELSE make_date(COALESCE(investment_year, 2020), 1, 1)
-      END DESC
   `
 
   const safeJsonParse = (value: any) => {
@@ -96,7 +85,6 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
 
         <div className="space-y-6">
           <CompanyOverview company={company} />
-          <CompanyInvestors investors={investors} />
           <CompanyContacts contacts={contacts} />
           <CompanyUpdates
             updates={updates}

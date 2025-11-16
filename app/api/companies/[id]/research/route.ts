@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server"
 import { neon } from "@neondatabase/serverless"
-import { researchCompanyWithGroq } from "@/lib/groq-web-research"
+import { researchCompanyWithGemini } from "@/lib/gemini-web-research"
 import { auth } from "@clerk/nextjs/server"
 
 const sql = neon(process.env.NEON_DATABASE_URL!)
@@ -33,7 +33,7 @@ function sanitizeForJSON(obj: any): any {
   return obj
 }
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId } = await auth()
     if (!userId) {
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       })
     }
 
-    const { id } = await params
+    const { id } = params
 
     console.log("[v0] [Research API] Fetching research for company ID:", id)
 
@@ -88,8 +88,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
 
-    const research = await researchCompanyWithGroq(company.name).catch((err) => {
-      console.error("[v0] [Research API] Groq web search failed:", err)
+    const research = await researchCompanyWithGemini(company.name).catch((err) => {
+      console.error("[v0] [Research API] Gemini web search failed:", err)
       return {
         companyName: company.name,
         summary: "Research data could not be fetched at this time.",

@@ -48,7 +48,6 @@ export interface Company {
   created_at: Date
   data_quality_score: number
   verified: boolean
-  investors?: Investor[] // Added investors array
 }
 
 export interface SearchHistory {
@@ -80,20 +79,4 @@ export interface CompanyContact {
   verified: boolean
   email_verification_status?: "pending" | "verified" | "unverified" | "invalid"
   created_at: Date
-}
-
-export interface Investor {
-  id: number
-  company_id: number
-  investor_name: string
-  investor_type?: string // 'VC', 'Angel', 'Corporate', 'PE', etc.
-  investor_website?: string
-  investment_amount?: string
-  investment_round?: string
-  investment_date?: Date
-  investment_year?: number
-  source?: string
-  confidence_score: number
-  created_at: Date
-  updated_at: Date
 }

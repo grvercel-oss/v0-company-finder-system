@@ -83,14 +83,14 @@ export function GeminiSearchContent() {
         buffer = messages.pop() || ""
 
         for (const message of messages) {
-          if (!message.trim() || message.trim() === "data: [DONE]") continue
+          if (!message.trim()) continue
 
           const lines = message.split("\n")
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue
 
-            const dataStr = line.slice(6)
-            if (!dataStr.trim()) continue
+            const dataStr = line.substring(6).trim()
+            if (!dataStr || dataStr === "[DONE]") continue
 
             try {
               const data = JSON.parse(dataStr)
@@ -146,7 +146,7 @@ export function GeminiSearchContent() {
                   throw new Error(data.message)
               }
             } catch (parseError: any) {
-              console.error("[v0] Error parsing SSE data:", parseError.message)
+              console.error("[v0] Error parsing SSE data:", dataStr, parseError.message)
             }
           }
         }

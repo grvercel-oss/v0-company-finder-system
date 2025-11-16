@@ -111,44 +111,78 @@ export async function POST(request: NextRequest) {
           try {
             const excludedDomains = Array.from(foundDomains)
             const exclusionPrompt = excludedDomains.length > 0 
-              ? `\n\nIMPORTANT: EXCLUDE these companies (already found):\n${excludedDomains.slice(0, 50).join(', ')}`
+              ? `\n\nEXCLUDE these domains (already found): ${excludedDomains.slice(0, 20).join(', ')}`
               : ''
 
-            const searchPrompt = `Find ${companiesInThisBatch} UNIQUE companies matching: ${query}${exclusionPrompt}
+            const searchPrompt = `You are a precise firmographics extractor. Return ONLY a JSON array of ${companiesInThisBatch} companies.
 
-Return ONLY a valid JSON array with this exact structure:
-[{
-  "name": "Company Name",
-  "domain": "example.com",
-  "website": "https://example.com",
-  "description": "Brief 1-2 sentence description",
-  "industry": "Industry",
-  "location": "City, Country",
-  "employee_count": "50-200",
-  "founded_year": 2020,
-  "revenue_range": "$1M-$10M",
-  "funding_stage": "Series A",
-  "technologies": "React, Node.js, AWS",
-  "confidence_score": 0.85,
-  "investors": [
-    {
-      "investor_name": "Investor Name",
-      "investor_type": "VC Fund",
-      "investment_amount": "$5M",
-      "investment_round": "Series A",
-      "investment_date": "2023-01-15",
-      "investment_year": 2023
-    }
-  ]
-}]
+User query: "${query}"${exclusionPrompt}
 
-Rules:
-- Return ONLY the JSON array, no markdown, no explanation
-- DO NOT include any companies from the exclusion list
-- Each company must have a unique domain
-- Include top 3 investors per company
-- Keep descriptions under 2 sentences
-- Use null for unknown fields`
+CRITICAL INSTRUCTIONS:
+1. Use Google Search grounding with maximum results.
+2. For EACH company: DEEPLY search these sources in order:
+   - Crunchbase (for funding, investors, metrics)
+   - LinkedIn (for employee count, locations, headcount trends)
+   - Company website (for products, description, tech stack)
+   - PitchBook (for valuations, detailed funding)
+   - Recent news articles (for latest updates, revenue estimates)
+   
+3. PRIORITIZE finding these fields (search until found):
+   - employee_count: Get EXACT range from LinkedIn (e.g. "101-200", "501-1000")
+   - founded_year: Find exact year from multiple sources
+   - revenue_range: Look for reports, news, Crunchbase estimates (e.g. "$10M-$50M")
+   - location: Full address with city, state/region, country
+   - industry: Detailed categorization (e.g. "Fintech - Digital Payments")
+   - investors: Top 3-5 investors with full details
+
+4. DATA QUALITY RULES:
+   - If data exists online, YOU MUST INCLUDE IT
+   - Do NOT guess or estimate - verify from sources
+   - If genuinely not found after deep search: use "N/A" or null
+   - Cross-reference data from multiple sources
+   - Prioritize recent data (2023-2025)
+
+5. INVESTOR DATA REQUIREMENTS:
+   - Include investor website if found
+   - Include investment date (exact if possible)
+   - Include detailed round information (e.g. "Series A Extension")
+   - Include investor type (VC, Angel, Corporate, PE, etc.)
+
+Return ONLY this exact JSON structure:
+[
+  {
+    "name": "string",
+    "domain": "string",
+    "website": "string",
+    "description": "string (2-3 sentences, verified from official sources)",
+    "industry": "string (detailed, e.g. 'Fintech - Payments')",
+    "location": "string (full: city, state/region, country)",
+    "employee_count": "string (exact range like '101-200' from LinkedIn or 'N/A')",
+    "founded_year": number or null,
+    "revenue_range": "string (e.g. '$10M-$50M' from verified sources or 'N/A')",
+    "funding_stage": "string (latest round like 'Series B' or 'N/A')",
+    "technologies": "string (comma-separated tech stack)",
+    "confidence_score": number (0.0-1.0: 1.0 = all data verified, 0.5 = partial data, 0.7+ recommended),
+    "investors": [
+      {
+        "investor_name": "string",
+        "investor_type": "string (VC Fund/Angel/Corporate/PE)",
+        "investment_amount": "string (e.g. '$5M')",
+        "investment_round": "string (e.g. 'Series A')",
+        "investment_date": "string (YYYY-MM-DD if known)",
+        "investment_year": number
+      }
+    ]
+  }
+]
+
+CRITICAL OUTPUT RULES:
+- NO markdown formatting (no \`\`\`json, no \`\`\`)
+- NO explanatory text before or after
+- START with [ and END with ]
+- Valid JSON only - properly escaped quotes, no trailing commas
+- Each company MUST have unique domain
+- DO NOT repeat any excluded companies`
 
             const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
               method: "POST",

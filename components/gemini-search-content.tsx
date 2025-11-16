@@ -32,6 +32,11 @@ export function GeminiSearchContent() {
   }
 
   const handleSearch = async (query: string) => {
+    if (!query || query.trim().length < 3) {
+      setError("Please enter a search query with at least 3 characters")
+      return
+    }
+
     setIsLoading(true)
     setError(undefined)
     setSearchPerformed(true)
@@ -52,10 +57,10 @@ export function GeminiSearchContent() {
         throw new Error(data.error || "Search failed")
       }
 
-      console.log("[v0] Gemini search completed:", data.companies.length, "companies")
+      console.log("[v0] Search completed:", data.companies?.length || 0, "companies")
       setCompanies(data.companies || [])
       
-      loadSearchHistory()
+      await loadSearchHistory()
     } catch (err: any) {
       console.error("[v0] Search error:", err)
       setError(err.message || "An error occurred while searching")

@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, Zap } from "lucide-react"
+import { ExternalLink, Building2, MapPin, Users, CheckCircle2, Mail, Zap } from 'lucide-react'
 import Link from "next/link"
 import { CompanyResearchModal } from "./company-research-modal"
 import { ApolloContactModal } from "./apollo-contact-modal"
@@ -320,9 +320,6 @@ export function SearchResultsTable({ companies, selectedCompanies, onSelectionCh
                       >
                         <Zap className="h-4 w-4 mr-1" />
                         Get contact from Apollo
-                      </Button>
-                      <Button variant="default" size="sm" onClick={() => handleGetMoreInfo(company)}>
-                        Get more info
                       </Button>
                     </div>
                   </TableCell>

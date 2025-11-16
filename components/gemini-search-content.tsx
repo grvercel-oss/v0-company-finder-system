@@ -51,15 +51,46 @@ export function GeminiSearchContent() {
         body: JSON.stringify({ query }),
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
+        const data = await response.json()
         throw new Error(data.error || "Search failed")
       }
 
-      console.log("[v0] Search completed:", data.companies?.length || 0, "companies")
-      setCompanies(data.companies || [])
-      
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      const foundCompanies: Company[] = []
+
+      if (!reader) {
+        throw new Error("No response stream")
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split("\n")
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (line.includes('event: new_company')) {
+                foundCompanies.push(data.company)
+                setCompanies([...foundCompanies])
+              } else if (line.includes('event: error')) {
+                throw new Error(data.message)
+              } else if (line.includes('event: search_completed')) {
+                console.log("[v0] Search completed:", data.total, "companies")
+              }
+            } catch (e) {
+              // Ignore parse errors for non-JSON lines
+            }
+          }
+        }
+      }
+
       await loadSearchHistory()
     } catch (err: any) {
       console.error("[v0] Search error:", err)

@@ -6,6 +6,39 @@ import { getFaviconUrl } from "@/lib/favicon"
 export const runtime = "edge"
 export const maxDuration = 60
 
+function repairJSON(text: string): string {
+  // Remove markdown code blocks
+  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '')
+  
+  // Find JSON array
+  const arrayStart = text.indexOf('[')
+  const arrayEnd = text.lastIndexOf(']')
+  
+  if (arrayStart === -1 || arrayEnd === -1) {
+    return '[]'
+  }
+  
+  let json = text.substring(arrayStart, arrayEnd + 1)
+  
+  // Fix common issues
+  json = json.replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas
+  json = json.replace(/([{,]\s*)(\w+):/g, '$1"$2":') // Quote unquoted keys
+  json = json.replace(/"([^"]*)":\s*"([^"]*?)"/g, (match, key, value) => {
+    // Escape unescaped quotes in values
+    const escapedValue = value.replace(/"/g, '\\"')
+    return `"${key}":"${escapedValue}"`
+  })
+  
+  // Try to close unterminated strings/objects
+  const openBraces = (json.match(/{/g) || []).length
+  const closeBraces = (json.match(/}/g) || []).length
+  if (openBraces > closeBraces) {
+    json += '}'.repeat(openBraces - closeBraces)
+  }
+  
+  return json
+}
+
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
   
@@ -35,9 +68,17 @@ export async function POST(request: NextRequest) {
         
         console.log(`[v0] Starting Gemini search: "${query}" - Total: ${totalCompanies}, Batches: ${numBatches}`)
 
+        const searchRequest = await sql`
+          INSERT INTO search_requests (account_id, raw_query, desired_count, status)
+          VALUES (${accountId}, ${query}, ${totalCompanies}, 'processing')
+          RETURNING *
+        `
+        const searchId = searchRequest[0].id
+
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ 
             type: "start", 
+            searchId,
             totalCompanies, 
             numBatches,
             batchSize: BATCH_SIZE 
@@ -45,48 +86,12 @@ export async function POST(request: NextRequest) {
         )
 
         let totalSaved = 0
+        const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
-        const companySchema = {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              domain: { type: "string" },
-              website: { type: "string" },
-              description: { type: "string" },
-              industry: { type: "string" },
-              location: { type: "string" },
-              employee_count: { type: "string" },
-              founded_year: { type: "integer" },
-              revenue_range: { type: "string" },
-              funding_stage: { type: "string" },
-              technologies: { type: "string" },
-              confidence_score: { type: "number" },
-              investors: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    investor_name: { type: "string" },
-                    investor_type: { type: "string" },
-                    investment_amount: { type: "string" },
-                    investment_round: { type: "string" },
-                    investment_date: { type: "string" },
-                    investment_year: { type: "integer" }
-                  },
-                  required: ["investor_name"]
-                }
-              }
-            },
-            required: ["name", "domain"]
-          }
-        }
-
-        for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
+        const batchPromises = Array.from({ length: numBatches }, async (_, batchIndex) => {
           const companiesInThisBatch = Math.min(BATCH_SIZE, totalCompanies - (batchIndex * BATCH_SIZE))
           
-          console.log(`[v0] Processing batch ${batchIndex + 1}/${numBatches} (${companiesInThisBatch} companies)`)
+          console.log(`[v0] Batch ${batchIndex + 1}/${numBatches} starting (${companiesInThisBatch} companies)`)
           
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ 
@@ -98,115 +103,93 @@ export async function POST(request: NextRequest) {
           )
 
           try {
-            const searchPrompt = `Find ${companiesInThisBatch} companies that match: ${query}
+            const searchPrompt = `Find ${companiesInThisBatch} companies matching: ${query}
 
-For each company provide:
-- Name, domain/website, brief description (1-2 sentences)
-- Industry, location, approximate employee count
-- Founded year, funding stage
-- Top 3-5 key investors with investment details (name, type, amount, round, date/year)
+Return ONLY a valid JSON array with this exact structure:
+[{
+  "name": "Company Name",
+  "domain": "example.com",
+  "website": "https://example.com",
+  "description": "Brief 1-2 sentence description",
+  "industry": "Industry",
+  "location": "City, Country",
+  "employee_count": "50-200",
+  "founded_year": 2020,
+  "revenue_range": "$1M-$10M",
+  "funding_stage": "Series A",
+  "technologies": "React, Node.js, AWS",
+  "confidence_score": 0.85,
+  "investors": [
+    {
+      "investor_name": "Investor Name",
+      "investor_type": "VC Fund",
+      "investment_amount": "$5M",
+      "investment_round": "Series A",
+      "investment_date": "2023-01-15",
+      "investment_year": 2023
+    }
+  ]
+}]
 
-Focus on essential, current information.`
+Rules:
+- Return ONLY the JSON array, no markdown, no explanation
+- Include top 3 investors per company
+- Keep descriptions under 2 sentences
+- Use null for unknown fields`
 
-            const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-
-            console.log(`[v0] Step 1: Getting grounded data with google_search...`)
-
-            const searchResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+            const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                contents: [
-                  {
-                    role: "user",
-                    parts: [{ text: searchPrompt }],
-                  },
-                ],
+                contents: [{
+                  role: "user",
+                  parts: [{ text: searchPrompt }],
+                }],
                 tools: [{ google_search: {} }],
                 generationConfig: {
-                  temperature: 0.3,
-                  maxOutputTokens: 6144,
+                  temperature: 0.2,
+                  maxOutputTokens: 4096,
                 },
               }),
             })
 
-            const searchData = await searchResponse.json()
+            const data = await response.json()
 
-            if (!searchResponse.ok) {
-              throw new Error(searchData.error?.message || searchResponse.statusText)
+            if (!response.ok) {
+              throw new Error(data.error?.message || response.statusText)
             }
 
-            const groundedText = searchData.candidates?.[0]?.content?.parts?.[0]?.text
+            const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text
 
-            if (!groundedText) {
-              throw new Error("No response from Gemini search")
+            if (!responseText) {
+              throw new Error("No response from Gemini")
             }
 
-            console.log(`[v0] Step 1 complete. Response length: ${groundedText.length}`)
+            console.log(`[v0] Batch ${batchIndex + 1} raw response length: ${responseText.length}`)
 
-            const structurePrompt = `Convert this research data to a JSON array. Keep descriptions brief (1-2 sentences). Limit to top 5 investors per company.
-
-Research data:
-${groundedText}
-
-Output valid JSON only.`
-
-            console.log(`[v0] Step 2: Converting to structured JSON...`)
-
-            const structureResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [
-                  {
-                    role: "user",
-                    parts: [{ text: structurePrompt }],
-                  },
-                ],
-                generationConfig: {
-                  temperature: 0,
-                  maxOutputTokens: 8192,
-                  responseMimeType: "application/json",
-                  responseSchema: companySchema,
-                },
-              }),
-            })
-
-            const structureData = await structureResponse.json()
-
-            if (!structureResponse.ok) {
-              throw new Error(structureData.error?.message || structureResponse.statusText)
-            }
-
-            const jsonText = structureData.candidates?.[0]?.content?.parts?.[0]?.text
-
-            if (!jsonText) {
-              throw new Error("No structured response from Gemini")
-            }
-
-            console.log(`[v0] Step 2 complete. JSON length: ${jsonText.length}`)
-
+            const repairedJSON = repairJSON(responseText)
+            
             let parsedResults: any[]
             try {
-              parsedResults = JSON.parse(jsonText)
+              parsedResults = JSON.parse(repairedJSON)
 
               if (!Array.isArray(parsedResults)) {
                 throw new Error("Response is not an array")
               }
               
-              console.log(`[v0] Successfully parsed ${parsedResults.length} companies from batch ${batchIndex + 1}`)
+              console.log(`[v0] Batch ${batchIndex + 1}: parsed ${parsedResults.length} companies`)
             } catch (parseError: any) {
               console.error(`[v0] Batch ${batchIndex + 1} parse error:`, parseError.message)
-              console.error(`[v0] JSON that failed:`, jsonText)
+              console.error(`[v0] Repaired JSON:`, repairedJSON.substring(0, 500))
               
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ 
                   type: "batch_error", 
                   batchIndex: batchIndex + 1,
-                  error: "Failed to parse structured JSON" 
+                  error: "Failed to parse JSON response" 
                 })}\n\n`)
               )
-              continue
+              return
             }
 
             for (const company of parsedResults) {
@@ -253,6 +236,12 @@ Output valid JSON only.`
                 `
 
                 const savedCompany = inserted[0]
+
+                await sql`
+                  INSERT INTO search_results (search_id, company_id, source, score)
+                  VALUES (${searchId}, ${savedCompany.id}, ${'Gemini Search'}, ${company.confidence_score || 0.7})
+                  ON CONFLICT (search_id, company_id) DO NOTHING
+                `
 
                 const investors = company.investors || []
                 const savedInvestors = []
@@ -323,21 +312,21 @@ Output valid JSON only.`
               })}\n\n`)
             )
           }
-        }
+        })
 
-        try {
-          await sql`
-            INSERT INTO search_history (query, results_count, search_timestamp)
-            VALUES (${query}, ${totalSaved}, NOW())
-          `
-        } catch (historyError) {
-          console.error("[v0] Error saving search history:", historyError)
-        }
+        await Promise.all(batchPromises)
+
+        await sql`
+          UPDATE search_requests 
+          SET status = 'completed', completed_at = now()
+          WHERE id = ${searchId}
+        `
 
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ 
             type: "complete", 
-            totalSaved
+            totalSaved,
+            searchId
           })}\n\n`)
         )
 

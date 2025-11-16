@@ -70,68 +70,79 @@ export function GeminiSearchContent() {
         throw new Error("No response stream")
       }
 
+      let buffer = ""
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n")
+        // Decode the chunk and add to buffer
+        buffer += decoder.decode(value, { stream: true })
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6))
+        // Process complete messages (separated by \n\n)
+        const messages = buffer.split("\n\n")
+        buffer = messages.pop() || "" // Keep incomplete message in buffer
 
-              switch (data.type) {
-                case "start":
-                  setBatchProgress({
-                    currentBatch: 0,
-                    totalBatches: data.numBatches,
-                    companiesFound: 0,
-                    totalCompanies: data.totalCompanies,
-                  })
-                  break
+        for (const message of messages) {
+          if (!message.trim()) continue
 
-                case "batch_start":
-                  setBatchProgress((prev) => ({
-                    currentBatch: data.batchIndex,
-                    totalBatches: data.totalBatches,
-                    companiesFound: prev?.companiesFound || 0,
-                    totalCompanies: prev?.totalCompanies || companyCount,
-                  }))
-                  break
+          // Extract data from SSE format: "data: {...}"
+          const dataMatch = message.match(/^data: (.+)$/m)
+          if (!dataMatch) continue
 
-                case "company":
-                  setCompanies((prev) => [...prev, data.company])
-                  setBatchProgress((prev) => ({
-                    currentBatch: prev?.currentBatch || data.batchIndex,
-                    totalBatches: prev?.totalBatches || 1,
-                    companiesFound: data.totalSaved,
-                    totalCompanies: prev?.totalCompanies || companyCount,
-                  }))
-                  break
+          try {
+            const data = JSON.parse(dataMatch[1])
 
-                case "batch_complete":
-                  console.log(`[v0] Batch ${data.batchIndex} complete`)
-                  break
+            switch (data.type) {
+              case "start":
+                setBatchProgress({
+                  currentBatch: 0,
+                  totalBatches: data.numBatches,
+                  companiesFound: 0,
+                  totalCompanies: data.totalCompanies,
+                })
+                break
 
-                case "batch_error":
-                  console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
-                  break
+              case "batch_start":
+                setBatchProgress((prev) => ({
+                  currentBatch: data.batchIndex,
+                  totalBatches: data.totalBatches,
+                  companiesFound: prev?.companiesFound || 0,
+                  totalCompanies: prev?.totalCompanies || companyCount,
+                }))
+                break
 
-                case "complete":
-                  console.log(`[v0] Search complete: ${data.totalSaved} companies`)
-                  setIsLoading(false)
-                  setBatchProgress(null)
-                  loadSearchHistory()
-                  break
+              case "company":
+                setCompanies((prev) => [...prev, data.company])
+                setBatchProgress((prev) => ({
+                  currentBatch: prev?.currentBatch || data.batchIndex,
+                  totalBatches: prev?.totalBatches || 1,
+                  companiesFound: data.totalSaved,
+                  totalCompanies: prev?.totalCompanies || companyCount,
+                }))
+                break
 
-                case "error":
-                  throw new Error(data.message)
-              }
-            } catch (parseError) {
-              console.error("[v0] Error parsing SSE data:", parseError)
+              case "batch_complete":
+                console.log(`[v0] Batch ${data.batchIndex} complete`)
+                break
+
+              case "batch_error":
+                console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
+                break
+
+              case "complete":
+                console.log(`[v0] Search complete: ${data.totalSaved} companies`)
+                setIsLoading(false)
+                setBatchProgress(null)
+                await loadSearchHistory()
+                break
+
+              case "error":
+                throw new Error(data.message)
             }
+          } catch (parseError: any) {
+            console.error("[v0] Error parsing SSE message:", parseError.message)
+            // Don't throw - continue processing other messages
           }
         }
       }

@@ -61,10 +61,7 @@ export async function POST(request: NextRequest) {
               founded_year: { type: "integer" },
               revenue_range: { type: "string" },
               funding_stage: { type: "string" },
-              technologies: { 
-                type: "array",
-                items: { type: "string" }
-              },
+              technologies: { type: "string" },
               confidence_score: { type: "number" },
               investors: {
                 type: "array",
@@ -73,7 +70,6 @@ export async function POST(request: NextRequest) {
                   properties: {
                     investor_name: { type: "string" },
                     investor_type: { type: "string" },
-                    investor_website: { type: "string" },
                     investment_amount: { type: "string" },
                     investment_round: { type: "string" },
                     investment_date: { type: "string" },
@@ -102,17 +98,15 @@ export async function POST(request: NextRequest) {
           )
 
           try {
-            const searchPrompt = `Find ${companiesInThisBatch} ${query}.
+            const searchPrompt = `Find ${companiesInThisBatch} companies that match: ${query}
 
-For each company, research and provide:
-- Company name and website
-- Description of what they do
-- Industry, location, employee count
-- Year founded, revenue range, funding stage
-- Key technologies they use
-- ALL investors who funded them (name, type, website, amount, round, date)
+For each company provide:
+- Name, domain/website, brief description (1-2 sentences)
+- Industry, location, approximate employee count
+- Founded year, funding stage
+- Top 3-5 key investors with investment details (name, type, amount, round, date/year)
 
-Be thorough and accurate. Use web search to find real, current information.`
+Focus on essential, current information.`
 
             const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
@@ -131,7 +125,7 @@ Be thorough and accurate. Use web search to find real, current information.`
                 tools: [{ google_search: {} }],
                 generationConfig: {
                   temperature: 0.3,
-                  maxOutputTokens: 8192,
+                  maxOutputTokens: 6144,
                 },
               }),
             })
@@ -150,12 +144,12 @@ Be thorough and accurate. Use web search to find real, current information.`
 
             console.log(`[v0] Step 1 complete. Response length: ${groundedText.length}`)
 
-            const structurePrompt = `Convert the following company research data into a structured JSON array.
+            const structurePrompt = `Convert this research data to a JSON array. Keep descriptions brief (1-2 sentences). Limit to top 5 investors per company.
 
 Research data:
 ${groundedText}
 
-Extract the information into the exact JSON format specified in the schema. Be precise and include all investor information found.`
+Output valid JSON only.`
 
             console.log(`[v0] Step 2: Converting to structured JSON...`)
 
@@ -171,7 +165,7 @@ Extract the information into the exact JSON format specified in the schema. Be p
                 ],
                 generationConfig: {
                   temperature: 0,
-                  maxOutputTokens: 4096,
+                  maxOutputTokens: 8192,
                   responseMimeType: "application/json",
                   responseSchema: companySchema,
                 },
@@ -221,6 +215,10 @@ Extract the information into the exact JSON format specified in the schema. Be p
                 const website = company.website || (company.domain ? `https://${company.domain}` : null)
                 const faviconUrl = getFaviconUrl(website || domain)
 
+                const technologies = typeof company.technologies === 'string' 
+                  ? company.technologies.split(',').map((t: string) => t.trim()).filter(Boolean)
+                  : (company.technologies || [])
+
                 const inserted = await sql`
                   INSERT INTO companies (
                     name, domain, description, industry, location, website,
@@ -237,7 +235,7 @@ Extract the information into the exact JSON format specified in the schema. Be p
                     ${company.revenue_range || null},
                     ${company.funding_stage || null},
                     ${company.founded_year || null},
-                    ${company.technologies || []},
+                    ${technologies},
                     ${company.confidence_score ? Math.round(company.confidence_score * 100) : 70},
                     ${faviconUrl},
                     false
@@ -270,7 +268,7 @@ Extract the information into the exact JSON format specified in the schema. Be p
                         ${savedCompany.id},
                         ${investor.investor_name},
                         ${investor.investor_type || null},
-                        ${investor.investor_website || null},
+                        ${null},
                         ${investor.investment_amount || null},
                         ${investor.investment_round || null},
                         ${investor.investment_date || null},
@@ -280,7 +278,6 @@ Extract the information into the exact JSON format specified in the schema. Be p
                       )
                       ON CONFLICT (company_id, investor_name, investment_round) DO UPDATE SET
                         investor_type = COALESCE(EXCLUDED.investor_type, investors.investor_type),
-                        investor_website = COALESCE(EXCLUDED.investor_website, investors.investor_website),
                         investment_amount = COALESCE(EXCLUDED.investment_amount, investors.investment_amount),
                         investment_date = COALESCE(EXCLUDED.investment_date, investors.investment_date),
                         updated_at = now()

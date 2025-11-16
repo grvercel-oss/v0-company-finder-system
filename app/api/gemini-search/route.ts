@@ -46,6 +46,54 @@ export async function POST(request: NextRequest) {
 
         let totalSaved = 0
 
+        function repairJSON(jsonString: string): string {
+          let repaired = jsonString
+          
+          // Remove any text before first [ and after last ]
+          const firstBracket = repaired.indexOf('[')
+          const lastBracket = repaired.lastIndexOf(']')
+          if (firstBracket !== -1 && lastBracket !== -1) {
+            repaired = repaired.substring(firstBracket, lastBracket + 1)
+          }
+          
+          // Fix unescaped quotes in strings - find patterns like "text "quoted" text"
+          repaired = repaired.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, (match, p1, p2, p3) => {
+            // If middle part looks like a quoted phrase, escape it
+            if (p2.trim()) {
+              return `"${p1}\\"${p2}\\"${p3}":`
+            }
+            return match
+          })
+          
+          // Remove trailing commas before closing brackets/braces
+          repaired = repaired.replace(/,(\s*[}\]])/g, '$1')
+          
+          // Fix incomplete strings at end of file (truncation)
+          if (!repaired.endsWith(']') && !repaired.endsWith('}]')) {
+            // Try to close incomplete objects
+            const openBraces = (repaired.match(/{/g) || []).length
+            const closeBraces = (repaired.match(/}/g) || []).length
+            const openBrackets = (repaired.match(/\[/g) || []).length
+            const closeBrackets = (repaired.match(/\]/g) || []).length
+            
+            // Add missing closing braces
+            for (let i = 0; i < openBraces - closeBraces; i++) {
+              repaired += '}'
+            }
+            // Add missing closing brackets
+            for (let i = 0; i < openBrackets - closeBrackets; i++) {
+              repaired += ']'
+            }
+          }
+          
+          // Fix incomplete property values (e.g., "investor_web instead of "investor_website": "...")
+          // Remove incomplete properties at the end
+          repaired = repaired.replace(/,\s*"[^"]*$/, '')
+          repaired = repaired.replace(/,\s*"[^"]*:\s*"[^"]*$/, '')
+          
+          return repaired
+        }
+
         for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
           const companiesInThisBatch = Math.min(BATCH_SIZE, totalCompanies - (batchIndex * BATCH_SIZE))
           
@@ -61,56 +109,47 @@ export async function POST(request: NextRequest) {
           )
 
           try {
-            const batchPrompt = `You are a JSON-ONLY API. Return ONLY valid JSON. NO explanations, NO markdown, NO code blocks, NO extra text.
+            const batchPrompt = `Find ${companiesInThisBatch} ${query}.
 
-User query: "${query}"
+For each company, also find their investors and funding information.
 
-Task:
-1. Normalize query: extract industry, region from the query.
-2. Use Google Search grounding to find EXACTLY ${companiesInThisBatch} REAL companies matching the criteria.
-3. For EACH company, also search for their investors and funding information.
-4. Return ONLY this JSON array structure (no other text):
+Return ONLY a JSON array with this EXACT structure (no other text, no markdown):
 
 [
   {
-    "name": "string (required, company name)",
-    "domain": "string (domain only, e.g., 'company.com')",
-    "website": "string (full URL, e.g., 'https://company.com')",
-    "description": "string (brief description)",
-    "industry": "string",
-    "location": "string (city, country)",
-    "employee_count": "string (e.g., '100-500' or '1000+')",
-    "founded_year": number,
-    "revenue_range": "string (e.g., '$10M-$50M' or 'Undisclosed')",
-    "funding_stage": "string (e.g., 'Series A', 'Seed', 'Public')",
-    "technologies": ["string"],
-    "confidence_score": number (0.0-1.0),
+    "name": "Company Name",
+    "domain": "company.com",
+    "website": "https://company.com",
+    "description": "Brief description",
+    "industry": "Industry name",
+    "location": "City, Country",
+    "employee_count": "100-500",
+    "founded_year": 2020,
+    "revenue_range": "$10M-$50M",
+    "funding_stage": "Series A",
+    "technologies": ["tech1", "tech2"],
+    "confidence_score": 0.9,
     "investors": [
       {
-        "investor_name": "string (VC fund, angel investor, or corporate name)",
-        "investor_type": "string (VC, Angel, Corporate, PE, etc.)",
-        "investor_website": "string (investor's website URL if available)",
-        "investment_amount": "string (e.g., '$10M', 'Undisclosed')",
-        "investment_round": "string (e.g., 'Seed', 'Series A', 'Series B')",
-        "investment_date": "string (YYYY-MM-DD format if known)",
-        "investment_year": number (year only if full date unknown)
+        "investor_name": "Investor Name",
+        "investor_type": "VC",
+        "investor_website": "https://investor.com",
+        "investment_amount": "$5M",
+        "investment_round": "Seed",
+        "investment_date": "2023-01-15",
+        "investment_year": 2023
       }
     ]
   }
 ]
 
-CRITICAL RULES:
-- Return EXACTLY ${companiesInThisBatch} companies (no more, no less)
-- Start with [ and end with ]
-- NO text before or after the JSON
-- Use real company AND investor data from Google Search
-- Include as many investors as you can find for each company
-- If no investors found for a company: set "investors": []
-- All string values must be properly quoted
-- All numeric values must be numbers (not strings)
+RULES:
+- Return ONLY the JSON array (start with [ and end with ])
+- NO markdown, NO explanations, NO code blocks
+- All strings must use double quotes
+- Numbers must be unquoted
 - No trailing commas
-
-START JSON NOW:`
+- If investors unknown, use empty array []`
 
             const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
@@ -126,8 +165,8 @@ START JSON NOW:`
                 ],
                 tools: [{ google_search: {} }],
                 generationConfig: {
-                  temperature: 0.2,
-                  maxOutputTokens: 4096, // Reduced for 5 companies
+                  temperature: 0.1, // Lower temperature for more consistent output
+                  maxOutputTokens: 4096,
                 },
               }),
             })
@@ -144,33 +183,45 @@ START JSON NOW:`
               throw new Error("No response from Gemini")
             }
 
+            console.log(`[v0] Raw response length: ${rawText.length}`)
+
             let parsedResults: any[]
             try {
               let jsonString = rawText.trim()
               
-              // Remove markdown
-              jsonString = jsonString.replace(/```json\s*/g, "").replace(/```\s*/g, "")
+              // Remove markdown code blocks
+              jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
               
-              // Extract array
+              // Remove any explanatory text before/after JSON
               const arrayStart = jsonString.indexOf("[")
               const arrayEnd = jsonString.lastIndexOf("]")
               
-              if (arrayStart !== -1 && arrayEnd !== -1) {
-                jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
+              if (arrayStart === -1 || arrayEnd === -1) {
+                throw new Error("No JSON array found in response")
               }
+              
+              jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
+              
+              jsonString = repairJSON(jsonString)
+              
+              console.log(`[v0] Attempting to parse JSON (first 500 chars): ${jsonString.substring(0, 500)}...`)
 
               parsedResults = JSON.parse(jsonString)
 
               if (!Array.isArray(parsedResults)) {
                 throw new Error("Response is not an array")
               }
+              
+              console.log(`[v0] Successfully parsed ${parsedResults.length} companies from batch ${batchIndex + 1}`)
             } catch (parseError: any) {
               console.error(`[v0] Batch ${batchIndex + 1} parse error:`, parseError.message)
+              console.error(`[v0] Failed JSON snippet (around error): ${rawText.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`)
+              
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ 
                   type: "batch_error", 
                   batchIndex: batchIndex + 1,
-                  error: "Failed to parse results" 
+                  error: "Failed to parse results from Gemini" 
                 })}\n\n`)
               )
               continue

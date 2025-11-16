@@ -8,7 +8,7 @@ export const maxDuration = 60
 
 function repairJSON(text: string): string {
   // Remove markdown code blocks
-  text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '')
+  text = text.replace(/\`\`\`json\s*/g, '').replace(/\`\`\`\s*/g, '')
   
   // Find JSON array
   const arrayStart = text.indexOf('[')
@@ -68,6 +68,18 @@ export async function POST(request: NextRequest) {
         
         console.log(`[v0] Starting Gemini search: "${query}" - Total: ${totalCompanies}, Batches: ${numBatches}`)
 
+        const existingCompanies = await sql`
+          SELECT DISTINCT domain 
+          FROM companies 
+          WHERE 
+            name ILIKE ${`%${query}%`} OR 
+            description ILIKE ${`%${query}%`} OR
+            industry ILIKE ${`%${query}%`}
+          LIMIT 100
+        `
+        const existingDomains = new Set(existingCompanies.map(c => c.domain.toLowerCase()))
+        console.log(`[v0] Found ${existingDomains.size} existing companies in database`)
+
         const searchRequest = await sql`
           INSERT INTO search_requests (account_id, raw_query, desired_count, status)
           VALUES (${accountId}, ${query}, ${totalCompanies}, 'processing')
@@ -86,6 +98,7 @@ export async function POST(request: NextRequest) {
         )
 
         let totalSaved = 0
+        const foundDomains = new Set<string>()
         const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
         const batchPromises = Array.from({ length: numBatches }, async (_, batchIndex) => {
@@ -103,7 +116,12 @@ export async function POST(request: NextRequest) {
           )
 
           try {
-            const searchPrompt = `Find ${companiesInThisBatch} companies matching: ${query}
+            const excludedDomains = Array.from(new Set([...existingDomains, ...foundDomains]))
+            const exclusionPrompt = excludedDomains.length > 0 
+              ? `\n\nIMPORTANT: EXCLUDE these companies (already found):\n${excludedDomains.slice(0, 20).join(', ')}`
+              : ''
+
+            const searchPrompt = `Find ${companiesInThisBatch} UNIQUE companies matching: ${query}${exclusionPrompt}
 
 Return ONLY a valid JSON array with this exact structure:
 [{
@@ -133,6 +151,8 @@ Return ONLY a valid JSON array with this exact structure:
 
 Rules:
 - Return ONLY the JSON array, no markdown, no explanation
+- DO NOT include any companies from the exclusion list
+- Each company must have a unique domain
 - Include top 3 investors per company
 - Keep descriptions under 2 sentences
 - Use null for unknown fields`
@@ -192,7 +212,29 @@ Rules:
               return
             }
 
-            for (const company of parsedResults) {
+            const uniqueResults = parsedResults.filter(company => {
+              const domain = (company.domain || company.name.toLowerCase().replace(/\s+/g, "")).toLowerCase()
+              
+              // Skip if already in database
+              if (existingDomains.has(domain)) {
+                console.log(`[v0] Skipping duplicate from DB: ${domain}`)
+                return false
+              }
+              
+              // Skip if already found in this search
+              if (foundDomains.has(domain)) {
+                console.log(`[v0] Skipping duplicate from batch: ${domain}`)
+                return false
+              }
+              
+              // Add to tracking set
+              foundDomains.add(domain)
+              return true
+            })
+
+            console.log(`[v0] Batch ${batchIndex + 1}: ${uniqueResults.length} unique companies after deduplication`)
+
+            for (const company of uniqueResults) {
               try {
                 const domain = company.domain || company.name.toLowerCase().replace(/\s+/g, "")
                 const website = company.website || (company.domain ? `https://${company.domain}` : null)
@@ -298,7 +340,7 @@ Rules:
               encoder.encode(`data: ${JSON.stringify({ 
                 type: "batch_complete", 
                 batchIndex: batchIndex + 1,
-                companiesSaved: parsedResults.length
+                companiesSaved: uniqueResults.length
               })}\n\n`)
             )
 
@@ -330,7 +372,7 @@ Rules:
           })}\n\n`)
         )
 
-        console.log(`[v0] Search complete: ${totalSaved} companies saved`)
+        console.log(`[v0] Search complete: ${totalSaved} companies saved (${foundDomains.size - totalSaved} duplicates filtered)`)
         controller.close()
 
       } catch (error: any) {

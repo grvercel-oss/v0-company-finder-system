@@ -76,73 +76,78 @@ export function GeminiSearchContent() {
         const { done, value } = await reader.read()
         if (done) break
 
-        // Decode the chunk and add to buffer
-        buffer += decoder.decode(value, { stream: true })
+        const chunk = decoder.decode(value, { stream: true })
+        buffer += chunk
 
         // Process complete messages (separated by \n\n)
         const messages = buffer.split("\n\n")
         buffer = messages.pop() || "" // Keep incomplete message in buffer
 
         for (const message of messages) {
-          if (!message.trim()) continue
+          if (!message.trim() || message.trim() === "data: [DONE]") continue
 
           // Extract data from SSE format: "data: {...}"
-          const dataMatch = message.match(/^data: (.+)$/m)
-          if (!dataMatch) continue
+          const lines = message.split("\n")
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue
 
-          try {
-            const data = JSON.parse(dataMatch[1])
+            const dataStr = line.slice(6) // Remove "data: " prefix
+            if (!dataStr.trim()) continue
 
-            switch (data.type) {
-              case "start":
-                setBatchProgress({
-                  currentBatch: 0,
-                  totalBatches: data.numBatches,
-                  companiesFound: 0,
-                  totalCompanies: data.totalCompanies,
-                })
-                break
+            try {
+              const data = JSON.parse(dataStr)
 
-              case "batch_start":
-                setBatchProgress((prev) => ({
-                  currentBatch: data.batchIndex,
-                  totalBatches: data.totalBatches,
-                  companiesFound: prev?.companiesFound || 0,
-                  totalCompanies: prev?.totalCompanies || companyCount,
-                }))
-                break
+              switch (data.type) {
+                case "start":
+                  setBatchProgress({
+                    currentBatch: 0,
+                    totalBatches: data.numBatches,
+                    companiesFound: 0,
+                    totalCompanies: data.totalCompanies,
+                  })
+                  break
 
-              case "company":
-                setCompanies((prev) => [...prev, data.company])
-                setBatchProgress((prev) => ({
-                  currentBatch: prev?.currentBatch || data.batchIndex,
-                  totalBatches: prev?.totalBatches || 1,
-                  companiesFound: data.totalSaved,
-                  totalCompanies: prev?.totalCompanies || companyCount,
-                }))
-                break
+                case "batch_start":
+                  setBatchProgress((prev) => ({
+                    currentBatch: data.batchIndex,
+                    totalBatches: data.totalBatches,
+                    companiesFound: prev?.companiesFound || 0,
+                    totalCompanies: prev?.totalCompanies || companyCount,
+                  }))
+                  break
 
-              case "batch_complete":
-                console.log(`[v0] Batch ${data.batchIndex} complete`)
-                break
+                case "company":
+                  setCompanies((prev) => [...prev, data.company])
+                  setBatchProgress((prev) => ({
+                    currentBatch: prev?.currentBatch || data.batchIndex,
+                    totalBatches: prev?.totalBatches || 1,
+                    companiesFound: data.totalSaved,
+                    totalCompanies: prev?.totalCompanies || companyCount,
+                  }))
+                  break
 
-              case "batch_error":
-                console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
-                break
+                case "batch_complete":
+                  console.log(`[v0] Batch ${data.batchIndex} complete`)
+                  break
 
-              case "complete":
-                console.log(`[v0] Search complete: ${data.totalSaved} companies`)
-                setIsLoading(false)
-                setBatchProgress(null)
-                await loadSearchHistory()
-                break
+                case "batch_error":
+                  console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
+                  break
 
-              case "error":
-                throw new Error(data.message)
+                case "complete":
+                  console.log(`[v0] Search complete: ${data.totalSaved} companies`)
+                  setIsLoading(false)
+                  setBatchProgress(null)
+                  await loadSearchHistory()
+                  break
+
+                case "error":
+                  throw new Error(data.message)
+              }
+            } catch (parseError: any) {
+              console.error("[v0] Error parsing SSE data:", parseError.message, "Data:", dataStr.substring(0, 100))
+              // Don't throw - continue processing other messages
             }
-          } catch (parseError: any) {
-            console.error("[v0] Error parsing SSE message:", parseError.message)
-            // Don't throw - continue processing other messages
           }
         }
       }

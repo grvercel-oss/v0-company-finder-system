@@ -46,52 +46,45 @@ export async function POST(request: NextRequest) {
 
         let totalSaved = 0
 
-        function repairJSON(jsonString: string): string {
-          let repaired = jsonString
-          
-          // Remove any text before first [ and after last ]
-          const firstBracket = repaired.indexOf('[')
-          const lastBracket = repaired.lastIndexOf(']')
-          if (firstBracket !== -1 && lastBracket !== -1) {
-            repaired = repaired.substring(firstBracket, lastBracket + 1)
+        const companySchema = {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              domain: { type: "string" },
+              website: { type: "string" },
+              description: { type: "string" },
+              industry: { type: "string" },
+              location: { type: "string" },
+              employee_count: { type: "string" },
+              founded_year: { type: "integer" },
+              revenue_range: { type: "string" },
+              funding_stage: { type: "string" },
+              technologies: { 
+                type: "array",
+                items: { type: "string" }
+              },
+              confidence_score: { type: "number" },
+              investors: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    investor_name: { type: "string" },
+                    investor_type: { type: "string" },
+                    investor_website: { type: "string" },
+                    investment_amount: { type: "string" },
+                    investment_round: { type: "string" },
+                    investment_date: { type: "string" },
+                    investment_year: { type: "integer" }
+                  },
+                  required: ["investor_name"]
+                }
+              }
+            },
+            required: ["name", "domain"]
           }
-          
-          // Fix unescaped quotes in strings - find patterns like "text "quoted" text"
-          repaired = repaired.replace(/"([^"]*)"([^"]*)"([^"]*)":/g, (match, p1, p2, p3) => {
-            // If middle part looks like a quoted phrase, escape it
-            if (p2.trim()) {
-              return `"${p1}\\"${p2}\\"${p3}":`
-            }
-            return match
-          })
-          
-          // Remove trailing commas before closing brackets/braces
-          repaired = repaired.replace(/,(\s*[}\]])/g, '$1')
-          
-          // Fix incomplete strings at end of file (truncation)
-          if (!repaired.endsWith(']') && !repaired.endsWith('}]')) {
-            // Try to close incomplete objects
-            const openBraces = (repaired.match(/{/g) || []).length
-            const closeBraces = (repaired.match(/}/g) || []).length
-            const openBrackets = (repaired.match(/\[/g) || []).length
-            const closeBrackets = (repaired.match(/\]/g) || []).length
-            
-            // Add missing closing braces
-            for (let i = 0; i < openBraces - closeBraces; i++) {
-              repaired += '}'
-            }
-            // Add missing closing brackets
-            for (let i = 0; i < openBrackets - closeBrackets; i++) {
-              repaired += ']'
-            }
-          }
-          
-          // Fix incomplete property values (e.g., "investor_web instead of "investor_website": "...")
-          // Remove incomplete properties at the end
-          repaired = repaired.replace(/,\s*"[^"]*$/, '')
-          repaired = repaired.replace(/,\s*"[^"]*:\s*"[^"]*$/, '')
-          
-          return repaired
         }
 
         for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
@@ -109,104 +102,99 @@ export async function POST(request: NextRequest) {
           )
 
           try {
-            const batchPrompt = `Find ${companiesInThisBatch} ${query}.
+            const searchPrompt = `Find ${companiesInThisBatch} ${query}.
 
-For each company, also find their investors and funding information.
+For each company, research and provide:
+- Company name and website
+- Description of what they do
+- Industry, location, employee count
+- Year founded, revenue range, funding stage
+- Key technologies they use
+- ALL investors who funded them (name, type, website, amount, round, date)
 
-Return ONLY a JSON array with this EXACT structure (no other text, no markdown):
+Be thorough and accurate. Use web search to find real, current information.`
 
-[
-  {
-    "name": "Company Name",
-    "domain": "company.com",
-    "website": "https://company.com",
-    "description": "Brief description",
-    "industry": "Industry name",
-    "location": "City, Country",
-    "employee_count": "100-500",
-    "founded_year": 2020,
-    "revenue_range": "$10M-$50M",
-    "funding_stage": "Series A",
-    "technologies": ["tech1", "tech2"],
-    "confidence_score": 0.9,
-    "investors": [
-      {
-        "investor_name": "Investor Name",
-        "investor_type": "VC",
-        "investor_website": "https://investor.com",
-        "investment_amount": "$5M",
-        "investment_round": "Seed",
-        "investment_date": "2023-01-15",
-        "investment_year": 2023
-      }
-    ]
-  }
-]
+            const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
-RULES:
-- Return ONLY the JSON array (start with [ and end with ])
-- NO markdown, NO explanations, NO code blocks
-- All strings must use double quotes
-- Numbers must be unquoted
-- No trailing commas
-- If investors unknown, use empty array []`
+            console.log(`[v0] Step 1: Getting grounded data with google_search...`)
 
-            const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
-
-            const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+            const searchResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 contents: [
                   {
                     role: "user",
-                    parts: [{ text: batchPrompt }],
+                    parts: [{ text: searchPrompt }],
                   },
                 ],
                 tools: [{ google_search: {} }],
                 generationConfig: {
-                  temperature: 0.1, // Lower temperature for more consistent output
-                  maxOutputTokens: 4096,
+                  temperature: 0.3,
+                  maxOutputTokens: 8192,
                 },
               }),
             })
 
-            const responseData = await response.json()
+            const searchData = await searchResponse.json()
 
-            if (!response.ok) {
-              throw new Error(responseData.error?.message || response.statusText)
+            if (!searchResponse.ok) {
+              throw new Error(searchData.error?.message || searchResponse.statusText)
             }
 
-            const rawText = responseData.candidates?.[0]?.content?.parts?.[0]?.text
+            const groundedText = searchData.candidates?.[0]?.content?.parts?.[0]?.text
 
-            if (!rawText) {
-              throw new Error("No response from Gemini")
+            if (!groundedText) {
+              throw new Error("No response from Gemini search")
             }
 
-            console.log(`[v0] Raw response length: ${rawText.length}`)
+            console.log(`[v0] Step 1 complete. Response length: ${groundedText.length}`)
+
+            const structurePrompt = `Convert the following company research data into a structured JSON array.
+
+Research data:
+${groundedText}
+
+Extract the information into the exact JSON format specified in the schema. Be precise and include all investor information found.`
+
+            console.log(`[v0] Step 2: Converting to structured JSON...`)
+
+            const structureResponse = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    role: "user",
+                    parts: [{ text: structurePrompt }],
+                  },
+                ],
+                generationConfig: {
+                  temperature: 0,
+                  maxOutputTokens: 4096,
+                  responseMimeType: "application/json",
+                  responseSchema: companySchema,
+                },
+              }),
+            })
+
+            const structureData = await structureResponse.json()
+
+            if (!structureResponse.ok) {
+              throw new Error(structureData.error?.message || structureResponse.statusText)
+            }
+
+            const jsonText = structureData.candidates?.[0]?.content?.parts?.[0]?.text
+
+            if (!jsonText) {
+              throw new Error("No structured response from Gemini")
+            }
+
+            console.log(`[v0] Step 2 complete. JSON length: ${jsonText.length}`)
 
             let parsedResults: any[]
             try {
-              let jsonString = rawText.trim()
-              
-              // Remove markdown code blocks
-              jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
-              
-              // Remove any explanatory text before/after JSON
-              const arrayStart = jsonString.indexOf("[")
-              const arrayEnd = jsonString.lastIndexOf("]")
-              
-              if (arrayStart === -1 || arrayEnd === -1) {
-                throw new Error("No JSON array found in response")
-              }
-              
-              jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
-              
-              jsonString = repairJSON(jsonString)
-              
-              console.log(`[v0] Attempting to parse JSON (first 500 chars): ${jsonString.substring(0, 500)}...`)
-
-              parsedResults = JSON.parse(jsonString)
+              parsedResults = JSON.parse(jsonText)
 
               if (!Array.isArray(parsedResults)) {
                 throw new Error("Response is not an array")
@@ -215,13 +203,13 @@ RULES:
               console.log(`[v0] Successfully parsed ${parsedResults.length} companies from batch ${batchIndex + 1}`)
             } catch (parseError: any) {
               console.error(`[v0] Batch ${batchIndex + 1} parse error:`, parseError.message)
-              console.error(`[v0] Failed JSON snippet (around error): ${rawText.substring(Math.max(0, parseError.position - 100), parseError.position + 100)}`)
+              console.error(`[v0] JSON that failed:`, jsonText)
               
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ 
                   type: "batch_error", 
                   batchIndex: batchIndex + 1,
-                  error: "Failed to parse results from Gemini" 
+                  error: "Failed to parse structured JSON" 
                 })}\n\n`)
               )
               continue

@@ -64,28 +64,42 @@ export function GeminiSearchContent() {
         throw new Error("No response stream")
       }
 
+      let buffer = ""
+      
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n")
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n\n")
+        
+        // Keep the last incomplete chunk in buffer
+        buffer = lines.pop() || ""
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
+        for (const chunk of lines) {
+          if (!chunk.trim()) continue
+          
+          const eventMatch = chunk.match(/event:\s*(\w+)/)
+          const dataMatch = chunk.match(/data:\s*(.+)/)
+          
+          if (eventMatch && dataMatch) {
+            const event = eventMatch[1]
             try {
-              const data = JSON.parse(line.slice(6))
+              const data = JSON.parse(dataMatch[1])
               
-              if (line.includes('event: new_company')) {
+              if (event === 'new_company') {
                 foundCompanies.push(data.company)
                 setCompanies([...foundCompanies])
-              } else if (line.includes('event: error')) {
+                console.log("[v0] New company:", data.company.name)
+              } else if (event === 'error') {
                 throw new Error(data.message)
-              } else if (line.includes('event: search_completed')) {
+              } else if (event === 'search_completed') {
                 console.log("[v0] Search completed:", data.total, "companies")
+              } else if (event === 'status') {
+                console.log("[v0] Status:", data.message)
               }
-            } catch (e) {
-              // Ignore parse errors for non-JSON lines
+            } catch (e: any) {
+              console.error("[v0] Error parsing SSE data:", e.message)
             }
           }
         }

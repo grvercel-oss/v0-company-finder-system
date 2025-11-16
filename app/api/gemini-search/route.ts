@@ -107,26 +107,52 @@ Find 10 real companies with investor information.`
           let parsedResults: any[]
           try {
             let jsonString = rawText.trim()
+            
+            // Remove markdown code blocks
             jsonString = jsonString.replace(/\`\`\`json\s*/g, "").replace(/\`\`\`\s*/g, "")
-
+            
+            // Find JSON array boundaries
             const arrayStart = jsonString.indexOf("[")
             const arrayEnd = jsonString.lastIndexOf("]")
 
             if (arrayStart === -1 || arrayEnd === -1) {
-              throw new Error("No JSON array found")
+              throw new Error("No JSON array found in response")
             }
 
             jsonString = jsonString.substring(arrayStart, arrayEnd + 1)
-            jsonString = jsonString.replace(/,(\s*[}\]])/g, "$1").replace(/(\d{4})\s*$$[^)]+$$[^,}\]]*/g, "$1")
+            
+            // Clean up common JSON issues:
+            // 1. Remove trailing commas before } or ]
+            jsonString = jsonString.replace(/,(\s*[}\]])/g, "$1")
+            
+            // 2. Remove parenthetical notes after numbers like "2018 (Ubigi brand)"
+            jsonString = jsonString.replace(/(\d{4})\s*$$[^)]+$$/g, "$1")
+            
+            // 3. Remove text after commas in number fields like "2000 (Transatel),"
+            jsonString = jsonString.replace(/:\s*\d+\s*$$[^)]+$$,/g, (match) => {
+              const num = match.match(/:\s*(\d+)/)?.[1]
+              return `: ${num},`
+            })
+            
+            // 4. Fix unquoted property names
+            jsonString = jsonString.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3')
+            
+            // 5. Escape unescaped quotes in string values
+            jsonString = jsonString.replace(/:\s*"([^"]*)"([^,}\]]*)"([^,}\]]*)",/g, (match, p1, p2, p3) => {
+              return `: "${p1}\\"${p2}\\"${p3}",`
+            })
+
+            console.log("[v0] Cleaned JSON first 500 chars:", jsonString.substring(0, 500))
 
             parsedResults = JSON.parse(jsonString)
 
             if (!Array.isArray(parsedResults)) {
-              throw new Error("Result is not an array")
+              throw new Error("Parsed result is not an array")
             }
           } catch (parseError: any) {
             console.error("[v0] Parse error:", parseError.message)
-            send("error", { message: "Failed to parse AI response" })
+            console.error("[v0] Failed JSON substring:", rawText.substring(0, 1000))
+            send("error", { message: "Failed to parse AI response. Please try again." })
             controller.close()
             return
           }

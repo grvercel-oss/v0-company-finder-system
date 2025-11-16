@@ -64,9 +64,11 @@ export async function POST(request: NextRequest) {
         }
 
         const BATCH_SIZE = 5
-        const numBatches = Math.ceil(totalCompanies / BATCH_SIZE)
+        const BUFFER_MULTIPLIER = 1.2
+        const requestCount = Math.ceil(totalCompanies * BUFFER_MULTIPLIER)
+        const numBatches = Math.ceil(requestCount / BATCH_SIZE)
         
-        console.log(`[v0] Starting Gemini search: "${query}" - Total: ${totalCompanies}, Batches: ${numBatches}`)
+        console.log(`[v0] Starting Gemini search: "${query}" - Target: ${totalCompanies}, Requesting: ${requestCount}, Batches: ${numBatches}`)
 
         const existingCompanies = await sql`
           SELECT DISTINCT domain 
@@ -92,6 +94,7 @@ export async function POST(request: NextRequest) {
             type: "start", 
             searchId,
             totalCompanies, 
+            requestCount,
             numBatches,
             batchSize: BATCH_SIZE 
           })}\n\n`)
@@ -99,19 +102,17 @@ export async function POST(request: NextRequest) {
 
         let totalSaved = 0
         const foundDomains = new Set<string>()
+        const savedCompanies: any[] = []
         const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
 
-        const batchPromises = Array.from({ length: numBatches }, async (_, batchIndex) => {
-          const companiesInThisBatch = Math.min(BATCH_SIZE, totalCompanies - (batchIndex * BATCH_SIZE))
-          
-          console.log(`[v0] Batch ${batchIndex + 1}/${numBatches} starting (${companiesInThisBatch} companies)`)
+        const processBatch = async (batchIndex: number, companiesNeeded: number) => {
+          console.log(`[v0] Batch ${batchIndex + 1} starting (${companiesNeeded} companies)`)
           
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ 
               type: "batch_start", 
               batchIndex: batchIndex + 1,
-              totalBatches: numBatches,
-              companiesInBatch: companiesInThisBatch
+              companiesInBatch: companiesNeeded
             })}\n\n`)
           )
 
@@ -121,41 +122,61 @@ export async function POST(request: NextRequest) {
               ? `\n\nIMPORTANT: EXCLUDE these companies (already found):\n${excludedDomains.slice(0, 20).join(', ')}`
               : ''
 
-            const searchPrompt = `Find ${companiesInThisBatch} UNIQUE companies matching: ${query}${exclusionPrompt}
+            const searchPrompt = `You are a precise firmographics extractor. Return ONLY JSON array of up to ${companiesNeeded} companies.
 
-Return ONLY a valid JSON array with this exact structure:
-[{
-  "name": "Company Name",
-  "domain": "example.com",
-  "website": "https://example.com",
-  "description": "Brief 1-2 sentence description",
-  "industry": "Industry",
-  "location": "City, Country",
-  "employee_count": "50-200",
-  "founded_year": 2020,
-  "revenue_range": "$1M-$10M",
-  "funding_stage": "Series A",
-  "technologies": "React, Node.js, AWS",
-  "confidence_score": 0.85,
-  "investors": [
-    {
-      "investor_name": "Investor Name",
-      "investor_type": "VC Fund",
-      "investment_amount": "$5M",
-      "investment_round": "Series A",
-      "investment_date": "2023-01-15",
-      "investment_year": 2023
-    }
-  ]
-}]
+User query: "${query}"${exclusionPrompt}
 
 Rules:
-- Return ONLY the JSON array, no markdown, no explanation
-- DO NOT include any companies from the exclusion list
-- Each company must have a unique domain
-- Include top 3 investors per company
-- Keep descriptions under 2 sentences
-- Use null for unknown fields`
+- Use Google Search grounding to DEEPLY search these sources for EACH company:
+  * Crunchbase (funding, investors, detailed firmographics)
+  * LinkedIn (exact employee count, location, verified company data)
+  * Company website (official info, technologies used)
+  * PitchBook (funding rounds, valuations, investors)
+  * News articles (recent funding, growth, revenue mentions)
+  * CB Insights, AngelList, Product Hunt
+- PRIORITIZE finding: employee_count (exact range from LinkedIn), founded_year (exact), revenue_range (from reports/news), funding_stage, location (city, country), industry (detailed)
+- If data exists online, INCLUDE it. Do NOT guess – VERIFY from sources
+- If not found after thorough search: use null or "N/A"
+- Each company MUST have a unique domain
+- Include detailed investor information with amounts, rounds, dates, and investor websites when available
+
+Structure (MUST include all fields):
+[
+  {
+    "name": "string (official company name)",
+    "domain": "string (primary domain only, e.g. 'example.com')",
+    "website": "string (full URL with https://)",
+    "description": "string (1-2 sentences, verified from official sources)",
+    "industry": "string (detailed, e.g. 'Fintech - Payment Processing' or 'SaaS - CRM')",
+    "location": "string (format: 'City, Country', e.g. 'San Francisco, USA' or 'Madrid, Spain')",
+    "employee_count": "string (exact range from LinkedIn, e.g. '51-200' or '1001-5000' or 'N/A')",
+    "founded_year": number (exact year, e.g. 2019) or null,
+    "revenue_range": "string (from reports/news, e.g. '$10M-$50M' or '$100M+' or 'N/A')",
+    "funding_stage": "string (e.g. 'Series B', 'Seed', 'Bootstrapped', 'Public' or 'N/A')",
+    "technologies": "string (comma-separated, e.g. 'React, Node.js, AWS, PostgreSQL')",
+    "confidence_score": number (0.0-1.0 based on data quality and source reliability),
+    "investors": [
+      {
+        "investor_name": "string (full investor name)",
+        "investor_type": "string (e.g. 'VC Fund', 'Angel', 'Corporate VC', 'PE Firm')",
+        "investment_amount": "string (e.g. '$5M', '$25M', 'Undisclosed')",
+        "investment_round": "string (e.g. 'Seed', 'Series A', 'Series B')",
+        "investment_date": "string (ISO format YYYY-MM-DD, e.g. '2023-06-15' or null)",
+        "investment_year": number (e.g. 2023 or null)
+      }
+    ]
+  }
+]
+
+CRITICAL RULES:
+- NO markdown formatting (no \`\`\`json)
+- NO explanations or text before/after JSON
+- START with [ and END with ]
+- DO NOT include companies from the exclusion list
+- Ensure ALL fields are present for each company
+- Use null for unknown values, "N/A" for strings
+- Maximum 3 top investors per company (prioritize largest/most recent rounds)
+- Cross-reference multiple sources to verify accuracy`
 
             const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
               method: "POST",
@@ -167,7 +188,7 @@ Rules:
                 }],
                 tools: [{ google_search: {} }],
                 generationConfig: {
-                  temperature: 0.2,
+                  temperature: 0.2, // Low temperature for consistent, factual responses
                   maxOutputTokens: 4096,
                 },
               }),
@@ -185,8 +206,6 @@ Rules:
               throw new Error("No response from Gemini")
             }
 
-            console.log(`[v0] Batch ${batchIndex + 1} raw response length: ${responseText.length}`)
-
             const repairedJSON = repairJSON(responseText)
             
             let parsedResults: any[]
@@ -200,7 +219,6 @@ Rules:
               console.log(`[v0] Batch ${batchIndex + 1}: parsed ${parsedResults.length} companies`)
             } catch (parseError: any) {
               console.error(`[v0] Batch ${batchIndex + 1} parse error:`, parseError.message)
-              console.error(`[v0] Repaired JSON:`, repairedJSON.substring(0, 500))
               
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify({ 
@@ -209,32 +227,30 @@ Rules:
                   error: "Failed to parse JSON response" 
                 })}\n\n`)
               )
-              return
+              return []
             }
 
             const uniqueResults = parsedResults.filter(company => {
               const domain = (company.domain || company.name.toLowerCase().replace(/\s+/g, "")).toLowerCase()
               
-              // Skip if already in database
-              if (existingDomains.has(domain)) {
-                console.log(`[v0] Skipping duplicate from DB: ${domain}`)
+              if (existingDomains.has(domain) || foundDomains.has(domain)) {
                 return false
               }
               
-              // Skip if already found in this search
-              if (foundDomains.has(domain)) {
-                console.log(`[v0] Skipping duplicate from batch: ${domain}`)
-                return false
-              }
-              
-              // Add to tracking set
               foundDomains.add(domain)
               return true
             })
 
             console.log(`[v0] Batch ${batchIndex + 1}: ${uniqueResults.length} unique companies after deduplication`)
 
+            const batchSavedCompanies = []
+
             for (const company of uniqueResults) {
+              if (totalSaved >= totalCompanies) {
+                console.log(`[v0] Target reached (${totalCompanies}), stopping save`)
+                break
+              }
+
               try {
                 const domain = company.domain || company.name.toLowerCase().replace(/\s+/g, "")
                 const website = company.website || (company.domain ? `https://${company.domain}` : null)
@@ -322,6 +338,7 @@ Rules:
 
                 savedCompany.investors = savedInvestors
                 totalSaved++
+                batchSavedCompanies.push(savedCompany)
 
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({ 
@@ -340,9 +357,11 @@ Rules:
               encoder.encode(`data: ${JSON.stringify({ 
                 type: "batch_complete", 
                 batchIndex: batchIndex + 1,
-                companiesSaved: uniqueResults.length
+                companiesSaved: batchSavedCompanies.length
               })}\n\n`)
             )
+
+            return batchSavedCompanies
 
           } catch (batchError: any) {
             console.error(`[v0] Batch ${batchIndex + 1} error:`, batchError.message)
@@ -353,10 +372,39 @@ Rules:
                 error: batchError.message 
               })}\n\n`)
             )
+            return []
           }
-        })
+        }
+
+        const batchPromises = Array.from({ length: numBatches }, (_, i) => 
+          processBatch(i, Math.min(BATCH_SIZE, requestCount - (i * BATCH_SIZE)))
+        )
 
         await Promise.all(batchPromises)
+
+        console.log(`[v0] Initial batches complete: ${totalSaved}/${totalCompanies} companies`)
+
+        let backupBatchIndex = numBatches
+        while (totalSaved < totalCompanies && backupBatchIndex < numBatches + 5) {
+          const gap = totalCompanies - totalSaved
+          console.log(`[v0] Gap detected: need ${gap} more companies. Starting backup batch ${backupBatchIndex + 1}`)
+          
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ 
+              type: "backup_batch", 
+              gap,
+              batchIndex: backupBatchIndex + 1
+            })}\n\n`)
+          )
+
+          await processBatch(backupBatchIndex, Math.min(BATCH_SIZE, gap + 2))
+          backupBatchIndex++
+
+          if (totalSaved >= totalCompanies) {
+            console.log(`[v0] Target reached after backup batch`)
+            break
+          }
+        }
 
         await sql`
           UPDATE search_requests 
@@ -368,11 +416,12 @@ Rules:
           encoder.encode(`data: ${JSON.stringify({ 
             type: "complete", 
             totalSaved,
+            targetMet: totalSaved >= totalCompanies,
             searchId
           })}\n\n`)
         )
 
-        console.log(`[v0] Search complete: ${totalSaved} companies saved (${foundDomains.size - totalSaved} duplicates filtered)`)
+        console.log(`[v0] Search complete: ${totalSaved}/${totalCompanies} companies saved`)
         controller.close()
 
       } catch (error: any) {

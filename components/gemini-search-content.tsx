@@ -134,10 +134,23 @@ export function GeminiSearchContent() {
                   console.error(`[v0] Batch ${data.batchIndex} error:`, data.error)
                   break
 
+                case "backup_batch":
+                  console.log(`[v0] Backup batch ${data.batchIndex}: need ${data.gap} more companies`)
+                  setBatchProgress((prev) => ({
+                    currentBatch: data.batchIndex,
+                    totalBatches: prev?.totalBatches || 1,
+                    companiesFound: prev?.companiesFound || 0,
+                    totalCompanies: prev?.totalCompanies || companyCount,
+                  }))
+                  break
+
                 case "complete":
                   console.log(`[v0] Search complete: ${data.totalSaved} companies`)
                   setIsLoading(false)
                   setBatchProgress(null)
+                  if (!data.targetMet && data.totalSaved < companyCount) {
+                    setError(`Found ${data.totalSaved} companies (requested ${companyCount}). Some companies may not match criteria or exist in the database.`)
+                  }
                   await loadSearchHistory()
                   break
 

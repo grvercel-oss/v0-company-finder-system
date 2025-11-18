@@ -1,8 +1,24 @@
-// Gemini AI with Web Search - Google's Gemini for company research
-
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+function validateApiKey(key: string | undefined): string {
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is not set")
+  }
+  
+  // Remove any whitespace or control characters
+  const cleaned = key.trim().replace(/[\x00-\x1F\x7F-\x9F]/g, "")
+  
+  // Check if key contains only valid characters (alphanumeric, dash, underscore)
+  if (!/^[A-Za-z0-9_-]+$/.test(cleaned)) {
+    console.error("[v0] [Gemini] API key contains invalid characters")
+    throw new Error("GEMINI_API_KEY contains invalid characters. Please check your environment variables.")
+  }
+  
+  return cleaned
+}
+
+const apiKey = validateApiKey(process.env.GEMINI_API_KEY)
+const genAI = new GoogleGenerativeAI(apiKey)
 
 export interface CompanyResearchData {
   companyName: string
@@ -47,267 +63,241 @@ export interface CompanyResearchData {
 }
 
 /**
- * ULTIMATE clean text - strips EVERYTHING except basic ASCII
+ * Clean and validate string data
  */
-function cleanText(text: string): string {
-  if (!text) return ""
-
-  const buffer = Buffer.from(text, "utf8")
-  let cleaned = buffer.toString("utf8")
-
-  // Remove ALL non-printable characters
-  cleaned = cleaned
-    .replace(/[\x00-\x1F\x7F-\x9F]/g, "") // All control characters
-    .replace(/[\u200B-\u200D\uFEFF]/g, "") // Zero-width characters
-    .replace(/[\u2000-\u206F]/g, " ") // All special spaces to regular space
-    .replace(/[\u2018\u2019]/g, "'") // Smart quotes
-    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
-    .replace(/[\u2013\u2014]/g, "-") // Dashes
-    .replace(/\u2026/g, "...") // Ellipsis
-
-  // Keep only: letters, numbers, basic punctuation, space, newline
-  cleaned = cleaned.replace(/[^\x20-\x7E\n\r\t]/g, " ")
-
-  // Normalize whitespace
-  cleaned = cleaned.replace(/\s+/g, " ").trim()
-
-  return cleaned
+function cleanString(value: unknown): string {
+  if (typeof value !== "string") return ""
+  // Remove control characters but keep basic punctuation and newlines
+  return value
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
 }
 
 /**
- * Ultra-safe JSON stringification with character-by-character validation
+ * Clean and validate number data
  */
-function safeStringify(obj: any): string {
-  const replacer = (key: string, value: any) => {
-    if (typeof value === "string") {
-      // Clean every single character
-      return Array.from(value)
-        .map((char) => {
-          const code = char.charCodeAt(0)
-          // Only allow: space (32), printable ASCII (33-126), newline (10), carriage return (13), tab (9)
-          if (code === 32 || (code >= 33 && code <= 126) || code === 10 || code === 13 || code === 9) {
-            return char
-          }
-          return " " // Replace any other character with space
-        })
-        .join("")
-        .replace(/\s+/g, " ")
-        .trim()
-    }
-    return value
-  }
-
-  return JSON.stringify(obj, replacer, 2)
+function cleanNumber(value: unknown, defaultValue: number = 0): number {
+  const num = Number(value)
+  return isNaN(num) || !isFinite(num) ? defaultValue : num
 }
 
 /**
- * Research company using Google Gemini with Google Search grounding
+ * Clean and validate array data
+ */
+function cleanArray<T>(value: unknown, itemCleaner: (item: unknown) => T): T[] {
+  if (!Array.isArray(value)) return []
+  return value.map(itemCleaner).filter((item) => item !== null && item !== undefined)
+}
+
+/**
+ * Research company using Google Gemini with structured output
  */
 export async function researchCompanyWithGemini(companyName: string): Promise<CompanyResearchData> {
-  console.log("[v0] [Gemini Web Search] Starting research for:", companyName)
+  console.log("[v0] [Gemini] Starting research for:", companyName)
 
   try {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        responseMimeType: "application/json",
+      },
       tools: [{ googleSearch: {} }],
     })
 
-    const prompt = cleanText(`Research "${companyName}" and provide a comprehensive report. CRITICAL: Prioritize the most recent data from 2024-2025.
-
-PRIORITY 1 - RECENT FUNDING & INVESTORS (2024-2025 FIRST):
-- Search for funding announcements from 2024 and 2025 FIRST
-- All funding rounds (Seed, Series A/B/C/D, etc.) with specific amounts in USD
-- Exact dates of funding announcements (MUST include 2024-2025 if any exist)
-- Lead investors and participating investors for each round
-- Total funding raised to date
-- Current company valuation (post-money valuation from latest round)
-- Recent investor additions and cap table changes
-- Notable angel investors
-
-PRIORITY 2 - RECENT FINANCIAL METRICS (2024-2025):
-- Latest Annual Recurring Revenue (ARR) - prioritize 2024/2025 data
-- Latest Monthly Recurring Revenue (MRR)
-- Most recent revenue figures and growth rate
-- Current profitability status
-- Latest employee count
-- Recent acquisitions or exits
-
-PRIORITY 3 - CURRENT COMPANY INFORMATION:
-- Company overview and current mission
-- Latest products and services
-- Current market position
-- Key competitors
-- Current leadership team (CEO, CFO, CTO, etc.)
-- Recent news from 2024-2025
-- Latest press releases
-
-SEARCH STRATEGY:
-1. First search for "${companyName} funding 2025"
-2. Then search for "${companyName} funding 2024"
-3. Then search for "${companyName} Series [A/B/C/D] 2024 2025"
-4. Search "${companyName} valuation 2024 2025"
-5. Search "${companyName} revenue 2024"
-
-Use sources like:
-- TechCrunch (search: "${companyName} funding 2024 2025")
-- Crunchbase (most recent funding)
-- PitchBook
-- Company press releases from 2024-2025
-- SEC filings if public
-
-Return ONLY a valid JSON object (no markdown, no code blocks) with this structure:
-{
-  "summary": "2-3 sentence executive summary highlighting LATEST funding and 2024-2025 metrics",
-  "categories": [
+    const schemaDescription = `
     {
-      "category": "Recent Funding & Investors (2024-2025)",
-      "content": "Most recent funding rounds with amounts, dates from 2024-2025, and investor names",
-      "sources": ["https://source1.com", "https://source2.com"]
-    },
-    {
-      "category": "Historical Funding",
-      "content": "Earlier funding rounds before 2024",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Latest Financial Metrics (2024-2025)",
-      "content": "Most recent revenue, ARR, MRR, profitability from 2024-2025",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Company Overview",
-      "content": "Current products, market position, and business model",
-      "sources": ["https://source1.com"]
-    },
-    {
-      "category": "Leadership & Team",
-      "content": "Current executives and key personnel",
-      "sources": ["https://source1.com"]
-    }
-  ],
-  "funding_data": {
-    "total_funding": 150000000,
-    "latest_valuation": 500000000,
-    "funding_rounds": [
-      {
-        "round_type": "Series C",
-        "amount_usd": 75000000,
-        "announced_date": "2024-06-15",
-        "lead_investors": ["Sequoia Capital"],
-        "other_investors": ["Andreessen Horowitz", "Index Ventures"],
-        "post_money_valuation": 500000000
+      "summary": "2-3 sentence executive summary with latest funding and key metrics",
+      "categories": [
+        {
+          "category": "Recent Funding & Valuation (2024-2025)",
+          "content": "Latest funding rounds with specific amounts, dates, and investor names",
+          "sources": ["https://techcrunch.com/...", "https://crunchbase.com/..."]
+        },
+        {
+          "category": "Financial Performance",
+          "content": "Revenue, ARR, MRR, profitability, growth rates",
+          "sources": ["https://..."]
+        },
+        {
+          "category": "Company Overview",
+          "content": "Products, services, market position",
+          "sources": ["https://..."]
+        }
+      ],
+      "funding_data": {
+        "total_funding": 150000000,
+        "latest_valuation": 500000000,
+        "funding_rounds": [
+          {
+            "round_type": "Series C",
+            "amount_usd": 75000000,
+            "announced_date": "2024-06-15",
+            "lead_investors": ["Sequoia Capital"],
+            "other_investors": ["Andreessen Horowitz"],
+            "post_money_valuation": 500000000,
+            "source_url": "https://techcrunch.com/...",
+            "confidence_score": 0.9
+          }
+        ],
+        "investors": ["Sequoia Capital", "Andreessen Horowitz"],
+        "financial_metrics": [
+          {
+            "fiscal_year": 2024,
+            "revenue": 50000000,
+            "arr": 60000000,
+            "mrr": 5000000,
+            "revenue_growth_pct": 150,
+            "user_count": 10000,
+            "source": "Company Press Release",
+            "source_url": "https://...",
+            "confidence_score": 0.8
+          }
+        ]
       }
-    ],
-    "investors": ["Sequoia Capital", "Andreessen Horowitz", "Index Ventures"],
-    "financial_metrics": [
-      {
-        "fiscal_year": 2024,
-        "revenue": 50000000,
-        "arr": 60000000,
-        "employees": 250
-      }
-    ]
-  }
-}
+    }`
 
-IMPORTANT: Include ALL funding rounds you find, but list 2024-2025 rounds FIRST. Be extremely thorough in searching for recent funding data.`)
+    const prompt = `You are a professional business analyst researching "${companyName}". Use Google Search grounding to find the most recent and accurate information.
 
+CRITICAL REQUIREMENTS:
+1. ALWAYS search for 2024-2025 data FIRST
+2. Include specific numbers with sources
+3. Return valid JSON matching the exact schema below
+4. If data is not found, use empty arrays [] or omit optional fields
+5. All amounts must be in USD (convert if needed)
+6. All dates in YYYY-MM-DD format
+
+SEARCH PRIORITY:
+1. "${companyName} funding 2025" OR "${companyName} funding 2024"
+2. "${companyName} Series [A/B/C/D/E] 2024"
+3. "${companyName} valuation 2024"
+4. "${companyName} revenue 2024" OR "${companyName} ARR"
+5. "${companyName} investors"
+
+REQUIRED JSON SCHEMA:
+${schemaDescription}
+
+IMPORTANT:
+- funding_data section is OPTIONAL but highly preferred if any funding info exists
+- If no funding data found, OMIT the funding_data section entirely
+- Always include at least 3 categories with content
+- Each category MUST have real sources (URLs)
+- Focus on factual, verifiable information from 2024-2025
+
+Return ONLY the JSON object, nothing else.`
+
+    console.log("[v0] [Gemini] Generating structured response...")
     const result = await model.generateContent(prompt)
     const response = result.response
-    let content = response.text()
-
-    console.log("[v0] [Gemini] Received response, cleaning...")
-
-    content = cleanText(content)
-    content = content.replace(/```(?:json)?\s*\n?/g, "").replace(/\n?```/g, "")
+    const text = response.text()
 
     console.log("[v0] [Gemini] Parsing JSON response...")
 
-    let analysis: any
+    let rawData: any
     try {
-      analysis = JSON.parse(content)
+      rawData = JSON.parse(text)
     } catch (parseError) {
-      console.error("[v0] [Gemini] JSON parse error:", parseError)
-      console.log("[v0] [Gemini] Raw content:", content.substring(0, 500))
-
-      return {
-        companyName: cleanText(companyName),
-        summary: cleanText(content.substring(0, 500)),
-        categories: [
-          {
-            category: "Research Results",
-            content: cleanText(content),
-            sources: [],
-          },
-        ],
-        generatedAt: new Date().toISOString(),
-      }
+      console.error("[v0] [Gemini] JSON parse failed:", parseError)
+      throw new Error("Failed to parse Gemini response as JSON")
     }
 
-    const researchResult: CompanyResearchData = {
-      companyName: cleanText(companyName),
-      summary: cleanText(
-        analysis.summary ||
-          `Comprehensive research compiled for ${companyName} covering funding, investors, and financials.`,
-      ),
-      categories: (analysis.categories || []).map((cat: any) => ({
-        category: cleanText(cat.category || "Information"),
-        content: cleanText(cat.content || ""),
-        sources: (cat.sources || []).map((s: string) => cleanText(s)),
-      })),
+    // Clean and validate the response
+    const cleanedData: CompanyResearchData = {
+      companyName: cleanString(companyName),
+      summary: cleanString(rawData.summary) || `Research report for ${companyName}`,
+      categories: cleanArray(rawData.categories, (cat: any) => ({
+        category: cleanString(cat?.category) || "Information",
+        content: cleanString(cat?.content) || "",
+        sources: cleanArray(cat?.sources, (s) => cleanString(s)).filter((url) => url.startsWith("http")),
+      })).filter((cat) => cat.content.length > 0),
       generatedAt: new Date().toISOString(),
     }
 
-    if (analysis.funding_data) {
-      researchResult.funding = {
-        companyName: cleanText(companyName),
-        funding_rounds: (analysis.funding_data.funding_rounds || []).map((round: any) => ({
-          round_type: cleanText(round.round_type || "Unknown"),
-          amount_usd: Number(round.amount_usd) || 0,
+    // Process funding data if present
+    if (rawData.funding_data && typeof rawData.funding_data === "object") {
+      const fundingData = rawData.funding_data
+
+      const fundingRounds = cleanArray(fundingData.funding_rounds, (round: any) => {
+        if (!round || typeof round !== "object") return null
+
+        const amountUsd = cleanNumber(round.amount_usd)
+        const announcedDate = cleanString(round.announced_date)
+
+        // Skip invalid rounds
+        if (amountUsd === 0 || !announcedDate) return null
+
+        return {
+          round_type: cleanString(round.round_type) || "Unknown",
+          amount_usd: amountUsd,
           currency: "USD",
-          announced_date: cleanText(round.announced_date || ""),
-          lead_investors: (round.lead_investors || []).map((inv: string) => cleanText(inv)),
-          other_investors: (round.other_investors || []).map((inv: string) => cleanText(inv)),
-          post_money_valuation: round.post_money_valuation ? Number(round.post_money_valuation) : undefined,
-          source_url: cleanText(round.source_url || ""),
-          confidence_score: Number(round.confidence_score) || 0.8,
-        })),
-        total_funding: Number(analysis.funding_data.total_funding) || 0,
-        latest_valuation: analysis.funding_data.latest_valuation
-          ? Number(analysis.funding_data.latest_valuation)
-          : undefined,
-        financial_metrics: (analysis.funding_data.financial_metrics || []).map((metric: any) => ({
-          fiscal_year: Number(metric.fiscal_year) || new Date().getFullYear(),
-          fiscal_quarter: metric.fiscal_quarter ? Number(metric.fiscal_quarter) : undefined,
-          revenue: metric.revenue ? Number(metric.revenue) : undefined,
-          profit: metric.profit ? Number(metric.profit) : undefined,
-          revenue_growth_pct: metric.revenue_growth_pct ? Number(metric.revenue_growth_pct) : undefined,
-          user_count: metric.user_count || metric.employees ? Number(metric.user_count || metric.employees) : undefined,
-          arr: metric.arr ? Number(metric.arr) : undefined,
-          mrr: metric.mrr ? Number(metric.mrr) : undefined,
-          source: cleanText(metric.source || "Web Search"),
-          source_url: cleanText(metric.source_url || ""),
-          confidence_score: Number(metric.confidence_score) || 0.7,
-        })),
-        all_investors: (analysis.funding_data.investors || []).map((inv: string) => cleanText(inv)),
-        generatedAt: new Date().toISOString(),
+          announced_date: announcedDate,
+          lead_investors: cleanArray(round.lead_investors, (inv) => cleanString(inv)).filter((inv) => inv.length > 0),
+          other_investors: cleanArray(round.other_investors, (inv) => cleanString(inv)).filter((inv) => inv.length > 0),
+          post_money_valuation: round.post_money_valuation ? cleanNumber(round.post_money_valuation) : undefined,
+          source_url: cleanString(round.source_url),
+          confidence_score: cleanNumber(round.confidence_score, 0.7),
+        }
+      }).filter((round) => round !== null) as any[]
+
+      const financialMetrics = cleanArray(fundingData.financial_metrics, (metric: any) => {
+        if (!metric || typeof metric !== "object") return null
+
+        const fiscalYear = cleanNumber(metric.fiscal_year)
+        if (fiscalYear < 2000 || fiscalYear > 2030) return null
+
+        return {
+          fiscal_year: fiscalYear,
+          fiscal_quarter: metric.fiscal_quarter ? cleanNumber(metric.fiscal_quarter) : undefined,
+          revenue: metric.revenue ? cleanNumber(metric.revenue) : undefined,
+          profit: metric.profit ? cleanNumber(metric.profit) : undefined,
+          revenue_growth_pct: metric.revenue_growth_pct ? cleanNumber(metric.revenue_growth_pct) : undefined,
+          user_count: metric.user_count ? cleanNumber(metric.user_count) : undefined,
+          arr: metric.arr ? cleanNumber(metric.arr) : undefined,
+          mrr: metric.mrr ? cleanNumber(metric.mrr) : undefined,
+          source: cleanString(metric.source) || "Web Research",
+          source_url: cleanString(metric.source_url),
+          confidence_score: cleanNumber(metric.confidence_score, 0.7),
+        }
+      }).filter((metric) => metric !== null) as any[]
+
+      const allInvestors = cleanArray(fundingData.investors, (inv) => cleanString(inv)).filter((inv) => inv.length > 0)
+
+      const totalFunding = cleanNumber(fundingData.total_funding)
+      const latestValuation = fundingData.latest_valuation ? cleanNumber(fundingData.latest_valuation) : undefined
+
+      // Only include funding section if we have actual data
+      if (fundingRounds.length > 0 || financialMetrics.length > 0 || totalFunding > 0) {
+        cleanedData.funding = {
+          companyName: cleanString(companyName),
+          funding_rounds: fundingRounds,
+          total_funding: totalFunding,
+          latest_valuation: latestValuation,
+          financial_metrics: financialMetrics,
+          all_investors: allInvestors,
+          generatedAt: new Date().toISOString(),
+        }
       }
     }
 
-    console.log("[v0] [Gemini] Research completed successfully")
-    return researchResult
+    console.log(
+      "[v0] [Gemini] Research completed:",
+      cleanedData.categories.length,
+      "categories,",
+      cleanedData.funding?.funding_rounds?.length || 0,
+      "funding rounds",
+    )
+
+    return cleanedData
   } catch (error) {
-    console.error("[v0] [Gemini Web Search] Error:", error)
+    console.error("[v0] [Gemini] Error during research:", error)
 
     return {
-      companyName: cleanText(companyName),
-      summary: cleanText(
-        `Unable to complete research for ${companyName}. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
-      ),
+      companyName: cleanString(companyName),
+      summary: `Unable to research ${companyName} at this time. ${error instanceof Error ? error.message : "Unknown error"}`,
       categories: [
         {
           category: "Error",
-          content: cleanText(`Research failed: ${error instanceof Error ? error.message : "Unknown error"}`),
+          content: `Research failed: ${error instanceof Error ? error.message : "Please try again later"}`,
           sources: [],
         },
       ],

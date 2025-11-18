@@ -1,8 +1,8 @@
 "use client"
 
-import { Home, Search, FolderOpen, Send, Inbox, BarChart3, Settings } from "lucide-react"
+import { Home, Search, FolderOpen, Send, Inbox, BarChart3, Settings, Database } from 'lucide-react'
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname } from 'next/navigation'
 import { UserButton } from "@clerk/nextjs"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -10,6 +10,7 @@ import Image from "next/image"
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Search", href: "/search", icon: Search },
+  { name: "Snowflake DB", href: "/snowflake-search", icon: Database },
   { name: "Lists", href: "/lists", icon: FolderOpen },
   { name: "Campaigns", href: "/campaigns", icon: Send },
   { name: "Inbox", href: "/inbox", icon: Inbox },

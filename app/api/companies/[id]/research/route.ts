@@ -37,10 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { userId } = await auth()
     if (!userId) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      })
+      return Response.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { id } = await params
@@ -54,63 +51,45 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     `
 
     if (companies.length === 0) {
-      return new Response(JSON.stringify({ error: "Company not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      })
+      return Response.json({ error: "Company not found" }, { status: 404 })
     }
 
     const company = companies[0]
 
+    // Check cache (7 days)
     const cacheExpiry = 7 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const fetchedAt = company.tavily_research_fetched_at ? new Date(company.tavily_research_fetched_at).getTime() : 0
 
     if (company.tavily_research && now - fetchedAt < cacheExpiry) {
       console.log(`[v0] [Research API] Using cached research for company ${id}`)
-
-      const sanitizedData = sanitizeForJSON(company.tavily_research)
-
-      const jsonString = JSON.stringify({
+      return Response.json({
         cached: true,
-        data: sanitizedData,
+        data: company.tavily_research,
         fetchedAt: company.tavily_research_fetched_at,
-      })
-
-      return new Response(jsonString, {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "public, max-age=3600",
-        },
       })
     }
 
-    console.log(`[v0] [Research API] Fetching fresh research for company: ${company.name}`)
+    console.log(`[v0] [Research API] Fetching fresh research for: ${company.name}`)
 
-    const research = await researchCompanyWithGemini(company.name).catch((err) => {
-      console.error("[v0] [Research API] Gemini web search failed:", err)
-      return {
-        companyName: company.name,
-        summary: "Research data could not be fetched at this time.",
-        categories: [],
-        generatedAt: new Date().toISOString(),
-      }
-    })
-
-    const sanitizedResearch = sanitizeForJSON(research)
+    // Fetch fresh research
+    const research = await researchCompanyWithGemini(company.name)
 
     console.log("[v0] [Research API] Research completed, saving to database")
 
+    // Save to database
     await sql`
       UPDATE companies
       SET 
-        tavily_research = ${JSON.stringify(sanitizedResearch)},
+        tavily_research = ${JSON.stringify(research)},
         tavily_research_fetched_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
     `
 
-    if (research.funding && research.funding.funding_rounds && research.funding.funding_rounds.length > 0) {
+    // Save funding rounds if present
+    if (research.funding?.funding_rounds && research.funding.funding_rounds.length > 0) {
+      console.log(`[v0] [Research API] Saving ${research.funding.funding_rounds.length} funding rounds`)
+      
       for (const round of research.funding.funding_rounds) {
         try {
           await sql`
@@ -138,28 +117,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    console.log(`[v0] [Research API] Successfully saved research for company ${id}`)
+    console.log(`[v0] [Research API] Successfully completed research for ${company.name}`)
 
-    const jsonString = JSON.stringify({
+    return Response.json({
       cached: false,
-      data: sanitizedResearch,
+      data: research,
       fetchedAt: new Date().toISOString(),
     })
-
-    return new Response(jsonString, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-      },
-    })
   } catch (error) {
-    console.error("[v0] [Research API] Error fetching company research:", error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Failed to fetch company research" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      },
+    console.error("[v0] [Research API] Error:", error)
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch company research" },
+      { status: 500 },
     )
   }
 }

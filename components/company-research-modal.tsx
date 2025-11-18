@@ -91,20 +91,17 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
       const response = await fetch(`/api/companies/${companyId}/research`)
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch company research: ${response.status}`)
+        throw new Error(`Failed to fetch research: ${response.statusText}`)
       }
 
-      const text = await response.text()
-      console.log("[v0] [Research Modal] Response length:", text.length)
-
-      let data
-      try {
-        data = JSON.parse(text)
-      } catch (parseError) {
-        console.error("[v0] [Research Modal] JSON parse error:", parseError)
-        console.error("[v0] [Research Modal] Response text (first 500 chars):", text.substring(0, 500))
-        throw new Error("Invalid JSON response from server")
-      }
+      const data = await response.json()
+      
+      console.log("[v0] [Research Modal] Received data:", {
+        hasData: !!data.data,
+        hasFunding: !!data.data?.funding,
+        fundingRounds: data.data?.funding?.funding_rounds?.length || 0,
+        metrics: data.data?.funding?.financial_metrics?.length || 0
+      })
 
       setResearch(data.data)
       setCached(data.cached)
@@ -170,7 +167,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 <div>
                   <h2 className="text-xl font-bold">{companyName}</h2>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    AI-powered research using Google Search + Gemini AI
+                    AI-powered research using Google Search + Gemini 2.0
                   </p>
                 </div>
               </div>
@@ -187,7 +184,7 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
                 <div className="text-center space-y-2">
                   <p className="text-lg font-medium">Researching {companyName}...</p>
-                  <p className="text-sm text-muted-foreground">Analyzing web data with Gemini AI</p>
+                  <p className="text-sm text-muted-foreground">Searching the web with Gemini 2.0</p>
                   <p className="text-xs text-muted-foreground">This may take 30-60 seconds</p>
                 </div>
               </div>
@@ -218,148 +215,30 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                     <Calendar className="h-3 w-3" />
                     {cached ? "Cached" : "Fresh"} • {fetchedAt && new Date(fetchedAt).toLocaleString()}
                   </Badge>
+                  {!cached && (
+                    <Badge variant="default" className="gap-2">
+                      <Sparkles className="h-3 w-3" />
+                      Latest Data
+                    </Badge>
+                  )}
                 </div>
-
-                {/* Corporate Registry Section */}
-                {research.registryData && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-3">CORPORATE REGISTRY</h3>
-                    <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-background p-6">
-                      <div className="grid md:grid-cols-2 gap-6">
-                        {/* Left Column - Company Details */}
-                        <div className="space-y-4">
-                          <div className="flex items-center gap-3 pb-3 border-b">
-                            <div className="p-2 rounded-lg bg-primary/10">
-                              <Shield className="h-5 w-5 text-primary" />
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-lg">{research.registryData.company_name}</h4>
-                              <p className="text-xs text-muted-foreground">{research.registryData.registry_name}</p>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            {research.registryData.registration_id !== "Not available" && (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Registration ID</p>
-                                <p className="text-sm font-mono bg-muted px-3 py-2 rounded">
-                                  {research.registryData.registration_id}
-                                </p>
-                              </div>
-                            )}
-
-                            {research.registryData.date_of_incorporation !== "Not available" && (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Date of Incorporation</p>
-                                <p className="text-sm font-medium">{research.registryData.date_of_incorporation}</p>
-                              </div>
-                            )}
-
-                            {research.registryData.status !== "Not available" && (
-                              <div>
-                                <p className="text-xs font-medium text-muted-foreground mb-1">Status</p>
-                                <Badge
-                                  variant={
-                                    research.registryData.status.toLowerCase().includes("active")
-                                      ? "default"
-                                      : "secondary"
-                                  }
-                                  className="gap-1"
-                                >
-                                  <CheckCircle className="h-3 w-3" />
-                                  {research.registryData.status}
-                                </Badge>
-                              </div>
-                            )}
-
-                            <div className="flex gap-2 pt-2">
-                              <Button variant="outline" size="sm" asChild className="text-xs bg-transparent">
-                                <a href={research.registryData.registry_url} target="_blank" rel="noopener noreferrer">
-                                  <ExternalLink className="h-3 w-3 mr-1" />
-                                  View Registry
-                                </a>
-                              </Button>
-                              {research.registryData.source_url !== "Not available" && (
-                                <Button variant="outline" size="sm" asChild className="text-xs bg-transparent">
-                                  <a href={research.registryData.source_url} target="_blank" rel="noopener noreferrer">
-                                    <FileText className="h-3 w-3 mr-1" />
-                                    Source
-                                  </a>
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right Column - Directors & Shareholders */}
-                        <div className="space-y-4">
-                          {research.registryData.directors && research.registryData.directors.length > 0 && (
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <UserCheck className="h-4 w-4 text-primary" />
-                                <p className="text-xs font-medium text-muted-foreground">DIRECTORS / OFFICERS</p>
-                              </div>
-                              <div className="space-y-2">
-                                {research.registryData.directors.slice(0, 5).map((director, idx) => (
-                                  <div key={idx} className="text-sm bg-muted/50 px-3 py-2 rounded border">
-                                    {director}
-                                  </div>
-                                ))}
-                                {research.registryData.directors.length > 5 && (
-                                  <p className="text-xs text-muted-foreground">
-                                    +{research.registryData.directors.length - 5} more
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {research.registryData.major_shareholders &&
-                            research.registryData.major_shareholders.length > 0 && (
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <Users className="h-4 w-4 text-primary" />
-                                  <p className="text-xs font-medium text-muted-foreground">MAJOR SHAREHOLDERS</p>
-                                </div>
-                                <div className="space-y-2">
-                                  {research.registryData.major_shareholders.slice(0, 5).map((shareholder, idx) => (
-                                    <div key={idx} className="text-sm bg-muted/50 px-3 py-2 rounded border">
-                                      {shareholder}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                          {research.registryData.financials_summary &&
-                            research.registryData.financials_summary !== "Not publicly available" && (
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <DollarSign className="h-4 w-4 text-primary" />
-                                  <p className="text-xs font-medium text-muted-foreground">FINANCIAL FILINGS</p>
-                                </div>
-                                <p className="text-sm text-muted-foreground leading-relaxed">
-                                  {research.registryData.financials_summary}
-                                </p>
-                              </div>
-                            )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Funding & Financial Data Section */}
                 {research.funding &&
                   typeof research.funding === "object" &&
-                  Array.isArray(research.funding.funding_rounds) &&
-                  Array.isArray(research.funding.financial_metrics) &&
-                  (research.funding.funding_rounds.length > 0 || research.funding.financial_metrics.length > 0) && (
+                  (research.funding.total_funding > 0 ||
+                    (Array.isArray(research.funding.funding_rounds) && research.funding.funding_rounds.length > 0) ||
+                    (Array.isArray(research.funding.financial_metrics) &&
+                      research.funding.financial_metrics.length > 0)) && (
                     <div>
                       <h3 className="text-sm font-medium text-muted-foreground mb-3">FUNDING & FINANCIALS</h3>
                       <FundingCharts
-                        fundingRounds={research.funding.funding_rounds}
-                        financialMetrics={research.funding.financial_metrics}
+                        fundingRounds={
+                          Array.isArray(research.funding.funding_rounds) ? research.funding.funding_rounds : []
+                        }
+                        financialMetrics={
+                          Array.isArray(research.funding.financial_metrics) ? research.funding.financial_metrics : []
+                        }
                         totalFunding={research.funding.total_funding || 0}
                         latestValuation={research.funding.latest_valuation}
                         allInvestors={
@@ -368,27 +247,6 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                       />
                     </div>
                   )}
-
-                {/* Key Metrics Dashboard */}
-                {research && extractMetrics(research).length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-3">KEY METRICS</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {extractMetrics(research).map((metric, idx) => {
-                        const Icon = metric.icon
-                        return (
-                          <div key={idx} className="rounded-lg border bg-card p-4 hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-                              <Icon className="h-4 w-4" />
-                              <span className="text-xs font-medium uppercase">{metric.label}</span>
-                            </div>
-                            <p className="text-2xl font-bold">{metric.value}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
 
                 {/* Executive Summary */}
                 {research.summary && (
@@ -446,8 +304,9 @@ export function CompanyResearchModal({ companyId, companyName, open, onOpenChang
                                       href={source}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 transition-colors border"
+                                      className="text-xs px-2 py-1 rounded-md bg-muted hover:bg-muted/80 transition-colors border inline-flex items-center gap-1"
                                     >
+                                      <ExternalLink className="h-3 w-3" />
                                       {new URL(source).hostname.replace("www.", "")}
                                     </a>
                                   ))}

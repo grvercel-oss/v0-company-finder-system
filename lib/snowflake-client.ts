@@ -5,10 +5,11 @@ const snowflakeConfig = {
   account: process.env.SNOWFLAKE_ACCOUNT || "",
   username: process.env.SNOWFLAKE_USERNAME || "",
   password: process.env.SNOWFLAKE_PASSWORD || "",
-  warehouse: process.env.SNOWFLAKE_WAREHOUSE || "",
+  warehouse: process.env.SNOWFLAKE_WAREHOUSE || "COMPUTE_WH",
   database: process.env.SNOWFLAKE_DATABASE || "",
   schema: process.env.SNOWFLAKE_SCHEMA || "PUBLIC",
   role: process.env.SNOWFLAKE_ROLE || "",
+  table: process.env.SNOWFLAKE_TABLE || "COMPANIES",
 }
 
 // Company data structure from Snowflake
@@ -103,7 +104,8 @@ export async function searchSnowflakeCompanies(
     console.log("[v0] [Snowflake] Starting search for:", query)
     connection = await createConnection()
 
-    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.COMPANIES`
+    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.${snowflakeConfig.table}`
+    console.log("[v0] [Snowflake] Using table:", tableName)
 
     // Build search query - adjust table name based on your actual Snowflake setup
     // This is a generic query that searches across multiple fields
@@ -168,7 +170,7 @@ export async function getSnowflakeCompanyByDomain(domain: string): Promise<Snowf
     console.log("[v0] [Snowflake] Looking up company by domain:", domain)
     connection = await createConnection()
 
-    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.COMPANIES`
+    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.${snowflakeConfig.table}`
 
     const sqlText = `
       SELECT 
@@ -237,7 +239,7 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
     console.log("[v0] [Snowflake] Advanced search with params:", params)
     connection = await createConnection()
 
-    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.COMPANIES`
+    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.${snowflakeConfig.table}`
 
     const conditions: string[] = []
 

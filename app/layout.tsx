@@ -1,6 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono, Source_Code_Pro } from "next/font/google"
+import { Geist, Geist_Mono, Source_Code_Pro } from 'next/font/google'
 import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
 import { ClerkSetupBanner } from "@/components/clerk-setup-banner"
@@ -46,9 +46,46 @@ export default function RootLayout({
   }
 
   return (
-    <ClerkProvider signInUrl="/sign-in" signUpUrl="/sign-up" afterSignOutUrl="/">
+    <ClerkProvider 
+      signInUrl="/sign-in" 
+      signUpUrl="/sign-up" 
+      afterSignOutUrl="/"
+      appearance={{
+        elements: {
+          rootBox: "mx-auto",
+        },
+      }}
+    >
       <html lang="en">
         <body className={`${sourceCodePro.variable} antialiased`}>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                window.addEventListener('unhandledrejection', function(event) {
+                  console.error('[v0] [Unhandled Promise Rejection]', {
+                    message: event.reason?.message || event.reason,
+                    stack: event.reason?.stack,
+                    isInvalidCharacterError: event.reason?.message?.includes('invalid characters'),
+                  });
+                  
+                  if (event.reason?.message?.includes('invalid characters')) {
+                    console.error('[v0] [InvalidCharacterError Detected] This is likely a base64 encoding issue');
+                    console.error('[v0] Check: Clerk tokens, API keys, or data URIs');
+                  }
+                });
+                
+                window.addEventListener('error', function(event) {
+                  console.error('[v0] [Global Error]', {
+                    message: event.message,
+                    filename: event.filename,
+                    lineno: event.lineno,
+                    colno: event.colno,
+                    error: event.error,
+                  });
+                });
+              `,
+            }}
+          />
           <ThemeProvider>{children}</ThemeProvider>
         </body>
       </html>

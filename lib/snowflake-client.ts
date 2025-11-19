@@ -9,7 +9,7 @@ const snowflakeConfig = {
   database: process.env.SNOWFLAKE_DATABASE || "",
   schema: process.env.SNOWFLAKE_SCHEMA || "COMPANY_PROFILE",
   role: process.env.SNOWFLAKE_ROLE || "",
-  table: process.env.SNOWFLAKE_TABLE || "FI_COMPANY",
+  table: process.env.SNOWFLAKE_TABLE || "FREECOMPANYDATASET",
 }
 
 // Company data structure from Snowflake
@@ -164,7 +164,7 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
     if (params.query && params.query.trim()) {
       console.log("[v0] [Snowflake] Using intelligent search for query:", params.query)
       
-      sqlText = buildIntelligentSearchSQL(
+      sqlText = await buildIntelligentSearchSQL(
         tableName,
         params.query,
         {

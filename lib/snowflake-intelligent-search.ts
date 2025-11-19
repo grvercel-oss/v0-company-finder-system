@@ -3,6 +3,10 @@
  * Uses AI to understand natural language queries and map them to database fields
  */
 
+import { createOpenAI } from "@ai-sdk/openai"
+import { generateObject } from "ai"
+import { z } from "zod"
+
 interface ParsedSearchQuery {
   keywords: string[]
   industries: string[]
@@ -50,6 +54,19 @@ const companyTypeMappings: Record<string, string[]> = {
 }
 
 /**
+ * Define the schema for AI search parameters
+ */
+const SearchParamsSchema = z.object({
+  keywords: z.array(z.string()).describe("Keywords to search for in company name or description"),
+  industries: z.array(z.string()).describe("Specific industries to filter by (e.g. 'financial services', 'software')"),
+  locations: z.array(z.string()).describe("Locations to filter by (city, state, country)"),
+  employeeSize: z.string().optional().describe("Employee size range (e.g. '1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001-10000', '10001+')"),
+  foundedYear: z.number().optional().describe("Founded year"),
+  foundedOperator: z.enum([">", "<", "=", ">=", "<="]).optional().describe("Operator for founded year comparison"),
+  sqlWhere: z.string().optional().describe("Optional raw SQL WHERE clause for complex logic"),
+})
+
+/**
  * Parse natural language search query into structured search parameters
  */
 export function parseSearchQuery(query: string): ParsedSearchQuery {
@@ -92,24 +109,82 @@ export function parseSearchQuery(query: string): ParsedSearchQuery {
 }
 
 /**
+ * Parse natural language search query into structured search parameters using Groq
+ */
+export async function parseSearchQueryWithGroq(query: string): Promise<z.infer<typeof SearchParamsSchema>> {
+  try {
+    if (!process.env.GROQ_API_KEY) {
+      console.warn("[v0] [Intelligent Search] GROQ_API_KEY not found, falling back to basic parsing")
+      return parseSearchQuery(query)
+    }
+
+    const groq = createOpenAI({
+      baseURL: "https://api.groq.com/openai/v1",
+      apiKey: process.env.GROQ_API_KEY,
+    })
+
+    const { object } = await generateObject({
+      model: groq("llama-3.3-70b-versatile"),
+      schema: SearchParamsSchema,
+      prompt: `
+        You are an expert at converting natural language search queries into structured search parameters for a company database.
+        The database is People Data Labs (PDL) in Snowflake.
+        
+        Schema:
+        - NAME (string)
+        - INDUSTRY (string)
+        - LOCALITY (string)
+        - REGION (string)
+        - COUNTRY (string)
+        - SIZE (string, e.g. '1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001-10000', '10001+')
+        - FOUNDED (number, year)
+        
+        User Query: "${query}"
+        
+        Extract the relevant filters.
+        For "AI startups", "AI" is an industry/keyword and "startup" implies small size or recent founded date.
+        For "Financial services in US", "financial services" is industry, "US" is location.
+        
+        Return a structured JSON object.
+      `,
+    })
+
+    return object
+  } catch (error) {
+    console.error("[v0] [Intelligent Search] Groq parsing failed:", error)
+    return parseSearchQuery(query)
+  }
+}
+
+/**
  * Build SQL WHERE clause from parsed query
  */
-export function buildIntelligentSearchSQL(
+export async function buildIntelligentSearchSQL(
   tableName: string,
   query: string,
   filters?: {
     location?: string
     employeeRange?: string
   }
-): string {
-  const parsed = parseSearchQuery(query)
-  const conditions: string[] = []
+): Promise<string> {
+  // Try AI parsing first, fall back to basic
+  let parsed: any
+  try {
+    parsed = await parseSearchQueryWithGroq(query)
+  } catch (e) {
+    parsed = parseSearchQuery(query)
+  }
 
+  // Override with explicit filters if provided
+  if (filters?.location) parsed.locations = [filters.location]
+  if (filters?.employeeRange) parsed.employeeSize = filters.employeeRange
+
+  const conditions: string[] = []
   const searchConditions: string[] = []
 
   // Industry conditions
-  if (parsed.industries.length > 0) {
-    const industryConditions = parsed.industries.map(industry => 
+  if (parsed.industries && parsed.industries.length > 0) {
+    const industryConditions = parsed.industries.map((industry: string) => 
       `LOWER(INDUSTRY) LIKE LOWER('%${industry}%')`
     ).join(" OR ")
     
@@ -117,8 +192,8 @@ export function buildIntelligentSearchSQL(
   }
 
   // General keyword search
-  if (parsed.keywords.length > 0) {
-    const keywordConditions = parsed.keywords.map(keyword =>
+  if (parsed.keywords && parsed.keywords.length > 0) {
+    const keywordConditions = parsed.keywords.map((keyword: string) =>
       `LOWER(NAME) LIKE LOWER('%${keyword}%')`
     ).join(" OR ")
     
@@ -141,28 +216,33 @@ export function buildIntelligentSearchSQL(
   }
 
   // Add location filter
-  if (filters?.location || parsed.locations.length > 0) {
-    const loc = filters?.location || parsed.locations[0]
-    if (loc) {
-      conditions.push(`(
-        LOWER(LOCALITY) LIKE LOWER('%${loc}%')
-        OR LOWER(REGION) LIKE LOWER('%${loc}%')
-        OR LOWER(COUNTRY) LIKE LOWER('%${loc}%')
-      )`)
-    }
+  if (parsed.locations && parsed.locations.length > 0) {
+    const locConditions = parsed.locations.map((loc: string) => `(
+      LOWER(LOCALITY) LIKE LOWER('%${loc}%')
+      OR LOWER(REGION) LIKE LOWER('%${loc}%')
+      OR LOWER(COUNTRY) LIKE LOWER('%${loc}%')
+    )`).join(" OR ")
+    
+    conditions.push(`(${locConditions})`)
   }
 
   // Add employee range filter
-  if (filters?.employeeRange) {
-    conditions.push(`SIZE = '${filters.employeeRange}'`)
+  if (parsed.employeeSize) {
+    conditions.push(`SIZE = '${parsed.employeeSize}'`)
+  }
+
+  // Add founded year filter
+  if (parsed.foundedYear) {
+    const op = parsed.foundedOperator || "="
+    conditions.push(`FOUNDED ${op} ${parsed.foundedYear}`)
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "WHERE 1=1"
 
   // Build ORDER BY for relevance
   let orderBy = "ORDER BY "
-  if (parsed.keywords.length > 0 || query.trim()) {
-    const term = parsed.keywords[0] || query.trim()
+  if ((parsed.keywords && parsed.keywords.length > 0) || query.trim()) {
+    const term = (parsed.keywords && parsed.keywords[0]) || query.trim()
     orderBy += `
       CASE 
         WHEN LOWER(NAME) = LOWER('${term}') THEN 1

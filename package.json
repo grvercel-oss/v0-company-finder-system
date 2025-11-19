@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/openai": "latest",
     "@clerk/nextjs": "latest",
     "@google/generative-ai": "latest",
     "@hookform/resolvers": "^3.10.0",

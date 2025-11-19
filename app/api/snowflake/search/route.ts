@@ -3,7 +3,7 @@ import { searchSnowflakeCompanies, searchSnowflakeCompaniesAdvanced, type Snowfl
 import { sql } from "@/lib/db"
 
 // Convert Snowflake company to our database format
-function convertSnowflakeToCompany(sfCompany: SnowflakeCompany) {
+function convertSnowflakeToCompany(sfCompany: SnowflakeCompany, dbId?: number) {
   // Build location from available fields
   const locationParts = [
     sfCompany.CITY,
@@ -11,15 +11,55 @@ function convertSnowflakeToCompany(sfCompany: SnowflakeCompany) {
     sfCompany.COUNTRY
   ].filter(Boolean)
   
+  // Get the best domain value
+  const domain = sfCompany.COMPANY_DOMAIN || sfCompany.PRIMARY_DOMAIN || null
+  
+  // Build website URL from domain if available
+  let website = null
+  if (domain) {
+    website = domain.startsWith('http') ? domain : `https://${domain}`
+  } else if (sfCompany.LINK) {
+    website = sfCompany.LINK
+  }
+  
+  const rawData = {
+    snowflake_source: true,
+    imported_at: new Date().toISOString(),
+    ...sfCompany,
+    // Additional structured data for easier access
+    company_id: sfCompany.COMPANY_ID,
+    ceo: sfCompany.CEO,
+    company_type: sfCompany.COMPANY_TYPE,
+    company_type_dict: sfCompany.COMPANY_TYPE_DICT,
+    contact_address: sfCompany.CONTACT_ADDRESS,
+    register_address: sfCompany.REGISTER_ADDRESS,
+    hq: sfCompany.HQ,
+    geo: sfCompany.GEO,
+    postcode: sfCompany.POSTCODE,
+    link_facebook: sfCompany.LINK_FACEBOOK,
+    link_ins: sfCompany.LINK_INS,
+    naics_code: sfCompany.NAICS_CODE,
+    stock_code: sfCompany.STOCK_CODE,
+    stock_exchange: sfCompany.STOCK_EXCHANGE,
+    products_offered: sfCompany.PRODUCTS_OFFERED,
+    services_offered: sfCompany.SERVICES_OFFERED,
+    target_customers: sfCompany.TARGET_CUSTOMERS,
+    target_suppliers: sfCompany.TARGET_SUPPLIERS,
+    products_needed: sfCompany.PRODUCTS_NEEDED,
+    services_needed: sfCompany.SERVICES_NEEDED,
+    events_needed: sfCompany.EVENTS_NEEDED,
+  }
+  
   return {
+    id: dbId, // Include database ID if available for linking
     name: sfCompany.COMPANY_NAME || "Unknown",
-    domain: sfCompany.COMPANY_DOMAIN || sfCompany.PRIMARY_DOMAIN || null,
+    domain: domain,
     description: sfCompany.INTRO || null,
     industry: sfCompany.INDUSTRY || sfCompany.INDUSTRY_1 || null,
     size: sfCompany.STAFF_RANGE || null,
     location: locationParts.length > 0 ? locationParts.join(", ") : null,
     founded_year: sfCompany.FOUND_YEAR || null,
-    website: sfCompany.LINK || sfCompany.COMPANY_DOMAIN || sfCompany.PRIMARY_DOMAIN || null,
+    website: website,
     linkedin_url: sfCompany.LINK_LINKEDIN || null,
     twitter_url: sfCompany.LINK_TWITTER || null,
     logo_url: sfCompany.LOGO || null,
@@ -27,7 +67,7 @@ function convertSnowflakeToCompany(sfCompany: SnowflakeCompany) {
     revenue_range: null, // Not in FlashIntel schema
     technologies: sfCompany.TECH_STACKS ? sfCompany.TECH_STACKS.split(",").map((t) => t.trim()) : [],
     keywords: sfCompany.BUSINESS_KEYWORDS ? sfCompany.BUSINESS_KEYWORDS.split(",").map((k) => k.trim()) : [],
-    raw_data: sfCompany,
+    raw_data: rawData,
     data_quality_score: 85, // Snowflake data is generally high quality
     verified: true,
   }
@@ -181,24 +221,35 @@ export async function GET(request: NextRequest) {
 
     console.log("[v0] [Snowflake API] Found", results.length, "companies from Snowflake")
 
-    // Optionally save to Neon database
+    const companiesWithIds: any[] = []
+    
     if (saveToDb && results.length > 0) {
       console.log("[v0] [Snowflake API] Saving companies to Neon database...")
-      const savedIds = await Promise.allSettled(
-        results.map((company) => saveCompanyToNeon(company))
-      )
-
-      const successCount = savedIds.filter((r) => r.status === "fulfilled").length
+      
+      for (const sfCompany of results) {
+        try {
+          const dbId = await saveCompanyToNeon(sfCompany)
+          companiesWithIds.push(convertSnowflakeToCompany(sfCompany, dbId))
+        } catch (error) {
+          console.error("[v0] [Snowflake API] Error saving company:", error)
+          // Still include company even if save failed, but without ID
+          companiesWithIds.push(convertSnowflakeToCompany(sfCompany))
+        }
+      }
+      
+      const successCount = companiesWithIds.filter(c => c.id).length
       console.log("[v0] [Snowflake API] Saved", successCount, "companies to Neon")
+    } else {
+      // If not saving, just convert without IDs
+      results.forEach(sfCompany => {
+        companiesWithIds.push(convertSnowflakeToCompany(sfCompany))
+      })
     }
-
-    // Convert to our format for response
-    const companies = results.map(convertSnowflakeToCompany)
 
     return NextResponse.json({
       success: true,
-      count: companies.length,
-      companies,
+      count: companiesWithIds.length,
+      companies: companiesWithIds,
       source: "snowflake",
     })
   } catch (error: any) {

@@ -105,6 +105,8 @@ export function buildIntelligentSearchSQL(
   const parsed = parseSearchQuery(query)
   const conditions: string[] = []
 
+  const searchConditions: string[] = []
+
   // Industry conditions (most important for "AI Startups" type queries)
   if (parsed.industries.length > 0) {
     const industryConditions = parsed.industries.map(industry => 
@@ -118,16 +120,20 @@ export function buildIntelligentSearchSQL(
       )`
     ).join(" OR ")
     
-    conditions.push(`(${industryConditions})`)
+    searchConditions.push(`(${industryConditions})`)
   }
 
   // Company type conditions
   if (parsed.companyTypes.length > 0) {
     const typeConditions = parsed.companyTypes.map(type =>
-      `LOWER(COMPANY_TYPE) LIKE LOWER('%${type}%')`
+      `(
+        LOWER(COMPANY_TYPE) LIKE LOWER('%${type}%')
+        OR LOWER(COMPANY_TYPE_DICT) LIKE LOWER('%${type}%')
+        OR LOWER(INTRO) LIKE LOWER('%${type}%')
+      )`
     ).join(" OR ")
     
-    conditions.push(`(${typeConditions})`)
+    searchConditions.push(`(${typeConditions})`)
   }
 
   // General keyword search (fallback for unmatched terms)
@@ -143,21 +149,29 @@ export function buildIntelligentSearchSQL(
     ).join(" OR ")
     
     if (keywordConditions) {
-      conditions.push(`(${keywordConditions})`)
+      searchConditions.push(`(${keywordConditions})`)
     }
   }
 
   // If no specific conditions matched, do a broad search on the full query
-  if (conditions.length === 0 && query.trim()) {
-    conditions.push(`(
+  if (searchConditions.length === 0 && query.trim()) {
+    searchConditions.push(`(
       LOWER(COMPANY_NAME) LIKE LOWER('%${query.trim()}%')
       OR LOWER(INTRO) LIKE LOWER('%${query.trim()}%')
       OR LOWER(INDUSTRY) LIKE LOWER('%${query.trim()}%')
+      OR LOWER(INDUSTRY_1) LIKE LOWER('%${query.trim()}%')
+      OR LOWER(INDUSTRY_2) LIKE LOWER('%${query.trim()}%')
+      OR LOWER(INDUSTRY_3) LIKE LOWER('%${query.trim()}%')
       OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${query.trim()}%')
     )`)
   }
 
-  // Add location filter if provided
+  // Combine search conditions with OR logic
+  if (searchConditions.length > 0) {
+    conditions.push(`(${searchConditions.join(" OR ")})`)
+  }
+
+  // Add location filter with AND logic (optional filters)
   if (additionalFilters?.location && additionalFilters.location.trim()) {
     conditions.push(`(
       LOWER(CITY) LIKE LOWER('%${additionalFilters.location.trim()}%')
@@ -166,7 +180,7 @@ export function buildIntelligentSearchSQL(
     )`)
   }
 
-  // Add employee range filter if provided
+  // Add employee range filter with AND logic (optional filters)
   if (additionalFilters?.employeeRange && additionalFilters.employeeRange.trim()) {
     conditions.push(`STAFF_RANGE = '${additionalFilters.employeeRange.trim()}'`)
   }
@@ -185,6 +199,7 @@ export function buildIntelligentSearchSQL(
       PROVINCE,
       POSTCODE,
       COMPANY_TYPE,
+      COMPANY_TYPE_DICT,
       INDUSTRY,
       INDUSTRY_1,
       INDUSTRY_2,
@@ -201,9 +216,16 @@ export function buildIntelligentSearchSQL(
       TECH_STACKS,
       PRODUCTS_OFFERED,
       SERVICES_OFFERED,
+      TARGET_CUSTOMERS,
+      TARGET_SUPPLIERS,
+      PRODUCTS_NEEDED,
+      SERVICES_NEEDED,
       BUSINESS_KEYWORDS,
+      EVENTS_NEEDED,
       CONTACT_ADDRESS,
+      REGISTER_ADDRESS,
       HQ,
+      GEO,
       STOCK_CODE,
       STOCK_EXCHANGE,
       NAICS_CODE
@@ -211,6 +233,9 @@ export function buildIntelligentSearchSQL(
     ${whereClause}
     ORDER BY FOUND_YEAR DESC NULLS LAST
   `
+
+  console.log("[v0] [Intelligent Search] Generated SQL:", sqlText)
+  console.log("[v0] [Intelligent Search] Parsed query:", JSON.stringify(parsed, null, 2))
 
   return sqlText
 }

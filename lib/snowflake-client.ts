@@ -24,6 +24,7 @@ export interface SnowflakeCompany {
   PROVINCE?: string
   POSTCODE?: string
   COMPANY_TYPE?: string
+  COMPANY_TYPE_DICT?: string
   INDUSTRY?: string
   INDUSTRY_1?: string
   INDUSTRY_2?: string
@@ -262,8 +263,6 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
 
     if (params.query && params.query.trim()) {
       console.log("[v0] [Snowflake] Using intelligent search for query:", params.query)
-      const parsedQuery = parseSearchQuery(params.query)
-      console.log("[v0] [Snowflake] Parsed query:", parsedQuery)
       
       sqlText = buildIntelligentSearchSQL(
         tableName,
@@ -285,6 +284,7 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
           LOWER(INDUSTRY) LIKE LOWER('%${params.industry.trim()}%')
           OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry.trim()}%')
           OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry.trim()}%')
+          OR LOWER(INDUSTRY_3) LIKE LOWER('%${params.industry.trim()}%')
         )`)
       }
 
@@ -313,9 +313,12 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
           COUNTRY,
           PROVINCE,
           POSTCODE,
+          COMPANY_TYPE,
+          COMPANY_TYPE_DICT,
           INDUSTRY,
           INDUSTRY_1,
           INDUSTRY_2,
+          INDUSTRY_3,
           STAFF_RANGE,
           FOUND_YEAR,
           INTRO,
@@ -326,9 +329,9 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
           LINK_INS,
           LOGO,
           TECH_STACKS,
-          BUSINESS_KEYWORDS,
           PRODUCTS_OFFERED,
           SERVICES_OFFERED,
+          BUSINESS_KEYWORDS,
           CONTACT_ADDRESS,
           HQ
         FROM ${tableName}
@@ -352,6 +355,8 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
       connection.destroy((err: any) => {
         if (err) {
           console.error("[v0] [Snowflake] Error closing connection:", err.message)
+        } else {
+          console.log("[v0] [Snowflake] Connection closed")
         }
       })
     }

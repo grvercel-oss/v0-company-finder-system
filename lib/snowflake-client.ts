@@ -7,35 +7,47 @@ const snowflakeConfig = {
   password: process.env.SNOWFLAKE_PASSWORD || "",
   warehouse: process.env.SNOWFLAKE_WAREHOUSE || "COMPUTE_WH",
   database: process.env.SNOWFLAKE_DATABASE || "",
-  schema: process.env.SNOWFLAKE_SCHEMA || "PUBLIC",
+  schema: process.env.SNOWFLAKE_SCHEMA || "COMPANY_PROFILE",
   role: process.env.SNOWFLAKE_ROLE || "",
-  table: process.env.SNOWFLAKE_TABLE || "COMPANIES",
+  table: process.env.SNOWFLAKE_TABLE || "FI_COMPANY",
 }
 
 // Company data structure from Snowflake
 export interface SnowflakeCompany {
-  company_id?: string
-  company_name?: string
-  domain?: string
-  website?: string
-  description?: string
-  industry?: string
-  sub_industry?: string
-  employee_count?: number
-  employee_range?: string
-  revenue?: number
-  revenue_range?: string
-  founded_year?: number
-  headquarters_city?: string
-  headquarters_state?: string
-  headquarters_country?: string
-  linkedin_url?: string
-  twitter_url?: string
-  facebook_url?: string
-  technologies?: string
-  keywords?: string
-  phone?: string
-  address?: string
+  COMPANY_ID?: string
+  COMPANY_NAME?: string
+  COMPANY_DOMAIN?: string
+  PRIMARY_DOMAIN?: string
+  CEO?: string
+  CITY?: string
+  COUNTRY?: string
+  PROVINCE?: string
+  POSTCODE?: string
+  COMPANY_TYPE?: string
+  INDUSTRY?: string
+  INDUSTRY_1?: string
+  INDUSTRY_2?: string
+  INDUSTRY_3?: string
+  STAFF_RANGE?: string
+  FOUND_YEAR?: number
+  INTRO?: string
+  LINK?: string
+  LINK_LINKEDIN?: string
+  LINK_TWITTER?: string
+  LINK_FACEBOOK?: string
+  LINK_INS?: string
+  LOGO?: string
+  TECH_STACKS?: string
+  PRODUCTS_OFFERED?: string
+  SERVICES_OFFERED?: string
+  TARGET_CUSTOMERS?: string
+  BUSINESS_KEYWORDS?: string
+  CONTACT_ADDRESS?: string
+  REGISTER_ADDRESS?: string
+  HQ?: string
+  STOCK_CODE?: string
+  STOCK_EXCHANGE?: string
+  NAICS_CODE?: string
 }
 
 // Create a connection to Snowflake
@@ -107,38 +119,43 @@ export async function searchSnowflakeCompanies(
     const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.${snowflakeConfig.table}`
     console.log("[v0] [Snowflake] Using table:", tableName)
 
-    // Build search query - adjust table name based on your actual Snowflake setup
-    // This is a generic query that searches across multiple fields
     const sqlText = `
       SELECT 
-        company_id,
-        company_name,
-        domain,
-        website,
-        description,
-        industry,
-        sub_industry,
-        employee_count,
-        employee_range,
-        revenue,
-        revenue_range,
-        founded_year,
-        headquarters_city,
-        headquarters_state,
-        headquarters_country,
-        linkedin_url,
-        twitter_url,
-        facebook_url,
-        technologies,
-        keywords,
-        phone,
-        address
+        COMPANY_ID,
+        COMPANY_NAME,
+        COMPANY_DOMAIN,
+        PRIMARY_DOMAIN,
+        CEO,
+        CITY,
+        COUNTRY,
+        PROVINCE,
+        POSTCODE,
+        COMPANY_TYPE,
+        INDUSTRY,
+        INDUSTRY_1,
+        INDUSTRY_2,
+        INDUSTRY_3,
+        STAFF_RANGE,
+        FOUND_YEAR,
+        INTRO,
+        LINK,
+        LINK_LINKEDIN,
+        LINK_TWITTER,
+        LINK_FACEBOOK,
+        LINK_INS,
+        LOGO,
+        TECH_STACKS,
+        PRODUCTS_OFFERED,
+        SERVICES_OFFERED,
+        BUSINESS_KEYWORDS,
+        CONTACT_ADDRESS,
+        HQ
       FROM ${tableName}
       WHERE 
-        LOWER(company_name) LIKE LOWER('%${query}%')
-        OR LOWER(description) LIKE LOWER('%${query}%')
-        OR LOWER(industry) LIKE LOWER('%${query}%')
-        OR LOWER(keywords) LIKE LOWER('%${query}%')
+        LOWER(COMPANY_NAME) LIKE LOWER('%${query}%')
+        OR LOWER(INTRO) LIKE LOWER('%${query}%')
+        OR LOWER(INDUSTRY) LIKE LOWER('%${query}%')
+        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${query}%')
       LIMIT ${limit}
     `
 
@@ -174,37 +191,35 @@ export async function getSnowflakeCompanyByDomain(domain: string): Promise<Snowf
 
     const sqlText = `
       SELECT 
-        company_id,
-        company_name,
-        domain,
-        website,
-        description,
-        industry,
-        sub_industry,
-        employee_count,
-        employee_range,
-        revenue,
-        revenue_range,
-        founded_year,
-        headquarters_city,
-        headquarters_state,
-        headquarters_country,
-        linkedin_url,
-        twitter_url,
-        facebook_url,
-        technologies,
-        keywords,
-        phone,
-        address
+        COMPANY_ID,
+        COMPANY_NAME,
+        COMPANY_DOMAIN,
+        PRIMARY_DOMAIN,
+        CEO,
+        CITY,
+        COUNTRY,
+        PROVINCE,
+        INDUSTRY,
+        STAFF_RANGE,
+        FOUND_YEAR,
+        INTRO,
+        LINK,
+        LINK_LINKEDIN,
+        LINK_TWITTER,
+        LINK_FACEBOOK,
+        LOGO,
+        TECH_STACKS,
+        BUSINESS_KEYWORDS
       FROM ${tableName}
-      WHERE LOWER(domain) = LOWER('${domain}')
+      WHERE LOWER(COMPANY_DOMAIN) = LOWER('${domain}')
+         OR LOWER(PRIMARY_DOMAIN) = LOWER('${domain}')
       LIMIT 1
     `
 
     const results = await executeQuery<SnowflakeCompany>(connection, sqlText)
 
     if (results.length > 0) {
-      console.log("[v0] [Snowflake] Found company:", results[0].company_name)
+      console.log("[v0] [Snowflake] Found company:", results[0].COMPANY_NAME)
       return results[0]
     }
 
@@ -245,29 +260,29 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
 
     if (params.query) {
       conditions.push(`(
-        LOWER(company_name) LIKE LOWER('%${params.query}%')
-        OR LOWER(description) LIKE LOWER('%${params.query}%')
-        OR LOWER(keywords) LIKE LOWER('%${params.query}%')
+        LOWER(COMPANY_NAME) LIKE LOWER('%${params.query}%')
+        OR LOWER(INTRO) LIKE LOWER('%${params.query}%')
+        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${params.query}%')
       )`)
     }
 
     if (params.industry) {
-      conditions.push(`LOWER(industry) LIKE LOWER('%${params.industry}%')`)
+      conditions.push(`(
+        LOWER(INDUSTRY) LIKE LOWER('%${params.industry}%')
+        OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry}%')
+        OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry}%')
+      )`)
     }
 
     if (params.employeeRange) {
-      conditions.push(`employee_range = '${params.employeeRange}'`)
-    }
-
-    if (params.revenueRange) {
-      conditions.push(`revenue_range = '${params.revenueRange}'`)
+      conditions.push(`STAFF_RANGE = '${params.employeeRange}'`)
     }
 
     if (params.location) {
       conditions.push(`(
-        LOWER(headquarters_city) LIKE LOWER('%${params.location}%')
-        OR LOWER(headquarters_state) LIKE LOWER('%${params.location}%')
-        OR LOWER(headquarters_country) LIKE LOWER('%${params.location}%')
+        LOWER(CITY) LIKE LOWER('%${params.location}%')
+        OR LOWER(PROVINCE) LIKE LOWER('%${params.location}%')
+        OR LOWER(COUNTRY) LIKE LOWER('%${params.location}%')
       )`)
     }
 
@@ -276,28 +291,25 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
 
     const sqlText = `
       SELECT 
-        company_id,
-        company_name,
-        domain,
-        website,
-        description,
-        industry,
-        sub_industry,
-        employee_count,
-        employee_range,
-        revenue,
-        revenue_range,
-        founded_year,
-        headquarters_city,
-        headquarters_state,
-        headquarters_country,
-        linkedin_url,
-        twitter_url,
-        facebook_url,
-        technologies,
-        keywords,
-        phone,
-        address
+        COMPANY_ID,
+        COMPANY_NAME,
+        COMPANY_DOMAIN,
+        PRIMARY_DOMAIN,
+        CEO,
+        CITY,
+        COUNTRY,
+        PROVINCE,
+        INDUSTRY,
+        INDUSTRY_1,
+        INDUSTRY_2,
+        STAFF_RANGE,
+        FOUND_YEAR,
+        INTRO,
+        LINK,
+        LINK_LINKEDIN,
+        LOGO,
+        TECH_STACKS,
+        BUSINESS_KEYWORDS
       FROM ${tableName}
       ${whereClause}
       LIMIT ${limit}

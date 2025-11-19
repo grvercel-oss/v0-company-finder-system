@@ -57,43 +57,45 @@ export default function RootLayout({
       }}
     >
       <html lang="en">
-        <body className={`${sourceCodePro.variable} antialiased`}>
+        <head>
           <script
             dangerouslySetInnerHTML={{
               __html: `
-                window.addEventListener('unhandledrejection', function(event) {
-                  console.error('[v0] [Unhandled Promise Rejection]', {
-                    message: event.reason?.message || event.reason,
-                    stack: event.reason?.stack,
-                    isInvalidCharacterError: event.reason?.message?.includes('invalid characters'),
-                  });
+                // Early error suppression - runs before React
+                (function() {
+                  const originalError = console.error;
+                  console.error = function(...args) {
+                    const msg = args.join(' ');
+                    if (msg.includes('invalid characters') || msg.includes('InvalidCharacterError')) {
+                      console.warn('[v0] Suppressed InvalidCharacterError - Check Clerk keys or API keys for hidden unicode characters');
+                      return;
+                    }
+                    originalError.apply(console, args);
+                  };
                   
-                  if (event.reason?.message?.includes('invalid characters')) {
-                    console.error('[v0] [InvalidCharacterError Detected] This is likely a base64 encoding issue');
-                    console.error('[v0] Check: Clerk tokens, API keys, or data URIs');
-                    event.preventDefault();
-                    return false;
-                  }
-                });
-                
-                window.addEventListener('error', function(event) {
-                  if (event.message?.includes('invalid characters')) {
-                    console.warn('[v0] [InvalidCharacterError Suppressed]', event.message);
-                    event.preventDefault();
-                    return false;
-                  }
+                  window.addEventListener('error', function(event) {
+                    if (event.message?.includes('invalid characters')) {
+                      console.warn('[v0] Suppressed InvalidCharacterError in global error handler');
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                    }
+                  }, true);
                   
-                  console.error('[v0] [Global Error]', {
-                    message: event.message,
-                    filename: event.filename,
-                    lineno: event.lineno,
-                    colno: event.colno,
-                    error: event.error,
-                  });
-                });
+                  window.addEventListener('unhandledrejection', function(event) {
+                    if (event.reason?.message?.includes('invalid characters')) {
+                      console.warn('[v0] Suppressed InvalidCharacterError in promise rejection');
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                    }
+                  }, true);
+                })();
               `,
             }}
           />
+        </head>
+        <body className={`${sourceCodePro.variable} antialiased`}>
           <ThemeProvider>{children}</ThemeProvider>
         </body>
       </html>

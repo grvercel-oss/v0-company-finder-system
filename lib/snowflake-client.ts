@@ -258,35 +258,35 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
 
     const conditions: string[] = []
 
-    if (params.query) {
+    if (params.query && params.query.trim()) {
       conditions.push(`(
-        LOWER(COMPANY_NAME) LIKE LOWER('%${params.query}%')
-        OR LOWER(INTRO) LIKE LOWER('%${params.query}%')
-        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${params.query}%')
+        LOWER(COMPANY_NAME) LIKE LOWER('%${params.query.trim()}%')
+        OR LOWER(INTRO) LIKE LOWER('%${params.query.trim()}%')
+        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${params.query.trim()}%')
       )`)
     }
 
-    if (params.industry) {
+    if (params.industry && params.industry.trim()) {
       conditions.push(`(
-        LOWER(INDUSTRY) LIKE LOWER('%${params.industry}%')
-        OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry}%')
-        OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry}%')
+        LOWER(INDUSTRY) LIKE LOWER('%${params.industry.trim()}%')
+        OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry.trim()}%')
+        OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry.trim()}%')
       )`)
     }
 
-    if (params.employeeRange) {
-      conditions.push(`STAFF_RANGE = '${params.employeeRange}'`)
+    if (params.employeeRange && params.employeeRange.trim()) {
+      conditions.push(`STAFF_RANGE = '${params.employeeRange.trim()}'`)
     }
 
-    if (params.location) {
+    if (params.location && params.location.trim()) {
       conditions.push(`(
-        LOWER(CITY) LIKE LOWER('%${params.location}%')
-        OR LOWER(PROVINCE) LIKE LOWER('%${params.location}%')
-        OR LOWER(COUNTRY) LIKE LOWER('%${params.location}%')
+        LOWER(CITY) LIKE LOWER('%${params.location.trim()}%')
+        OR LOWER(PROVINCE) LIKE LOWER('%${params.location.trim()}%')
+        OR LOWER(COUNTRY) LIKE LOWER('%${params.location.trim()}%')
       )`)
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "WHERE 1=1"
     const limit = params.limit || 50
 
     const sqlText = `
@@ -299,6 +299,7 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
         CITY,
         COUNTRY,
         PROVINCE,
+        POSTCODE,
         INDUSTRY,
         INDUSTRY_1,
         INDUSTRY_2,
@@ -307,13 +308,22 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
         INTRO,
         LINK,
         LINK_LINKEDIN,
+        LINK_TWITTER,
+        LINK_FACEBOOK,
+        LINK_INS,
         LOGO,
         TECH_STACKS,
-        BUSINESS_KEYWORDS
+        BUSINESS_KEYWORDS,
+        PRODUCTS_OFFERED,
+        SERVICES_OFFERED,
+        CONTACT_ADDRESS,
+        HQ
       FROM ${tableName}
       ${whereClause}
       LIMIT ${limit}
     `
+
+    console.log("[v0] [Snowflake] Executing SQL:", sqlText)
 
     const results = await executeQuery<SnowflakeCompany>(connection, sqlText)
     console.log("[v0] [Snowflake] Advanced search found", results.length, "companies")

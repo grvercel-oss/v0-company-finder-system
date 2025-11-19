@@ -24,7 +24,11 @@ export default function SnowflakeSearchPage() {
   const [error, setError] = useState<string>()
 
   const handleSearch = async () => {
-    if (!query && !industry && !location) {
+    const trimmedQuery = query.trim()
+    const trimmedIndustry = industry.trim()
+    const trimmedLocation = location.trim()
+    
+    if (!trimmedQuery && !trimmedIndustry && !trimmedLocation) {
       toast.error("Please enter at least one search parameter")
       return
     }
@@ -36,9 +40,9 @@ export default function SnowflakeSearchPage() {
 
     try {
       const params = new URLSearchParams()
-      if (query) params.append("query", query)
-      if (industry) params.append("industry", industry)
-      if (location) params.append("location", location)
+      if (trimmedQuery) params.append("query", trimmedQuery)
+      if (trimmedIndustry) params.append("industry", trimmedIndustry)
+      if (trimmedLocation) params.append("location", trimmedLocation)
       params.append("limit", limit.toString())
       params.append("saveToDb", saveToDb.toString())
 

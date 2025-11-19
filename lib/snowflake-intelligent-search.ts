@@ -187,6 +187,18 @@ export function buildIntelligentSearchSQL(
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "WHERE 1=1"
 
+  // We prioritize:
+  // 1. Exact name match (case insensitive)
+  // 2. Name starts with query
+  // 3. Name contains query
+  // 4. Founded year (newest first)
+  const orderByClause = query.trim() ? `
+    ORDER BY 
+      CASE WHEN LOWER(COMPANY_NAME) = LOWER('${query.trim()}') THEN 0 ELSE 1 END,
+      CASE WHEN LOWER(COMPANY_NAME) LIKE LOWER('${query.trim()}%') THEN 0 ELSE 1 END,
+      FOUND_YEAR DESC NULLS LAST
+  ` : `ORDER BY FOUND_YEAR DESC NULLS LAST`
+
   const sqlText = `
     SELECT 
       COMPANY_ID,
@@ -231,7 +243,7 @@ export function buildIntelligentSearchSQL(
       NAICS_CODE
     FROM ${tableName}
     ${whereClause}
-    ORDER BY FOUND_YEAR DESC NULLS LAST
+    ${orderByClause}
   `
 
   console.log("[v0] [Intelligent Search] Generated SQL:", sqlText)

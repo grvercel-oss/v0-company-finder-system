@@ -204,20 +204,14 @@ export async function GET(request: NextRequest) {
     // Perform Snowflake search
     let results: SnowflakeCompany[]
 
-    if (industry || employeeRange || revenueRange || location) {
-      // Advanced search with filters
-      results = await searchSnowflakeCompaniesAdvanced({
-        query: query || undefined,
-        industry: industry || undefined,
-        employeeRange: employeeRange || undefined,
-        revenueRange: revenueRange || undefined,
-        location: location || undefined,
-        limit,
-      })
-    } else {
-      // Simple search
-      results = await searchSnowflakeCompanies(query!, limit)
-    }
+    results = await searchSnowflakeCompaniesAdvanced({
+      query: query || undefined,
+      industry: industry || undefined,
+      employeeRange: employeeRange || undefined,
+      revenueRange: revenueRange || undefined,
+      location: location || undefined,
+      limit,
+    })
 
     console.log("[v0] [Snowflake API] Found", results.length, "companies from Snowflake")
 

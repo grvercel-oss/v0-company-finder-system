@@ -113,73 +113,7 @@ export async function searchSnowflakeCompanies(
   query: string,
   limit: number = 50,
 ): Promise<SnowflakeCompany[]> {
-  let connection: any = null
-
-  try {
-    console.log("[v0] [Snowflake] Starting search for:", query)
-    connection = await createConnection()
-
-    const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.${snowflakeConfig.table}`
-    console.log("[v0] [Snowflake] Using table:", tableName)
-
-    const sqlText = `
-      SELECT 
-        COMPANY_ID,
-        COMPANY_NAME,
-        COMPANY_DOMAIN,
-        PRIMARY_DOMAIN,
-        CEO,
-        CITY,
-        COUNTRY,
-        PROVINCE,
-        POSTCODE,
-        COMPANY_TYPE,
-        INDUSTRY,
-        INDUSTRY_1,
-        INDUSTRY_2,
-        INDUSTRY_3,
-        STAFF_RANGE,
-        FOUND_YEAR,
-        INTRO,
-        LINK,
-        LINK_LINKEDIN,
-        LINK_TWITTER,
-        LINK_FACEBOOK,
-        LINK_INS,
-        LOGO,
-        TECH_STACKS,
-        PRODUCTS_OFFERED,
-        SERVICES_OFFERED,
-        BUSINESS_KEYWORDS,
-        CONTACT_ADDRESS,
-        HQ
-      FROM ${tableName}
-      WHERE 
-        LOWER(COMPANY_NAME) LIKE LOWER('%${query}%')
-        OR LOWER(INTRO) LIKE LOWER('%${query}%')
-        OR LOWER(INDUSTRY) LIKE LOWER('%${query}%')
-        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${query}%')
-      LIMIT ${limit}
-    `
-
-    const results = await executeQuery<SnowflakeCompany>(connection, sqlText)
-    console.log("[v0] [Snowflake] Found", results.length, "companies")
-
-    return results
-  } catch (error: any) {
-    console.error("[v0] [Snowflake] Search error:", error.message)
-    throw new Error(`Snowflake search failed: ${error.message}`)
-  } finally {
-    if (connection) {
-      connection.destroy((err: any) => {
-        if (err) {
-          console.error("[v0] [Snowflake] Error closing connection:", err.message)
-        } else {
-          console.log("[v0] [Snowflake] Connection closed")
-        }
-      })
-    }
-  }
+  return searchSnowflakeCompaniesAdvanced({ query, limit })
 }
 
 // Get company by domain
@@ -242,6 +176,7 @@ export async function getSnowflakeCompanyByDomain(domain: string): Promise<Snowf
   }
 }
 
+// Search companies in Snowflake by advanced query
 export async function searchSnowflakeCompaniesAdvanced(params: {
   query?: string
   industry?: string

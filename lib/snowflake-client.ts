@@ -320,3 +320,98 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
     }
   }
 }
+
+export async function listSnowflakeTables(): Promise<string[]> {
+  let connection: any = null
+
+  try {
+    console.log("[v0] [Snowflake] Listing available tables")
+    connection = await createConnection()
+
+    const sqlText = `
+      SHOW TABLES IN ${snowflakeConfig.database}.${snowflakeConfig.schema}
+    `
+
+    const results = await executeQuery<any>(connection, sqlText)
+    const tableNames = results.map((row: any) => row.name || row.NAME || row.table_name || row.TABLE_NAME)
+    
+    console.log("[v0] [Snowflake] Available tables:", tableNames)
+    return tableNames
+  } catch (error: any) {
+    console.error("[v0] [Snowflake] Error listing tables:", error.message)
+    throw new Error(`Failed to list tables: ${error.message}`)
+  } finally {
+    if (connection) {
+      connection.destroy((err: any) => {
+        if (err) {
+          console.error("[v0] [Snowflake] Error closing connection:", err.message)
+        }
+      })
+    }
+  }
+}
+
+export async function checkSnowflakePermissions(): Promise<{
+  canConnect: boolean
+  canListTables: boolean
+  canQuery: boolean
+  availableTables: string[]
+  error?: string
+}> {
+  const result = {
+    canConnect: false,
+    canListTables: false,
+    canQuery: false,
+    availableTables: [] as string[],
+    error: undefined as string | undefined,
+  }
+
+  let connection: any = null
+
+  try {
+    // Test connection
+    connection = await createConnection()
+    result.canConnect = true
+    console.log("[v0] [Snowflake] Permission check: Can connect ✓")
+
+    // Test list tables
+    try {
+      const tables = await listSnowflakeTables()
+      result.canListTables = true
+      result.availableTables = tables
+      console.log("[v0] [Snowflake] Permission check: Can list tables ✓")
+      console.log("[v0] [Snowflake] Available tables:", tables)
+    } catch (err: any) {
+      console.error("[v0] [Snowflake] Permission check: Cannot list tables ✗", err.message)
+      result.error = `Cannot list tables: ${err.message}`
+    }
+
+    // Test simple query if we have tables
+    if (result.availableTables.length > 0) {
+      try {
+        const testTable = result.availableTables[0]
+        const sqlText = `SELECT * FROM ${snowflakeConfig.database}.${snowflakeConfig.schema}.${testTable} LIMIT 1`
+        await executeQuery(connection, sqlText)
+        result.canQuery = true
+        console.log("[v0] [Snowflake] Permission check: Can query ✓")
+      } catch (err: any) {
+        console.error("[v0] [Snowflake] Permission check: Cannot query ✗", err.message)
+        result.error = `Cannot query: ${err.message}`
+      }
+    }
+
+    return result
+  } catch (error: any) {
+    result.error = error.message
+    console.error("[v0] [Snowflake] Permission check failed:", error.message)
+    return result
+  } finally {
+    if (connection) {
+      connection.destroy((err: any) => {
+        if (err) {
+          console.error("[v0] [Snowflake] Error closing connection:", err.message)
+        }
+      })
+    }
+  }
+}

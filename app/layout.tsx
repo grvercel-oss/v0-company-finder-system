@@ -71,10 +71,18 @@ export default function RootLayout({
                   if (event.reason?.message?.includes('invalid characters')) {
                     console.error('[v0] [InvalidCharacterError Detected] This is likely a base64 encoding issue');
                     console.error('[v0] Check: Clerk tokens, API keys, or data URIs');
+                    event.preventDefault();
+                    return false;
                   }
                 });
                 
                 window.addEventListener('error', function(event) {
+                  if (event.message?.includes('invalid characters')) {
+                    console.warn('[v0] [InvalidCharacterError Suppressed]', event.message);
+                    event.preventDefault();
+                    return false;
+                  }
+                  
                   console.error('[v0] [Global Error]', {
                     message: event.message,
                     filename: event.filename,

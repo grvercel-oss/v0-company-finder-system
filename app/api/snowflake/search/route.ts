@@ -4,24 +4,29 @@ import { sql } from "@/lib/db"
 
 // Convert Snowflake company to our database format
 function convertSnowflakeToCompany(sfCompany: SnowflakeCompany) {
+  // Build location from available fields
+  const locationParts = [
+    sfCompany.CITY,
+    sfCompany.PROVINCE,
+    sfCompany.COUNTRY
+  ].filter(Boolean)
+  
   return {
-    name: sfCompany.company_name || "Unknown",
-    domain: sfCompany.domain || sfCompany.website || null,
-    description: sfCompany.description || null,
-    industry: sfCompany.industry || null,
-    size: sfCompany.employee_range || null,
-    location: [sfCompany.headquarters_city, sfCompany.headquarters_state, sfCompany.headquarters_country]
-      .filter(Boolean)
-      .join(", ") || null,
-    founded_year: sfCompany.founded_year || null,
-    website: sfCompany.website || sfCompany.domain || null,
-    linkedin_url: sfCompany.linkedin_url || null,
-    twitter_url: sfCompany.twitter_url || null,
-    logo_url: sfCompany.logo_url || null,
-    employee_count: sfCompany.employee_count?.toString() || sfCompany.employee_range || null,
-    revenue_range: sfCompany.revenue_range || (sfCompany.revenue ? `$${sfCompany.revenue}` : null),
-    technologies: sfCompany.technologies ? sfCompany.technologies.split(",").map((t) => t.trim()) : [],
-    keywords: sfCompany.keywords ? sfCompany.keywords.split(",").map((k) => k.trim()) : [],
+    name: sfCompany.COMPANY_NAME || "Unknown",
+    domain: sfCompany.COMPANY_DOMAIN || sfCompany.PRIMARY_DOMAIN || null,
+    description: sfCompany.INTRO || null,
+    industry: sfCompany.INDUSTRY || sfCompany.INDUSTRY_1 || null,
+    size: sfCompany.STAFF_RANGE || null,
+    location: locationParts.length > 0 ? locationParts.join(", ") : null,
+    founded_year: sfCompany.FOUND_YEAR || null,
+    website: sfCompany.LINK || sfCompany.COMPANY_DOMAIN || sfCompany.PRIMARY_DOMAIN || null,
+    linkedin_url: sfCompany.LINK_LINKEDIN || null,
+    twitter_url: sfCompany.LINK_TWITTER || null,
+    logo_url: sfCompany.LOGO || null,
+    employee_count: sfCompany.STAFF_RANGE || null,
+    revenue_range: null, // Not in FlashIntel schema
+    technologies: sfCompany.TECH_STACKS ? sfCompany.TECH_STACKS.split(",").map((t) => t.trim()) : [],
+    keywords: sfCompany.BUSINESS_KEYWORDS ? sfCompany.BUSINESS_KEYWORDS.split(",").map((k) => k.trim()) : [],
     raw_data: sfCompany,
     data_quality_score: 85, // Snowflake data is generally high quality
     verified: true,

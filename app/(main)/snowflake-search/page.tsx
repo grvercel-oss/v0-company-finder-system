@@ -105,6 +105,44 @@ export default function SnowflakeSearchPage() {
                   High Quality Data
                 </Badge>
               </div>
+              <div className="mt-4 rounded-lg border bg-muted/50 p-4">
+                <p className="text-sm font-medium mb-2">💡 Try intelligent search:</p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <button
+                    onClick={() => setQuery("AI Startups")}
+                    className="rounded bg-background px-2 py-1 hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    "AI Startups"
+                  </button>
+                  <button
+                    onClick={() => {
+                      setQuery("SaaS companies")
+                      setLocation("San Francisco")
+                    }}
+                    className="rounded bg-background px-2 py-1 hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    "SaaS companies in San Francisco"
+                  </button>
+                  <button
+                    onClick={() => setQuery("Fintech enterprises")}
+                    className="rounded bg-background px-2 py-1 hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    "Fintech enterprises"
+                  </button>
+                  <button
+                    onClick={() => setQuery("Machine Learning startups")}
+                    className="rounded bg-background px-2 py-1 hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    "Machine Learning startups"
+                  </button>
+                  <button
+                    onClick={() => setQuery("Blockchain companies")}
+                    className="rounded bg-background px-2 py-1 hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    "Blockchain companies"
+                  </button>
+                </div>
+              </div>
             </div>
 
             <Card>

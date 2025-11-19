@@ -105,6 +105,8 @@ function executeQuery<T = any>(connection: any, sqlText: string): Promise<T[]> {
   })
 }
 
+import { buildIntelligentSearchSQL, parseSearchQuery } from "./snowflake-intelligent-search"
+
 // Search companies in Snowflake by query
 export async function searchSnowflakeCompanies(
   query: string,
@@ -239,7 +241,6 @@ export async function getSnowflakeCompanyByDomain(domain: string): Promise<Snowf
   }
 }
 
-// Advanced search with filters
 export async function searchSnowflakeCompaniesAdvanced(params: {
   query?: string
   industry?: string
@@ -251,77 +252,91 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
   let connection: any = null
 
   try {
-    console.log("[v0] [Snowflake] Advanced search with params:", params)
+    console.log("[v0] [Snowflake] Intelligent search with params:", params)
     connection = await createConnection()
 
     const tableName = `${snowflakeConfig.database}.${snowflakeConfig.schema}.${snowflakeConfig.table}`
-
-    const conditions: string[] = []
-
-    if (params.query && params.query.trim()) {
-      conditions.push(`(
-        LOWER(COMPANY_NAME) LIKE LOWER('%${params.query.trim()}%')
-        OR LOWER(INTRO) LIKE LOWER('%${params.query.trim()}%')
-        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${params.query.trim()}%')
-      )`)
-    }
-
-    if (params.industry && params.industry.trim()) {
-      conditions.push(`(
-        LOWER(INDUSTRY) LIKE LOWER('%${params.industry.trim()}%')
-        OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry.trim()}%')
-        OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry.trim()}%')
-      )`)
-    }
-
-    if (params.employeeRange && params.employeeRange.trim()) {
-      conditions.push(`STAFF_RANGE = '${params.employeeRange.trim()}'`)
-    }
-
-    if (params.location && params.location.trim()) {
-      conditions.push(`(
-        LOWER(CITY) LIKE LOWER('%${params.location.trim()}%')
-        OR LOWER(PROVINCE) LIKE LOWER('%${params.location.trim()}%')
-        OR LOWER(COUNTRY) LIKE LOWER('%${params.location.trim()}%')
-      )`)
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "WHERE 1=1"
     const limit = params.limit || 50
 
-    const sqlText = `
-      SELECT 
-        COMPANY_ID,
-        COMPANY_NAME,
-        COMPANY_DOMAIN,
-        PRIMARY_DOMAIN,
-        CEO,
-        CITY,
-        COUNTRY,
-        PROVINCE,
-        POSTCODE,
-        INDUSTRY,
-        INDUSTRY_1,
-        INDUSTRY_2,
-        STAFF_RANGE,
-        FOUND_YEAR,
-        INTRO,
-        LINK,
-        LINK_LINKEDIN,
-        LINK_TWITTER,
-        LINK_FACEBOOK,
-        LINK_INS,
-        LOGO,
-        TECH_STACKS,
-        BUSINESS_KEYWORDS,
-        PRODUCTS_OFFERED,
-        SERVICES_OFFERED,
-        CONTACT_ADDRESS,
-        HQ
-      FROM ${tableName}
-      ${whereClause}
-      LIMIT ${limit}
-    `
+    let sqlText: string
+
+    if (params.query && params.query.trim()) {
+      console.log("[v0] [Snowflake] Using intelligent search for query:", params.query)
+      const parsedQuery = parseSearchQuery(params.query)
+      console.log("[v0] [Snowflake] Parsed query:", parsedQuery)
+      
+      sqlText = buildIntelligentSearchSQL(
+        tableName,
+        params.query,
+        {
+          location: params.location,
+          employeeRange: params.employeeRange,
+        }
+      )
+      
+      // Add LIMIT clause
+      sqlText += ` LIMIT ${limit}`
+    } else {
+      // Fallback to manual filter building if no main query
+      const conditions: string[] = []
+
+      if (params.industry && params.industry.trim()) {
+        conditions.push(`(
+          LOWER(INDUSTRY) LIKE LOWER('%${params.industry.trim()}%')
+          OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry.trim()}%')
+          OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry.trim()}%')
+        )`)
+      }
+
+      if (params.employeeRange && params.employeeRange.trim()) {
+        conditions.push(`STAFF_RANGE = '${params.employeeRange.trim()}'`)
+      }
+
+      if (params.location && params.location.trim()) {
+        conditions.push(`(
+          LOWER(CITY) LIKE LOWER('%${params.location.trim()}%')
+          OR LOWER(PROVINCE) LIKE LOWER('%${params.location.trim()}%')
+          OR LOWER(COUNTRY) LIKE LOWER('%${params.location.trim()}%')
+        )`)
+      }
+
+      const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "WHERE 1=1"
+
+      sqlText = `
+        SELECT 
+          COMPANY_ID,
+          COMPANY_NAME,
+          COMPANY_DOMAIN,
+          PRIMARY_DOMAIN,
+          CEO,
+          CITY,
+          COUNTRY,
+          PROVINCE,
+          POSTCODE,
+          INDUSTRY,
+          INDUSTRY_1,
+          INDUSTRY_2,
+          STAFF_RANGE,
+          FOUND_YEAR,
+          INTRO,
+          LINK,
+          LINK_LINKEDIN,
+          LINK_TWITTER,
+          LINK_FACEBOOK,
+          LINK_INS,
+          LOGO,
+          TECH_STACKS,
+          BUSINESS_KEYWORDS,
+          PRODUCTS_OFFERED,
+          SERVICES_OFFERED,
+          CONTACT_ADDRESS,
+          HQ
+        FROM ${tableName}
+        ${whereClause}
+        ORDER BY FOUND_YEAR DESC NULLS LAST
+        LIMIT ${limit}
+      `
+    }
 
     console.log("[v0] [Snowflake] Executing SQL:", sqlText)
 
@@ -343,6 +358,7 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
   }
 }
 
+// List Snowflake tables
 export async function listSnowflakeTables(): Promise<string[]> {
   let connection: any = null
 
@@ -373,6 +389,7 @@ export async function listSnowflakeTables(): Promise<string[]> {
   }
 }
 
+// Check Snowflake permissions
 export async function checkSnowflakePermissions(): Promise<{
   canConnect: boolean
   canListTables: boolean

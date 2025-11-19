@@ -14,41 +14,16 @@ const snowflakeConfig = {
 
 // Company data structure from Snowflake
 export interface SnowflakeCompany {
-  COMPANY_ID?: string
-  COMPANY_NAME?: string
-  COMPANY_DOMAIN?: string
-  PRIMARY_DOMAIN?: string
-  CEO?: string
-  CITY?: string
-  COUNTRY?: string
-  PROVINCE?: string
-  POSTCODE?: string
-  COMPANY_TYPE?: string
-  COMPANY_TYPE_DICT?: string
+  ID?: string
+  NAME?: string
+  WEBSITE?: string
   INDUSTRY?: string
-  INDUSTRY_1?: string
-  INDUSTRY_2?: string
-  INDUSTRY_3?: string
-  STAFF_RANGE?: string
-  FOUND_YEAR?: number
-  INTRO?: string
-  LINK?: string
-  LINK_LINKEDIN?: string
-  LINK_TWITTER?: string
-  LINK_FACEBOOK?: string
-  LINK_INS?: string
-  LOGO?: string
-  TECH_STACKS?: string
-  PRODUCTS_OFFERED?: string
-  SERVICES_OFFERED?: string
-  TARGET_CUSTOMERS?: string
-  BUSINESS_KEYWORDS?: string
-  CONTACT_ADDRESS?: string
-  REGISTER_ADDRESS?: string
-  HQ?: string
-  STOCK_CODE?: string
-  STOCK_EXCHANGE?: string
-  NAICS_CODE?: string
+  LOCALITY?: string
+  REGION?: string
+  COUNTRY?: string
+  SIZE?: string
+  FOUNDED?: number
+  LINKEDIN_URL?: string
 }
 
 // Create a connection to Snowflake
@@ -128,35 +103,25 @@ export async function getSnowflakeCompanyByDomain(domain: string): Promise<Snowf
 
     const sqlText = `
       SELECT 
-        COMPANY_ID,
-        COMPANY_NAME,
-        COMPANY_DOMAIN,
-        PRIMARY_DOMAIN,
-        CEO,
-        CITY,
-        COUNTRY,
-        PROVINCE,
+        ID,
+        NAME,
+        WEBSITE,
         INDUSTRY,
-        STAFF_RANGE,
-        FOUND_YEAR,
-        INTRO,
-        LINK,
-        LINK_LINKEDIN,
-        LINK_TWITTER,
-        LINK_FACEBOOK,
-        LOGO,
-        TECH_STACKS,
-        BUSINESS_KEYWORDS
+        LOCALITY,
+        REGION,
+        COUNTRY,
+        SIZE,
+        FOUNDED,
+        LINKEDIN_URL
       FROM ${tableName}
-      WHERE LOWER(COMPANY_DOMAIN) = LOWER('${domain}')
-         OR LOWER(PRIMARY_DOMAIN) = LOWER('${domain}')
+      WHERE LOWER(WEBSITE) LIKE LOWER('%${domain}%')
       LIMIT 1
     `
 
     const results = await executeQuery<SnowflakeCompany>(connection, sqlText)
 
     if (results.length > 0) {
-      console.log("[v0] [Snowflake] Found company:", results[0].COMPANY_NAME)
+      console.log("[v0] [Snowflake] Found company:", results[0].NAME)
       return results[0]
     }
 
@@ -208,29 +173,22 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
         }
       )
       
-      // Add LIMIT clause
       sqlText += ` LIMIT ${limit}`
     } else {
-      // Fallback to manual filter building if no main query
       const conditions: string[] = []
 
       if (params.industry && params.industry.trim()) {
-        conditions.push(`(
-          LOWER(INDUSTRY) LIKE LOWER('%${params.industry.trim()}%')
-          OR LOWER(INDUSTRY_1) LIKE LOWER('%${params.industry.trim()}%')
-          OR LOWER(INDUSTRY_2) LIKE LOWER('%${params.industry.trim()}%')
-          OR LOWER(INDUSTRY_3) LIKE LOWER('%${params.industry.trim()}%')
-        )`)
+        conditions.push(`LOWER(INDUSTRY) LIKE LOWER('%${params.industry.trim()}%')`)
       }
 
       if (params.employeeRange && params.employeeRange.trim()) {
-        conditions.push(`STAFF_RANGE = '${params.employeeRange.trim()}'`)
+        conditions.push(`SIZE = '${params.employeeRange.trim()}'`)
       }
 
       if (params.location && params.location.trim()) {
         conditions.push(`(
-          LOWER(CITY) LIKE LOWER('%${params.location.trim()}%')
-          OR LOWER(PROVINCE) LIKE LOWER('%${params.location.trim()}%')
+          LOWER(LOCALITY) LIKE LOWER('%${params.location.trim()}%')
+          OR LOWER(REGION) LIKE LOWER('%${params.location.trim()}%')
           OR LOWER(COUNTRY) LIKE LOWER('%${params.location.trim()}%')
         )`)
       }
@@ -239,39 +197,19 @@ export async function searchSnowflakeCompaniesAdvanced(params: {
 
       sqlText = `
         SELECT 
-          COMPANY_ID,
-          COMPANY_NAME,
-          COMPANY_DOMAIN,
-          PRIMARY_DOMAIN,
-          CEO,
-          CITY,
-          COUNTRY,
-          PROVINCE,
-          POSTCODE,
-          COMPANY_TYPE,
-          COMPANY_TYPE_DICT,
+          ID,
+          NAME,
+          WEBSITE,
           INDUSTRY,
-          INDUSTRY_1,
-          INDUSTRY_2,
-          INDUSTRY_3,
-          STAFF_RANGE,
-          FOUND_YEAR,
-          INTRO,
-          LINK,
-          LINK_LINKEDIN,
-          LINK_TWITTER,
-          LINK_FACEBOOK,
-          LINK_INS,
-          LOGO,
-          TECH_STACKS,
-          PRODUCTS_OFFERED,
-          SERVICES_OFFERED,
-          BUSINESS_KEYWORDS,
-          CONTACT_ADDRESS,
-          HQ
+          LOCALITY,
+          REGION,
+          COUNTRY,
+          SIZE,
+          FOUNDED,
+          LINKEDIN_URL
         FROM ${tableName}
         ${whereClause}
-        ORDER BY FOUND_YEAR DESC NULLS LAST
+        ORDER BY FOUNDED DESC NULLS LAST
         LIMIT ${limit}
       `
     }

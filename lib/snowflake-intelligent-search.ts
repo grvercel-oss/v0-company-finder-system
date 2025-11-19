@@ -97,7 +97,7 @@ export function parseSearchQuery(query: string): ParsedSearchQuery {
 export function buildIntelligentSearchSQL(
   tableName: string,
   query: string,
-  additionalFilters?: {
+  filters?: {
     location?: string
     employeeRange?: string
   }
@@ -107,45 +107,19 @@ export function buildIntelligentSearchSQL(
 
   const searchConditions: string[] = []
 
-  // Industry conditions (most important for "AI Startups" type queries)
+  // Industry conditions
   if (parsed.industries.length > 0) {
     const industryConditions = parsed.industries.map(industry => 
-      `(
-        LOWER(INDUSTRY) LIKE LOWER('%${industry}%')
-        OR LOWER(INDUSTRY_1) LIKE LOWER('%${industry}%')
-        OR LOWER(INDUSTRY_2) LIKE LOWER('%${industry}%')
-        OR LOWER(INDUSTRY_3) LIKE LOWER('%${industry}%')
-        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${industry}%')
-        OR LOWER(INTRO) LIKE LOWER('%${industry}%')
-      )`
+      `LOWER(INDUSTRY) LIKE LOWER('%${industry}%')`
     ).join(" OR ")
     
     searchConditions.push(`(${industryConditions})`)
   }
 
-  // Company type conditions
-  if (parsed.companyTypes.length > 0) {
-    const typeConditions = parsed.companyTypes.map(type =>
-      `(
-        LOWER(COMPANY_TYPE) LIKE LOWER('%${type}%')
-        OR LOWER(COMPANY_TYPE_DICT) LIKE LOWER('%${type}%')
-        OR LOWER(INTRO) LIKE LOWER('%${type}%')
-      )`
-    ).join(" OR ")
-    
-    searchConditions.push(`(${typeConditions})`)
-  }
-
-  // General keyword search (fallback for unmatched terms)
+  // General keyword search
   if (parsed.keywords.length > 0) {
     const keywordConditions = parsed.keywords.map(keyword =>
-      `(
-        LOWER(COMPANY_NAME) LIKE LOWER('%${keyword}%')
-        OR LOWER(INTRO) LIKE LOWER('%${keyword}%')
-        OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${keyword}%')
-        OR LOWER(PRODUCTS_OFFERED) LIKE LOWER('%${keyword}%')
-        OR LOWER(SERVICES_OFFERED) LIKE LOWER('%${keyword}%')
-      )`
+      `LOWER(NAME) LIKE LOWER('%${keyword}%')`
     ).join(" OR ")
     
     if (keywordConditions) {
@@ -153,16 +127,11 @@ export function buildIntelligentSearchSQL(
     }
   }
 
-  // If no specific conditions matched, do a broad search on the full query
+  // If no specific conditions matched, do a broad search
   if (searchConditions.length === 0 && query.trim()) {
     searchConditions.push(`(
-      LOWER(COMPANY_NAME) LIKE LOWER('%${query.trim()}%')
-      OR LOWER(INTRO) LIKE LOWER('%${query.trim()}%')
+      LOWER(NAME) LIKE LOWER('%${query.trim()}%')
       OR LOWER(INDUSTRY) LIKE LOWER('%${query.trim()}%')
-      OR LOWER(INDUSTRY_1) LIKE LOWER('%${query.trim()}%')
-      OR LOWER(INDUSTRY_2) LIKE LOWER('%${query.trim()}%')
-      OR LOWER(INDUSTRY_3) LIKE LOWER('%${query.trim()}%')
-      OR LOWER(BUSINESS_KEYWORDS) LIKE LOWER('%${query.trim()}%')
     )`)
   }
 
@@ -171,79 +140,54 @@ export function buildIntelligentSearchSQL(
     conditions.push(`(${searchConditions.join(" OR ")})`)
   }
 
-  // Add location filter with AND logic (optional filters)
-  if (additionalFilters?.location && additionalFilters.location.trim()) {
-    conditions.push(`(
-      LOWER(CITY) LIKE LOWER('%${additionalFilters.location.trim()}%')
-      OR LOWER(PROVINCE) LIKE LOWER('%${additionalFilters.location.trim()}%')
-      OR LOWER(COUNTRY) LIKE LOWER('%${additionalFilters.location.trim()}%')
-    )`)
+  // Add location filter
+  if (filters?.location || parsed.locations.length > 0) {
+    const loc = filters?.location || parsed.locations[0]
+    if (loc) {
+      conditions.push(`(
+        LOWER(LOCALITY) LIKE LOWER('%${loc}%')
+        OR LOWER(REGION) LIKE LOWER('%${loc}%')
+        OR LOWER(COUNTRY) LIKE LOWER('%${loc}%')
+      )`)
+    }
   }
 
-  // Add employee range filter with AND logic (optional filters)
-  if (additionalFilters?.employeeRange && additionalFilters.employeeRange.trim()) {
-    conditions.push(`STAFF_RANGE = '${additionalFilters.employeeRange.trim()}'`)
+  // Add employee range filter
+  if (filters?.employeeRange) {
+    conditions.push(`SIZE = '${filters.employeeRange}'`)
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "WHERE 1=1"
 
-  // We prioritize:
-  // 1. Exact name match (case insensitive)
-  // 2. Name starts with query
-  // 3. Name contains query
-  // 4. Founded year (newest first)
-  const orderByClause = query.trim() ? `
-    ORDER BY 
-      CASE WHEN LOWER(COMPANY_NAME) = LOWER('${query.trim()}') THEN 0 ELSE 1 END,
-      CASE WHEN LOWER(COMPANY_NAME) LIKE LOWER('${query.trim()}%') THEN 0 ELSE 1 END,
-      FOUND_YEAR DESC NULLS LAST
-  ` : `ORDER BY FOUND_YEAR DESC NULLS LAST`
+  // Build ORDER BY for relevance
+  let orderBy = "ORDER BY "
+  if (parsed.keywords.length > 0 || query.trim()) {
+    const term = parsed.keywords[0] || query.trim()
+    orderBy += `
+      CASE 
+        WHEN LOWER(NAME) = LOWER('${term}') THEN 1
+        WHEN LOWER(NAME) LIKE LOWER('${term}%') THEN 2
+        ELSE 3
+      END,
+    `
+  }
+  orderBy += "FOUNDED DESC NULLS LAST"
 
   const sqlText = `
     SELECT 
-      COMPANY_ID,
-      COMPANY_NAME,
-      COMPANY_DOMAIN,
-      PRIMARY_DOMAIN,
-      CEO,
-      CITY,
-      COUNTRY,
-      PROVINCE,
-      POSTCODE,
-      COMPANY_TYPE,
-      COMPANY_TYPE_DICT,
+      ID,
+      NAME,
+      WEBSITE,
       INDUSTRY,
-      INDUSTRY_1,
-      INDUSTRY_2,
-      INDUSTRY_3,
-      STAFF_RANGE,
-      FOUND_YEAR,
-      INTRO,
-      LINK,
-      LINK_LINKEDIN,
-      LINK_TWITTER,
-      LINK_FACEBOOK,
-      LINK_INS,
-      LOGO,
-      TECH_STACKS,
-      PRODUCTS_OFFERED,
-      SERVICES_OFFERED,
-      TARGET_CUSTOMERS,
-      TARGET_SUPPLIERS,
-      PRODUCTS_NEEDED,
-      SERVICES_NEEDED,
-      BUSINESS_KEYWORDS,
-      EVENTS_NEEDED,
-      CONTACT_ADDRESS,
-      REGISTER_ADDRESS,
-      HQ,
-      GEO,
-      STOCK_CODE,
-      STOCK_EXCHANGE,
-      NAICS_CODE
+      LOCALITY,
+      REGION,
+      COUNTRY,
+      SIZE,
+      FOUNDED,
+      LINKEDIN_URL
     FROM ${tableName}
     ${whereClause}
-    ${orderByClause}
+    ${orderBy}
   `
 
   console.log("[v0] [Intelligent Search] Generated SQL:", sqlText)

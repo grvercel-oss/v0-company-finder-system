@@ -6,20 +6,18 @@ import { sql } from "@/lib/db"
 function convertSnowflakeToCompany(sfCompany: SnowflakeCompany, dbId?: number) {
   // Build location from available fields
   const locationParts = [
-    sfCompany.CITY,
-    sfCompany.PROVINCE,
+    sfCompany.LOCALITY,
+    sfCompany.REGION,
     sfCompany.COUNTRY
   ].filter(Boolean)
   
   // Get the best domain value
-  const domain = sfCompany.COMPANY_DOMAIN || sfCompany.PRIMARY_DOMAIN || null
+  const domain = sfCompany.WEBSITE || null
   
   // Build website URL from domain if available
   let website = null
   if (domain) {
     website = domain.startsWith('http') ? domain : `https://${domain}`
-  } else if (sfCompany.LINK) {
-    website = sfCompany.LINK
   }
   
   const rawData = {
@@ -27,48 +25,29 @@ function convertSnowflakeToCompany(sfCompany: SnowflakeCompany, dbId?: number) {
     imported_at: new Date().toISOString(),
     ...sfCompany,
     // Additional structured data for easier access
-    company_id: sfCompany.COMPANY_ID,
-    ceo: sfCompany.CEO,
-    company_type: sfCompany.COMPANY_TYPE,
-    company_type_dict: sfCompany.COMPANY_TYPE_DICT,
-    contact_address: sfCompany.CONTACT_ADDRESS,
-    register_address: sfCompany.REGISTER_ADDRESS,
-    hq: sfCompany.HQ,
-    geo: sfCompany.GEO,
-    postcode: sfCompany.POSTCODE,
-    link_facebook: sfCompany.LINK_FACEBOOK,
-    link_ins: sfCompany.LINK_INS,
-    naics_code: sfCompany.NAICS_CODE,
-    stock_code: sfCompany.STOCK_CODE,
-    stock_exchange: sfCompany.STOCK_EXCHANGE,
-    products_offered: sfCompany.PRODUCTS_OFFERED,
-    services_offered: sfCompany.SERVICES_OFFERED,
-    target_customers: sfCompany.TARGET_CUSTOMERS,
-    target_suppliers: sfCompany.TARGET_SUPPLIERS,
-    products_needed: sfCompany.PRODUCTS_NEEDED,
-    services_needed: sfCompany.SERVICES_NEEDED,
-    events_needed: sfCompany.EVENTS_NEEDED,
+    company_id: sfCompany.ID,
+    linkedin_url: sfCompany.LINKEDIN_URL,
   }
   
   return {
     id: dbId, // Include database ID if available for linking
-    name: sfCompany.COMPANY_NAME || "Unknown",
+    name: sfCompany.NAME || "Unknown",
     domain: domain,
-    description: sfCompany.INTRO || null,
-    industry: sfCompany.INDUSTRY || sfCompany.INDUSTRY_1 || null,
-    size: sfCompany.STAFF_RANGE || null,
+    description: null, // PDL doesn't have description
+    industry: sfCompany.INDUSTRY || null,
+    size: sfCompany.SIZE || null,
     location: locationParts.length > 0 ? locationParts.join(", ") : null,
-    founded_year: sfCompany.FOUND_YEAR || null,
+    founded_year: sfCompany.FOUNDED || null,
     website: website,
-    linkedin_url: sfCompany.LINK_LINKEDIN || null,
-    twitter_url: sfCompany.LINK_TWITTER || null,
-    logo_url: sfCompany.LOGO || null,
-    employee_count: sfCompany.STAFF_RANGE || null,
-    revenue_range: null, // Not in FlashIntel schema
-    technologies: sfCompany.TECH_STACKS ? sfCompany.TECH_STACKS.split(",").map((t) => t.trim()) : [],
-    keywords: sfCompany.BUSINESS_KEYWORDS ? sfCompany.BUSINESS_KEYWORDS.split(",").map((k) => k.trim()) : [],
+    linkedin_url: sfCompany.LINKEDIN_URL || null,
+    twitter_url: null,
+    logo_url: null,
+    employee_count: sfCompany.SIZE || null,
+    revenue_range: null,
+    technologies: [],
+    keywords: sfCompany.INDUSTRY ? [sfCompany.INDUSTRY] : [],
     raw_data: rawData,
-    data_quality_score: 85, // Snowflake data is generally high quality
+    data_quality_score: 85,
     verified: true,
   }
 }

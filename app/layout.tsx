@@ -63,6 +63,20 @@ export default function RootLayout({
               __html: `
                 // Early error suppression - runs before React
                 (function() {
+                  // Monkey patch atob to prevent crashes from invalid base64 strings
+                  const originalAtob = window.atob;
+                  window.atob = function(str) {
+                    try {
+                      return originalAtob(str);
+                    } catch (e) {
+                      if (e.message && e.message.includes('invalid characters')) {
+                        console.warn('[v0] Suppressed atob error for string:', str);
+                        return ''; // Return empty string to prevent crash
+                      }
+                      throw e;
+                    }
+                  };
+
                   const originalError = console.error;
                   console.error = function(...args) {
                     const msg = args.join(' ');
